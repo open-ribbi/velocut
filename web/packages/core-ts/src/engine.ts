@@ -23,7 +23,7 @@ import type {
   TimeUs,
   Track,
   VDocument,
-} from '../../protocol/src/types.ts';
+} from '@velocut/protocol';
 
 const MAX_HISTORY = 200;
 

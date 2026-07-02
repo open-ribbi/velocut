@@ -8,7 +8,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { TsEngine } from '../src/engine.ts';
-import type { Command, VDocument } from '../../protocol/src/types.ts';
+import type { Command, VDocument } from '@velocut/protocol';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const vectorsDir = join(here, '../../../../protocol/vectors');
