@@ -1,0 +1,20 @@
+{
+  "name": "batch is all-or-nothing including id minting rollback",
+  "steps": [
+    {"apply": {"type":"addAsset","id":"a1","kind":"video","src":"mem://a1","name":"A","durationUs":10000000}},
+    {"apply": {"type":"addTrack","kind":"video"}},
+    {"apply": {"type":"addClip","trackId":"track_1","assetId":"a1","startUs":0,"durationUs":2000000}},
+    {"applyErr": {"cmd":{"type":"batch","commands":[
+      {"type":"addClip","trackId":"track_1","assetId":"a1","startUs":3000000,"durationUs":1000000},
+      {"type":"addClip","trackId":"track_1","assetId":"a1","startUs":3500000,"durationUs":1000000}
+    ]},"code":"overlap"}},
+    {"apply": {"type":"addClip","trackId":"track_1","assetId":"a1","startUs":3000000,"durationUs":1000000}}
+  ],
+  "expect": {
+    "clips": [
+      {"id":"clip_2","trackId":"track_1","startUs":0,"durationUs":2000000},
+      {"id":"clip_3","trackId":"track_1","startUs":3000000,"durationUs":1000000}
+    ],
+    "clipCounts": {"track_1": 2}
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["@webgpu/types", "vite/client"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": false,
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "paths": {
+      "@velocut/protocol": ["../../packages/protocol/src/types.ts"],
+      "@velocut/core-ts": ["../../packages/core-ts/src/engine.ts"],
+      "@velocut/render-sdk": ["../../packages/render-sdk/src/index.ts"],
+      "@velocut/agent-sdk": ["../../packages/agent-sdk/src/index.ts"],
+      "@velocut/collab-sdk": ["../../packages/collab-sdk/src/index.ts"]
+    }
+  },
+  "include": ["src"]
+}

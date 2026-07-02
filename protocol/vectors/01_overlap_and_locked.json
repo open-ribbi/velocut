@@ -1,0 +1,21 @@
+{
+  "name": "overlap rejection, adjacency allowed, locked track",
+  "steps": [
+    {"apply": {"type":"addAsset","id":"a1","kind":"video","src":"mem://a1","name":"A","durationUs":10000000,"width":1920,"height":1080}},
+    {"apply": {"type":"addTrack","kind":"video"}},
+    {"apply": {"type":"addClip","trackId":"track_1","assetId":"a1","startUs":0,"durationUs":2000000}},
+    {"applyErr": {"cmd":{"type":"addClip","trackId":"track_1","assetId":"a1","startUs":1000000,"durationUs":2000000},"code":"overlap"}},
+    {"apply": {"type":"addClip","trackId":"track_1","assetId":"a1","startUs":2000000,"durationUs":1000000}},
+    {"apply": {"type":"setTrackLocked","trackId":"track_1","locked":true}},
+    {"applyErr": {"cmd":{"type":"moveClip","clipId":"clip_2","startUs":5000000},"code":"locked"}},
+    {"apply": {"type":"setTrackLocked","trackId":"track_1","locked":false}},
+    {"apply": {"type":"moveClip","clipId":"clip_2","startUs":5000000}}
+  ],
+  "expect": {
+    "clips": [
+      {"id":"clip_2","trackId":"track_1","startUs":5000000,"durationUs":2000000},
+      {"id":"clip_3","trackId":"track_1","startUs":2000000,"durationUs":1000000}
+    ],
+    "clipCounts": {"track_1": 2}
+  }
+}

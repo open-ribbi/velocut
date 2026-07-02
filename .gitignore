@@ -1,0 +1,14 @@
+node_modules/
+target/
+dist/
+.playwright-mcp/
+*.tsbuildinfo
+.DS_Store
+
+# 本地测试媒体永不入库(public/ 有过两次误提交前科)
+web/apps/editor/public/*.mp4
+web/apps/editor/public/*.mov
+web/apps/editor/public/*.mkv
+
+# Claude Code 本地权限配置(个人机器专属)
+.claude/settings.local.json

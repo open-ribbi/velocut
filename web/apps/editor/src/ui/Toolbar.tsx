@@ -1,0 +1,321 @@
+import { useRef, useState } from 'react';
+import type { Store, UiState } from '../state/store';
+import {
+  type MediaLibrary,
+  type Playback,
+  Exporter,
+  type AudioClipPlan,
+  type VideoCodecFamily,
+} from '@velocut/render-sdk';
+import { saveMedia } from '@velocut/collab-sdk';
+import { splitAtPlayhead } from '../App';
+
+function fmtTime(us: number): string {
+  const s = Math.max(0, us) / 1e6;
+  const m = Math.floor(s / 60);
+  const sec = (s % 60).toFixed(2).padStart(5, '0');
+  return `${String(m).padStart(2, '0')}:${sec}`;
+}
+
+/** Export quality presets → bits-per-pixel-per-frame. The encoder has no app cap;
+ *  these just set a sensible target the user (or '自定义' Mbps) can override. */
+type ExportQuality = 'standard' | 'high' | 'ultra' | 'custom';
+const QUALITY_BPP: Record<Exclude<ExportQuality, 'custom'>, number> = {
+  standard: 0.08,
+  high: 0.12,
+  ultra: 0.2,
+};
+const CODEC_LABEL: Record<VideoCodecFamily, string> = { avc: 'H.264', hevc: 'H.265', av1: 'AV1' };
+
+export function Toolbar({
+  store,
+  playback,
+  media,
+  state,
+}: {
+  store: Store;
+  playback: Playback;
+  media: MediaLibrary;
+  state: UiState;
+}) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [exportPct, setExportPct] = useState<{ frac: number; label: string } | null>(null);
+  const exportAbort = useRef<AbortController | null>(null);
+  // Export codec/quality — persisted per browser; plumbed into Exporter.export.
+  const [exportCodec, setExportCodec] = useState<VideoCodecFamily>(
+    () => (localStorage.getItem('velocut.exportCodec') as VideoCodecFamily) || 'avc',
+  );
+  const [exportQuality, setExportQuality] = useState<ExportQuality>(
+    () => (localStorage.getItem('velocut.exportQuality') as ExportQuality) || 'high',
+  );
+  const [customMbps, setCustomMbps] = useState<number>(
+    () => Number(localStorage.getItem('velocut.exportMbps')) || 20,
+  );
+
+  const runExport = async () => {
+    const doc = store.getState().doc;
+    const durationUs = state.durationUs;
+    if (durationUs <= 0 || exportPct) return;
+    if (state.playing) playback.toggle();
+
+    // Audio plan: speed-1 clips on un-muted tracks whose asset has audio.
+    const audioClips: AudioClipPlan[] = [];
+    for (const track of doc.tracks) {
+      if (track.muted) continue;
+      for (const clip of track.clips) {
+        const asset = clip.assetId ? doc.assets.find((a) => a.id === clip.assetId) : null;
+        if (!asset?.hasAudio || clip.speed !== 1) continue;
+        audioClips.push({
+          assetId: asset.id,
+          startUs: clip.startUs,
+          durationUs: clip.durationUs,
+          sourceInUs: clip.sourceInUs,
+          gain: clip.volume,
+        });
+      }
+    }
+
+    // Target bitrate: '自定义' uses the explicit Mbps; presets scale with the
+    // pixel rate (bpp × w × h × fps). No cap — passed straight to the encoder.
+    const videoBitrate =
+      exportQuality === 'custom'
+        ? Math.max(1_000_000, Math.round(customMbps * 1e6))
+        : Math.round(doc.width * doc.height * (doc.fpsNum / doc.fpsDen) * QUALITY_BPP[exportQuality]);
+
+    const abort = new AbortController();
+    exportAbort.current = abort;
+    setExportPct({ frac: 0, label: '准备中' });
+    try {
+      const blob = await new Exporter(media).export({
+        width: doc.width,
+        height: doc.height,
+        fpsNum: doc.fpsNum,
+        fpsDen: doc.fpsDen,
+        durationUs,
+        evaluate: (t) => store.evaluate(t),
+        audioClips,
+        videoBitrate,
+        videoCodec: exportCodec,
+        signal: abort.signal,
+        onProgress: (frac, label) => setExportPct({ frac, label }),
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${doc.name || 'velocut'}.mp4`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      if ((e as Error)?.name !== 'AbortError') console.error('[velocut] export failed', e);
+    } finally {
+      setExportPct(null);
+      exportAbort.current = null;
+    }
+  };
+
+  const importFiles = async (files: File[]) => {
+    for (const file of files) {
+      const isVideo = file.type.startsWith('video/');
+      const isImage = file.type.startsWith('image/');
+      const isAudio = file.type.startsWith('audio/');
+      if (!isVideo && !isImage && !isAudio) continue;
+      try {
+        // Media bytes live in OPFS so projects survive reloads; the
+        // document only stores the opfs:// locator.
+        const src = await saveMedia(file).catch(() => `local://${file.name}`);
+        if (isAudio) {
+          const probe = await media.probeAudio(file);
+          const resp = store.dispatch({
+            type: 'addAsset',
+            kind: 'audio',
+            src,
+            name: file.name,
+            durationUs: probe.durationUs,
+            width: 0,
+            height: 0,
+            hasAudio: true,
+          });
+          if (resp.ok) {
+            const ev = resp.events.find((e) => e.kind === 'assetAdded');
+            if (ev && ev.kind === 'assetAdded') await media.attachAudio(ev.assetId, probe.buffer);
+          }
+        } else if (isVideo) {
+          // Probe first so the document gets complete metadata in ONE command.
+          const source = await media.probeVideo(file);
+          const p = source.probe();
+          const resp = store.dispatch({
+            type: 'addAsset',
+            kind: 'video',
+            src,
+            name: file.name,
+            durationUs: p.durationUs,
+            width: p.width,
+            height: p.height,
+            hasAudio: p.hasAudio,
+          });
+          if (resp.ok) {
+            const ev = resp.events.find((e) => e.kind === 'assetAdded');
+            if (ev && ev.kind === 'assetAdded') {
+              media.attachVideo(ev.assetId, source, file);
+              // Preview proxy build is opt-in until it has resource guards — a
+              // background 4K transcode can run a second hardware decoder
+              // alongside the live preview's and exhaust the GPU (machine hang).
+              if (localStorage.getItem('velocut.autoProxy') === '1') void media.buildProxy(ev.assetId);
+            }
+          }
+        } else {
+          const frame = await media.probeImage(file);
+          const resp = store.dispatch({
+            type: 'addAsset',
+            kind: 'image',
+            src,
+            name: file.name,
+            durationUs: 0,
+            width: frame.displayWidth,
+            height: frame.displayHeight,
+            hasAudio: false,
+          });
+          if (resp.ok) {
+            const ev = resp.events.find((e) => e.kind === 'assetAdded');
+            if (ev && ev.kind === 'assetAdded') media.attachImage(ev.assetId, frame);
+          }
+        }
+      } catch (err) {
+        console.error('[velocut] import failed', err);
+      }
+    }
+  };
+
+  const selected = state.selectedClipId
+    ? state.doc.tracks.flatMap((t) => t.clips).find((c) => c.id === state.selectedClipId)
+    : null;
+
+  return (
+    <div className="toolbar">
+      <span className="brand">Velocut</span>
+      <button onClick={() => fileRef.current?.click()}>导入素材</button>
+      <input
+        ref={fileRef}
+        type="file"
+        accept="video/mp4,video/quicktime,.mp4,.mov,.m4v,image/*,audio/*"
+        multiple
+        hidden
+        onChange={(e) => {
+          // Copy before resetting: clearing value empties the live FileList.
+          const files = Array.from(e.target.files ?? []);
+          e.target.value = ''; // allow re-importing the same file
+          importFiles(files);
+        }}
+      />
+      <span className="divider" />
+      <button onClick={() => playback.toggle()}>{state.playing ? '⏸ 暂停' : '▶ 播放'}</button>
+      <button onClick={() => splitAtPlayhead(store)} title="快捷键 S">
+        ✂ 分割
+      </button>
+      <button disabled={!state.canUndo} onClick={() => store.undo()} title="Cmd/Ctrl+Z">
+        ↩ 撤销
+      </button>
+      <button disabled={!state.canRedo} onClick={() => store.redo()} title="Cmd/Ctrl+Shift+Z">
+        ↪ 重做
+      </button>
+      {selected && (
+        <>
+          <span className="divider" />
+          <label className="speed-label">
+            倍速
+            <select
+              value={String(selected.speed)}
+              onChange={(e) =>
+                store.dispatch({
+                  type: 'setClipSpeed',
+                  clipId: selected.id,
+                  speed: Number(e.target.value),
+                })
+              }
+            >
+              {[0.25, 0.5, 1, 1.5, 2, 4].map((v) => (
+                <option key={v} value={v}>
+                  {v}x
+                </option>
+              ))}
+            </select>
+          </label>
+        </>
+      )}
+      <span className="spacer" />
+      <select
+        className="export-opt"
+        value={exportCodec}
+        disabled={!!exportPct}
+        title="导出编码(H.265/AV1 同画质更省码率,可超 4K;部分平台编码器可能回退到 H.264)"
+        onChange={(e) => {
+          const v = e.target.value as VideoCodecFamily;
+          setExportCodec(v);
+          localStorage.setItem('velocut.exportCodec', v);
+        }}
+      >
+        {(['avc', 'hevc', 'av1'] as VideoCodecFamily[]).map((c) => (
+          <option key={c} value={c}>
+            {CODEC_LABEL[c]}
+          </option>
+        ))}
+      </select>
+      <select
+        className="export-opt"
+        value={exportQuality}
+        disabled={!!exportPct}
+        title="导出画质(决定目标码率)"
+        onChange={(e) => {
+          const v = e.target.value as ExportQuality;
+          setExportQuality(v);
+          localStorage.setItem('velocut.exportQuality', v);
+        }}
+      >
+        <option value="standard">标准</option>
+        <option value="high">高</option>
+        <option value="ultra">极高</option>
+        <option value="custom">自定义</option>
+      </select>
+      {exportQuality === 'custom' && (
+        <input
+          className="export-mbps"
+          type="number"
+          min={1}
+          max={2000}
+          value={customMbps}
+          disabled={!!exportPct}
+          title="目标码率 (Mbps)"
+          onChange={(e) => {
+            const v = Math.max(1, Math.min(2000, Number(e.target.value) || 1));
+            setCustomMbps(v);
+            localStorage.setItem('velocut.exportMbps', String(v));
+          }}
+        />
+      )}
+      <button onClick={runExport} disabled={!!exportPct || state.durationUs <= 0} title="导出 MP4">
+        ⬇ 导出
+      </button>
+      <span className="timecode">
+        {fmtTime(state.playheadUs)} / {fmtTime(state.durationUs)}
+      </span>
+      <span className={`engine-badge engine-${state.engineKind}`}>
+        engine: {state.engineKind === 'wasm' ? 'Rust/WASM' : 'TS fallback'}
+      </span>
+
+      {exportPct && (
+        <div className="export-modal">
+          <div className="export-card">
+            <div className="export-title">导出中 — {exportPct.label}</div>
+            <div className="export-bar">
+              <div className="export-fill" style={{ width: `${Math.round(exportPct.frac * 100)}%` }} />
+            </div>
+            <div className="export-pct">{Math.round(exportPct.frac * 100)}%</div>
+            <button className="export-cancel" onClick={() => exportAbort.current?.abort()}>
+              取消
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

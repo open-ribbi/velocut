@@ -1,0 +1,16 @@
+[workspace]
+resolver = "2"
+members = ["crates/velocut-core"]
+# velocut-wasm 不在默认成员里:沙箱无 wasm32 std,本地构建时用
+# `wasm-pack build crates/velocut-wasm` 单独编译。
+exclude = ["crates/velocut-wasm"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1

@@ -1,0 +1,21 @@
+{
+  "name": "split preserves source mapping; speed change rescales duration; eval maps source time",
+  "steps": [
+    {"apply": {"type":"addAsset","id":"a1","kind":"video","src":"mem://a1","name":"A","durationUs":10000000,"width":1920,"height":1080}},
+    {"apply": {"type":"addTrack","kind":"video"}},
+    {"apply": {"type":"addClip","trackId":"track_1","assetId":"a1","startUs":0,"durationUs":4000000}},
+    {"apply": {"type":"splitClip","clipId":"clip_2","atUs":1500000}},
+    {"apply": {"type":"setClipSpeed","clipId":"clip_3","speed":2.0}}
+  ],
+  "expect": {
+    "clips": [
+      {"id":"clip_2","trackId":"track_1","startUs":0,"durationUs":1500000,"sourceInUs":0,"speed":1.0},
+      {"id":"clip_3","trackId":"track_1","startUs":1500000,"durationUs":1250000,"sourceInUs":1500000,"speed":2.0}
+    ],
+    "eval": [
+      {"timeUs":2000000,"layers":[{"clipId":"clip_3","sourceTimeUs":2500000,"opacity":1.0}]},
+      {"timeUs":1000000,"layers":[{"clipId":"clip_2","sourceTimeUs":1000000,"opacity":1.0}]},
+      {"timeUs":2750000,"layers":[]}
+    ]
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "name": "trim both edges adjusts source-in; undo/redo restore geometry",
+  "steps": [
+    {"apply": {"type":"addAsset","id":"a1","kind":"video","src":"mem://a1","name":"A","durationUs":10000000}},
+    {"apply": {"type":"addTrack","kind":"video"}},
+    {"apply": {"type":"addClip","trackId":"track_1","assetId":"a1","startUs":1000000,"durationUs":4000000,"sourceInUs":500000}},
+    {"apply": {"type":"trimClip","clipId":"clip_2","edge":"in","toUs":2000000}},
+    {"apply": {"type":"trimClip","clipId":"clip_2","edge":"out","toUs":4000000}},
+    {"undo": true},
+    {"redo": true}
+  ],
+  "expect": {
+    "clips": [
+      {"id":"clip_2","trackId":"track_1","startUs":2000000,"durationUs":2000000,"sourceInUs":1500000}
+    ]
+  }
+}

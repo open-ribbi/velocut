@@ -1,0 +1,17 @@
+[package]
+name = "velocut-wasm"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "wasm-bindgen bindings for velocut-core. Build: wasm-pack build --target web --out-dir ../../web/apps/editor/public/wasm"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+velocut-core = { path = "../velocut-core" }
+wasm-bindgen = "0.2.95"
+
+[profile.release]
+opt-level = "s"
+lto = true
