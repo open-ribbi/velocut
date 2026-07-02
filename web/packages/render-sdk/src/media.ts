@@ -295,8 +295,11 @@ export class MediaLibrary {
       // Export owns + closes the returned frame, so hand back a FRESH render
       // (not the preview cache) every call — deterministic at the frame index.
       if (motion) return Promise.resolve(motion.render(this.motionIndex(motion, sourceTimeUs)));
+      // Same ownership contract: the caller closes what exactFrame returns, so
+      // hand out a clone — closing the library-resident frame would blank every
+      // future preview/export of this asset until the page reloads.
       const img = this.imageFrames.get(assetId);
-      return Promise.resolve(img ?? null);
+      return Promise.resolve(img ? img.clone() : null);
     }
     const reqId = this.nextFrameReq++;
     const p = new Promise<VideoFrame | null>((resolve) => this.pendingFrame.set(reqId, resolve));

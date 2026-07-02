@@ -78,7 +78,13 @@ export class Playback {
       if (dirty) {
         this.invalidated = false;
         const fg = this.store.evaluate(tInt);
-        this.renderer.render(fg, this.media);
+        try {
+          this.renderer.render(fg, this.media);
+        } catch (e) {
+          // One bad frame (e.g. a detached VideoFrame) must not kill the
+          // transport loop — the next edit/seek re-marks dirty and retries.
+          console.error('[velocut] render tick failed', e);
+        }
         if (s.playing) this.audio?.update(fg, tInt);
         this.lastT = tInt;
         this.lastRevision = s.revision;
