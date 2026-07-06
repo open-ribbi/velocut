@@ -41,6 +41,7 @@ export {
   registerTtsProvider,
   ttsProviders,
   createTts,
+  localTts,
   type TextToSpeech,
   type TtsProvider,
   type TtsConfig,

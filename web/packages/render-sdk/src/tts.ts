@@ -68,6 +68,16 @@ export function createTts(id: string, config?: Record<string, unknown>): TextToS
   return p.create(config);
 }
 
+/** A TextToSpeech restricted to browser-local providers (kind:'local') — no key,
+ *  no network. Use this on paths where cloud TTS must not be reachable, e.g. the
+ *  velocut_script sandbox, whose whole point is that untrusted code has no network
+ *  egress; a cloud provider would POST arbitrary text to a third-party endpoint
+ *  from the HOST realm, defeating the sandbox. Returns null if none is registered. */
+export function localTts(): TextToSpeech | null {
+  const p = [...PROVIDERS.values()].find((x) => x.kind === 'local');
+  return p ? p.create() : null;
+}
+
 export interface TtsConfig {
   /** Active provider id; defaults to the first registered (mms). */
   provider?: string;

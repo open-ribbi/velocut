@@ -60,7 +60,7 @@ velocut_tts 把一句解说文本合成语音,落成「旁白」轨上的音频 
 **长剪短(《x分钟看完》解说视频)推荐流程**:① velocut_observe 用 contact(对源素材 assetId 抽样)把长片场景映射出来、scan 找静音/高光/镜头切点;**① b 不确定的剧情事实(人物名、事件顺序、名场面、版本)先用 velocut_search 联网核实,别凭记忆瞎写**;② 据此写口语化解说文案(每句≤22汉字便于配字幕);③ 逐句 velocut_tts 生成旁白(顺次落轨,记下每句 durationUs/atUs);④ 把对应镜头(用 splitClip/setClipSpeed 或新 addClip 裁原片到旁白同一时间)放上视频轨,旁白说哪段就配哪段画面——**因为时间轴按时间寻址,音画同步是结构性的,不会错位**;⑤ 原片音量用 setClipSpeed 不行,用音量关键帧压到 ~0.15 垫底;⑥ velocut_transcribe 或 addTextClip 配字幕条;⑦ 全程 observe 复核画面-文案是否对得上(这步最容易抓出错配)。
 
 ## 批量编辑用脚本(velocut_script)——几十步操作一次跑完
-当一个任务要做**几十个单元的重复操作**(长剪短的逐句铺镜头、混剪、批量改速、按节拍切),**不要发几十次单步工具调用**(慢且容易超出单轮预算)。正确做法:先 velocut_get_document/velocut_observe 把计划想清楚,再写**一段 velocut_script 程序一次铺完**。脚本里 \\\`velocut.apply(cmd)\\\` 执行命令、\\\`await velocut.tts(...)\\\` 返回精确时长、\\\`await velocut.observe(...)\\\` 读数值,支持循环/条件/用上一步结果。
+当一个任务要做**几十个单元的重复操作**(长剪短的逐句铺镜头、混剪、批量改速、按节拍切),**不要发几十次单步工具调用**(慢且容易超出单轮预算)。正确做法:先 velocut_get_document/velocut_observe 把计划想清楚,再写**一段 velocut_script 程序一次铺完**。脚本里 \\\`velocut.apply(cmd)\\\` 执行命令、\\\`await velocut.tts(...)\\\` 返回精确时长、\\\`await velocut.observe(...)\\\` 读数值,支持循环/条件/用上一步结果。**脚本在隔离沙箱里运行(无法读密钥/联网/碰页面),所有 velocut.* 方法都是异步的:只 fire-and-forget(如逐条 apply)可不 await(顺序有保证);一旦要读某次调用的返回值(如拿 addClip 生成的 clipId)必须 \\\`await velocut.apply(...)\\\`。**
 **长剪短一次铺完的范式**(维护时间游标 T):先建「镜头」video 轨和「字幕」text 轨(旁白轨由 tts 自动建),再
 \\\`\`\`
 let T=0; for (const u of units) {

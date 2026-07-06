@@ -5,7 +5,7 @@ import { App } from './App';
 import { Container } from './di/container';
 import { TOKENS } from './di/tokens';
 import { createEngine } from './services/engine';
-import { MediaLibrary, RendererClient, Playback, AudioEngine, WhisperTranscriber, Exporter, Observer, ConfigurableTts, ttsProviders, type TtsConfig } from '@velocut/render-sdk';
+import { MediaLibrary, RendererClient, Playback, AudioEngine, WhisperTranscriber, Exporter, Observer, ConfigurableTts, ttsProviders, localTts, type TtsConfig } from '@velocut/render-sdk';
 import { CollabSession, loadMedia, kvGet, kvPut } from '@velocut/collab-sdk';
 import { FontLibrary } from './services/fonts';
 import { captionAsset } from './services/caption';
@@ -180,7 +180,15 @@ async function bootstrap() {
       runAgentScript(
         {
           apply: (cmd) => store.dispatch(typeof cmd === 'string' ? JSON.parse(cmd) : (cmd as Command)),
-          tts: (o) => synthesizeNarration(store, media, container.resolve(TOKENS.Tts), o),
+          // Sandbox path forces LOCAL (in-browser) TTS: a cloud provider would POST
+          // the script's (attacker-controllable) text to a third-party endpoint from
+          // the HOST realm, an egress the sandbox's connect-src 'none' can't cover.
+          // The UI and the discrete velocut_tts tool keep the configurable provider.
+          tts: (o) => {
+            const local = localTts();
+            if (!local) return Promise.resolve({ ok: false, message: '沙箱脚本仅允许本地 TTS,当前无本地语音后端。' });
+            return synthesizeNarration(store, media, local, o);
+          },
           observe: async (input) => {
             const r = await observeForAgent(store, container.resolve(TOKENS.Observer), input as ObserveInput);
             return { ok: r.ok, summary: r.summary, data: r.data };
