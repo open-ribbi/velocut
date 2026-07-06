@@ -11,6 +11,11 @@ Work toward the first public release. See [README](README.md) for current
 capabilities. Highlights since the initial import:
 
 ### Added
+- Persisted-document **format versioning**: a `formatVersion` anchor + migration
+  chain (`@velocut/protocol` `migrate.ts`) stamped into the collab and history
+  stores. Old data migrates up; data from a *newer* build is refused rather than
+  silently corrupted. Establishes the anchor so future schema changes register a
+  migration instead of breaking old projects.
 - Declarative `motionClip`: motion graphics are now a serializable JSON spec
   (keyframed layers) rendered by a fixed interpreter — persisted across reload,
   and safe to author from the sandboxed script tool.

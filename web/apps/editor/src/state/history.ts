@@ -11,6 +11,7 @@
 // history board can attribute every change.
 
 import type { Command, VDocument } from '@velocut/protocol';
+import { CURRENT_FORMAT_VERSION, migrateDocumentOrThrow } from '@velocut/protocol';
 
 export interface Actor {
   kind: 'user' | 'ai';
@@ -39,6 +40,9 @@ export interface HistoryNode {
 }
 
 export interface HistorySerialized {
+  /** Persisted-document format version of the snapshots (see @velocut/protocol
+   *  migrate.ts). Absent in pre-versioning data → treated as v1. */
+  formatVersion?: number;
   nodes: HistoryNode[];
   rootId: string;
   headId: string;
@@ -218,11 +222,15 @@ export class HistoryTree {
   }
 
   serialize(): HistorySerialized {
-    return { nodes: this.all(), rootId: this.rootId, headId: this.headId, seq: this.seq };
+    return { formatVersion: CURRENT_FORMAT_VERSION, nodes: this.all(), rootId: this.rootId, headId: this.headId, seq: this.seq };
   }
 
+  /** Rebuild from persisted data, migrating each node's snapshot to the current
+   *  format. Throws DocumentFormatError on a future/invalid version — the caller
+   *  (loadHistory) catches it and starts with a fresh tree. */
   static deserialize(data: HistorySerialized): HistoryTree {
     const t = Object.create(HistoryTree.prototype) as HistoryTree;
+    for (const n of data.nodes) n.snapshot = migrateDocumentOrThrow(n.snapshot, data.formatVersion);
     t.nodes = new Map(data.nodes.map((n) => [n.id, n]));
     t.rootId = data.rootId;
     t.headId = data.nodes.some((n) => n.id === data.headId) ? data.headId : data.rootId;

@@ -16,6 +16,7 @@
 
 import * as Y from 'yjs';
 import type { Track, Asset, VDocument } from '@velocut/protocol';
+import { CURRENT_FORMAT_VERSION, migrateDocument } from '@velocut/protocol';
 import { kvGet, kvPut } from './persistence';
 
 export interface CollabHost {
@@ -63,9 +64,22 @@ export class CollabSession {
       Y.applyUpdate(this.ydoc, saved, REMOTE);
       const doc = this.rebuildDocument();
       if (doc) {
+        // Version-guard the persisted document before it reaches the engine. A
+        // migrated doc is re-stamped at the current version on the next push; a
+        // FUTURE-version doc is refused and we bail WITHOUT wiring the persist
+        // observers, so the newer project on disk is never clobbered by our
+        // (older) empty fallback.
+        const stored = this.meta.get('formatVersion') as number | undefined;
+        const res = migrateDocument(doc, stored);
+        if (!res.ok) {
+          console.error(
+            `[velocut] 无法加载已保存工程:${res.reason === 'future' ? `格式来自更新版本 (v${res.version})` : res.message}。已保留磁盘数据、以空白工程启动本会话。`,
+          );
+          return;
+        }
         this.applyingRemote = true;
         try {
-          this.host.loadDocument(doc);
+          this.host.loadDocument(res.doc);
         } finally {
           this.applyingRemote = false;
         }
@@ -133,6 +147,9 @@ export class CollabSession {
       }
       for (const id of [...this.assets.keys()]) if (!liveAssets.has(id)) this.assets.delete(id);
 
+      if (this.meta.get('formatVersion') !== CURRENT_FORMAT_VERSION) {
+        this.meta.set('formatVersion', CURRENT_FORMAT_VERSION);
+      }
       const order = JSON.stringify(doc.tracks.map((t) => t.id));
       if (this.meta.get('trackOrder') !== order) this.meta.set('trackOrder', order);
       // nextId merges as max() so concurrent peers don't mint colliding ids.

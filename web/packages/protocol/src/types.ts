@@ -142,3 +142,12 @@ export interface FrameGraph {
   layers: Layer[];
   audio: AudioSlice[];
 }
+
+// Persisted-document format version + migration chain (see migrate.ts).
+export {
+  CURRENT_FORMAT_VERSION,
+  migrateDocument,
+  migrateDocumentOrThrow,
+  DocumentFormatError,
+  type MigrateResult,
+} from './migrate.ts';

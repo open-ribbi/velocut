@@ -13,6 +13,6 @@
   "scripts": {
     "dev": "npm -w velocut-editor run dev",
     "build": "npm -w velocut-editor run build",
-    "test": "node --experimental-strip-types --test packages/core-ts/test/vectors.test.ts"
+    "test": "node --experimental-strip-types --test 'packages/**/test/*.test.ts'"
   }
 }
