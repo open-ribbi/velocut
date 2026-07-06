@@ -43,18 +43,16 @@ export interface ScriptApi {
   document(): unknown;
   /** Move the preview playhead (cosmetic; lets a program leave the UI on a spot). */
   seek(timeUs: number): void;
-  /** Build a procedural canvas-animation clip. Takes draw/build FUNCTIONS, which
-   *  cannot cross the sandbox boundary as data — so this is unavailable from a
-   *  sandboxed script for now (returns {ok:false}). motionClip is being migrated
-   *  to a declarative, serializable spec; until then use it via the host debug
-   *  surface (window.velocut.motionClip). */
+  /** Create a procedural motion-graphics clip from a declarative spec ({spec, atUs?,
+   *  trackId?, name?}). The spec is pure JSON (layers with keyframed transforms), so
+   *  it crosses the sandbox boundary as data and nothing is eval'd on the host. */
   motionClip(opts: unknown): Promise<unknown>;
 }
 
-/** RPC method names the sandbox may call. motionClip is intentionally NOT here:
- *  its function arguments can't be structured-cloned, and re-evaluating them on
- *  the host would defeat the sandbox. The sandbox short-circuits it locally. */
-const RPC_METHODS = ['apply', 'tts', 'observe', 'evaluate', 'document', 'seek'] as const;
+/** RPC method names the sandbox may call. motionClip is included: it now takes a
+ *  declarative JSON spec (no functions), so it structured-clones cleanly and the
+ *  host renders it with a fixed interpreter — no eval. */
+const RPC_METHODS = ['apply', 'tts', 'observe', 'evaluate', 'document', 'seek', 'motionClip'] as const;
 
 const SCRIPT_TIMEOUT_MS = 60_000; // wall-clock cap: kills runaway loops / stuck awaits
 
@@ -104,9 +102,6 @@ const SANDBOX_RUNTIME = `
   }
   var velocut = {};
   RPC.forEach(function (m) { velocut[m] = function () { return rpc(m, Array.prototype.slice.call(arguments)); }; });
-  velocut.motionClip = function () {
-    return Promise.resolve({ ok: false, message: 'motionClip 在沙箱脚本中暂不可用(过程式图形正迁移为声明式 spec)。' });
-  };
   function jsonSafe(v) { try { return JSON.parse(JSON.stringify(v == null ? null : v)); } catch (e) { return String(v); } }
   function onPortMessage(ev) {
     var d = ev.data || {};

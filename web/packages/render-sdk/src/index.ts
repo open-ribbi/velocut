@@ -49,6 +49,19 @@ export {
   type SynthResult,
 } from './tts';
 export {
+  compileMotionSpec,
+  validateMotionSpec,
+  type MotionSpec,
+  type MotionLayer,
+  type MotionKeyframe,
+  type Animatable,
+  type TextLayer,
+  type RectLayer,
+  type EllipseLayer,
+  type ImageLayer,
+  type CompiledMotion,
+} from './motionspec';
+export {
   resolveColorAdjust,
   registerEffect,
   effectPromptDoc,

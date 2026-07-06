@@ -12,7 +12,7 @@ import { captionAsset } from './services/caption';
 import { observeForAgent, type ObserveInput } from './services/observe';
 import { synthesizeNarration } from './services/tts';
 import { runAgentScript } from './services/script';
-import { createMotionClip, type MotionClipOptions } from './services/motion';
+import { createMotionClip, restoreMotionClip, type MotionClipOptions } from './services/motion';
 import { searchWeb } from './services/search';
 import { Store } from './state/store';
 import { HistoryTree } from './state/history';
@@ -58,7 +58,13 @@ function makeHistorySaver(): (tree: HistoryTree) => void {
 /** Re-attach OPFS-backed media after a reload or a remote peer's import. */
 async function restoreMedia(store: Store, media: MediaLibrary) {
   for (const a of store.getState().doc.assets) {
-    if (media.hasAsset(a.id) || !a.src.startsWith('opfs://')) continue;
+    if (media.hasAsset(a.id)) continue;
+    // Procedural motion assets restore from their persisted declarative spec.
+    if (a.src.startsWith('motion://')) {
+      if (!(await restoreMotionClip(store, media, a.id))) console.warn('[velocut] motion restore failed:', a.id);
+      continue;
+    }
+    if (!a.src.startsWith('opfs://')) continue;
     // Imported audio re-attaches from its OPFS PCM cache — no re-decode.
     if (a.kind === 'audio' && (await media.restoreAudio(a.id))) continue;
     const file = await loadMedia(a.src);
@@ -169,8 +175,8 @@ async function bootstrap() {
     observe: (input: ObserveInput = {}) => observeForAgent(store, container.resolve(TOKENS.Observer), input),
     tts: (o: { text: string; atUs?: number; trackId?: string; language?: string }) =>
       synthesizeNarration(store, media, container.resolve(TOKENS.Tts), o),
-    // Procedural canvas-animation clip (GSAP timing spine + 2D-canvas draw) — same
-    // surface the agent's velocut.motionClip reaches.
+    // Procedural motion-graphics clip from a declarative spec — same surface the
+    // agent's velocut.motionClip reaches (persisted, so it survives reload).
     motionClip: (o: MotionClipOptions) => createMotionClip(store, media, o),
     // Web research (grounded search) — same surface the agent's velocut_search reaches.
     search: (query: string) => searchWeb(query),
