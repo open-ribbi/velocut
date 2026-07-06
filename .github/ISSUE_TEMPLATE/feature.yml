@@ -1,0 +1,28 @@
+name: Feature request
+description: Suggest a capability or improvement.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do that Velocut makes hard or impossible today?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: Proposed direction
+      description: Optional. If it touches engine behavior, note that it will need a golden vector (see CONTRIBUTING.md).
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Editing / timeline
+        - Agent / LLM tools
+        - Rendering / export
+        - Protocol / engine
+        - Collaboration / persistence
+        - Docs / DX
+        - Other

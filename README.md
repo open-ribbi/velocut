@@ -1,16 +1,25 @@
+<!-- markdownlint-disable MD041 -->
+**English** | [简体中文](README.zh-CN.md)
+
 # Velocut
 
-> **EN TL;DR** — An AI-native, local-first video editor that runs entirely in the browser: a canonical Rust engine (compiled to WASM) mirrored by a TypeScript reference engine, kept in lock-step by shared golden-vector tests; WebGPU compositing + WebCodecs decode/export; and an LLM agent that edits through the exact same JSON command protocol humans drive from the UI. Docs are currently in Chinese — the code comments and the protocol are the best English entry points ([PROTOCOL.md](PROTOCOL.md), `web/packages/protocol/src/schema.ts`).
+[![CI](https://github.com/willbean/velocut/actions/workflows/ci.yml/badge.svg)](.github/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+![Node](https://img.shields.io/badge/node-%E2%89%A522.6-brightgreen)
 
-Rust + WASM + WebGPU 的 Web 视频剪辑引擎与编辑器。**协议先行、AI-native**:人通过 UI 剪辑、LLM 直接下发 JSON 命令剪辑,两者走同一条命令链路,映射到同一个 UI。
+An **AI-native, local-first video editor that runs entirely in the browser**. A canonical Rust engine (compiled to WASM) is mirrored by a TypeScript reference engine and kept in lock-step by shared golden-vector tests; WebGPU handles compositing and WebCodecs handles decode/export; and an LLM agent edits through the *exact same* JSON command protocol a human drives from the UI.
 
-## 环境要求
+> **Protocol-first, AI-native.** Humans edit via the UI, the LLM issues JSON commands directly — both flow through one command pipeline into one document model. The AI agent is treated as the system's first-class *user*; the human UI's job is to make the agent's perception and actions visible and correctable.
 
-- **Node ≥ 22.6**(`npm test` 依赖 `--experimental-strip-types`;仓库根有 `.nvmrc`)
-- **浏览器:Chrome / Edge 113+**(WebGPU + WebCodecs;Safari/Firefox 暂不支持)
-- 可选:Rust stable + wasm-pack(仅构建 canonical WASM 引擎时需要)
+> Some deeper docs are still Chinese-first. [PROTOCOL.md](PROTOCOL.md) and `web/packages/protocol/src/schema.ts` are the most complete English entry points to the command model.
 
-## 快速启动(零依赖,TS 引擎)
+## Requirements
+
+- **Node ≥ 22.6** (`npm test` uses `--experimental-strip-types`; a `.nvmrc` is at the repo root)
+- **Browser: Chrome / Edge 113+** (WebGPU + WebCodecs; Safari/Firefox not yet supported)
+- Optional: Rust stable + `wasm-pack` (only to build the canonical WASM engine)
+
+## Quick start (zero-dependency, TS engine)
 
 ```bash
 cd web
@@ -18,91 +27,88 @@ npm install
 npm run dev
 ```
 
-开箱即用:DI 容器检测到 WASM 包缺失时自动回退到 TS 参考引擎(右上角 badge 显示当前引擎)。
+Works out of the box: when the DI container detects the WASM bundle is absent, it falls back to the TypeScript reference engine (a badge in the top-right shows the active engine).
 
-## 启用 Rust/WASM 引擎(canonical 实现)
+## Enable the Rust/WASM engine (canonical implementation)
 
 ```bash
-# 一次性环境
+# one-time setup
 rustup target add wasm32-unknown-unknown
 cargo install wasm-pack
 
-# 构建并放入前端 public 目录
+# build and drop into the app's public dir (or: just build-wasm)
 wasm-pack build crates/velocut-wasm --target web --release \
-  --out-dir ../../web/apps/editor/public/wasm
+  --out-dir web/apps/editor/public/wasm
 
-cd web && npm run dev   # badge 变为 "engine: Rust/WASM"
+cd web && npm run dev   # badge switches to "engine: Rust/WASM"
 ```
 
-## Agent 快速上手
+## Agent quick start
 
-Velocut 的第一"用户"是 AI Agent:点右下角「⌘ Agent」气泡,粘贴你自己的
-Anthropic API key(`sk-ant-...`)即可用自然语言剪辑——"把静音段都剪掉""给
-开头加个标题"。
+Velocut's first "user" is the AI agent. Click the **⌘ Agent** bubble (bottom-right), paste your own Anthropic API key (`sk-ant-...`), and edit in natural language — *"cut out the silent parts", "add a title at the start"*.
 
-- **Key 只存在你本机浏览器的 localStorage,请求直连 Anthropic,不经任何中间服务器**(信任模型详见 [SECURITY.md](SECURITY.md))
-- Agent 能看(抽帧/拼图观察)、能听(响度与静音分析)、能切(镜头边界检测),所有编辑走与 UI 相同的命令协议,每一步都在聊天卡片和历史树里可见、可点击跳转、可回滚
-- 想走本地代理调其它模型:dev 模式下 `localStorage.setItem('velocut.devProxy','1')`,任何 Anthropic 协议兼容的代理挂在 `127.0.0.1:3141` 即可(可选项,非必需)
+- **The key lives only in your browser's localStorage; requests go straight to Anthropic with no intermediary server** (trust model: [SECURITY.md](SECURITY.md)).
+- The agent can *see* (frame grabs / contact sheets), *hear* (loudness & silence analysis), and *cut* (shot-boundary detection). Every edit uses the same command protocol as the UI, so each step is visible in a chat card and the branching history tree — click to jump, undo to roll back.
+- To route to a different model via a local proxy: in dev mode set `localStorage.setItem('velocut.devProxy','1')`; any Anthropic-protocol-compatible proxy on `127.0.0.1:3141` works (optional, not required).
 
-### 可选能力与密钥约定(仅 dev server)
+### Optional capabilities & key convention (dev server only)
 
-联网搜索(Gemini grounding)与 MiniMax 云 TTS 经 Vite dev server 代理注入密钥,浏览器永远不持有它们:
+Web search (Gemini grounding) and MiniMax cloud TTS are proxied by the Vite dev server, which injects the secrets server-side so the browser never holds them:
 
 ```bash
-# 均为可选;文件已被 .gitignore,放在 web/apps/editor/ 下
-echo "<你的 Google API key>"  > web/apps/editor/.google-key    # velocut_search
-echo "<你的 MiniMax key>"     > web/apps/editor/.minimax-key   # 云 TTS(本地 TTS 无需 key)
+# both optional; the files are gitignored, placed under web/apps/editor/
+echo "<your Google API key>"  > web/apps/editor/.google-key    # velocut_search
+echo "<your MiniMax key>"     > web/apps/editor/.minimax-key   # cloud TTS (local TTS needs no key)
 ```
 
-注意:这两个代理只存在于 `npm run dev`;`vite build` 静态部署后搜索/云 TTS 不可用。
+Note: these proxies exist only under `npm run dev`; after a static `vite build`, search and cloud TTS are unavailable.
 
-## 测试(双引擎共享 golden vectors)
+## Testing (both engines share golden vectors)
 
 ```bash
-cargo test                # Rust 引擎跑 protocol/vectors/*.json
-cd web && npm test        # TS 引擎跑同一套向量
+cargo test                # the Rust engine runs protocol/vectors/*.json
+cd web && npm test        # the TS engine runs the same vectors
 ```
 
-任何引擎行为变更必须以新增向量的方式落地,两边同时通过才算一致——CI
-(`.github/workflows/ci.yml`)对每个 PR 强制这对测试 + tsc + wasm 编译冒烟。
-贡献流程详见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+Any change to engine behavior must land as a new vector, and both sides must pass to count as consistent — CI (`.github/workflows/ci.yml`) enforces this pair of tests + `tsc` + a WASM compile smoke test on every PR. See [CONTRIBUTING.md](CONTRIBUTING.md) for the flow.
 
-## 目录结构
+## Repository layout
 
 ```
 crates/
-  velocut-core/      # canonical 引擎:模型/命令/求值/历史(纯 Rust,无 wasm 依赖)
-  velocut-wasm/      # wasm-bindgen 绑定(string JSON ABI)
+  velocut-core/        # canonical engine: model / commands / eval / history (pure Rust, no wasm deps)
+  velocut-wasm/        # wasm-bindgen bindings (string-JSON ABI)
 protocol/
-  vectors/           # golden test vectors —— 双实现的行为契约
+  vectors/             # golden test vectors — the behavioral contract for both engines
 web/
-  packages/protocol/ # TS 协议类型 + zod 校验(与 Rust serde 形状一一对应)
-  packages/core-ts/  # TS 参考引擎(前端 fallback;Node 侧可直接跑)
-  packages/render-sdk/ # WebGPU 合成 / WebCodecs 解码与导出 / worker / 观察(抽帧、镜头、响度)
-  packages/agent-sdk/  # Anthropic 协议 tool-use 循环(transport 可注入)
-  packages/collab-sdk/ # local-first 持久化 + 多 tab CRDT 同步(Yjs)
-  apps/editor/       # Vite + React 编辑器(Canvas 时间轴 / 分支历史 / Agent 控制台)
+  packages/protocol/   # TS protocol types + zod validation (1:1 shape with the Rust serde model)
+  packages/core-ts/    # TS reference engine (frontend fallback; runnable on Node)
+  packages/render-sdk/ # WebGPU compositing / WebCodecs decode+export / workers / perception (grabs, shots, loudness)
+  packages/agent-sdk/  # Anthropic-protocol tool-use loop (injectable transport)
+  packages/collab-sdk/ # local-first persistence + multi-tab CRDT sync (Yjs)
+  apps/editor/         # Vite + React editor (canvas timeline / branching history / agent console)
 ```
 
-## 当前能力
+## Current capabilities
 
-1. ✅ 多轨剪辑:切割 / 拖拽 / 吸附 / 变速 / trim / 轨道重排,分支式编辑历史(回到过去再编辑开新分支,人/AI 操作分色归因)
-2. ✅ 关键帧动画(linear/hold/bezier)+ 特效注册表(调色等)+ 转场
-3. ✅ 文字图层与字幕样式(栅格化 → 与视频同一 WebGPU 管线合成)
-4. ✅ 音频:混音播放、TTS 旁白(本地 / MiniMax)、Whisper 自动字幕
-5. ✅ Agent 感知:抽帧观察 / 镜头边界检测 / 响度与静音分析,结果以图片和 sparkline 呈现在聊天里
-6. ✅ 导出:WebCodecs 编码 + mp4 封装(流式,不憋整段内存);低清代理预览后台转码
-7. ✅ local-first:素材进 OPFS、文档与历史进 IndexedDB,多 tab 实时同步
+1. ✅ Multi-track editing: split / drag / snap / speed / trim / track reorder, with a **branching** edit history (go back and edit to fork a new branch; human vs. AI actions are color-attributed).
+2. ✅ Keyframe animation (linear / hold / bezier) + an effect registry (color grade, etc.) + transitions.
+3. ✅ Text layers & caption styling (rasterized → composited through the same WebGPU pipeline as video).
+4. ✅ Audio: mixed playback, TTS narration (local / MiniMax), Whisper auto-captions.
+5. ✅ Agent perception: frame-grab observation / shot-boundary detection / loudness & silence analysis, surfaced as images and sparklines in chat.
+6. ✅ Declarative motion graphics (`motionClip`): keyframed layers described by a JSON spec — persisted, and safe to author from the sandboxed script tool.
+7. ✅ Export: WebCodecs encode + mp4 mux (streaming, no whole-clip memory bloat); background low-res proxy transcode for smooth preview.
+8. ✅ Local-first: media in OPFS, document + history in IndexedDB, real-time multi-tab sync.
 
-操作:空格播放 / S 分割 / Delete 删除 / Cmd+Z 撤销 / Ctrl+滚轮缩放时间轴 / 拖 clip 边缘 trim / 右键轨道头与 clip 出菜单。
+Keys: Space = play / S = split / Delete = delete / Cmd+Z = undo / Ctrl+wheel = zoom timeline / drag a clip edge to trim / right-click a track head or clip for a menu.
 
-## 程序化入口
+## Programmatic entry points
 
-- DevTools / 外部脚本:`window.velocut.apply({type:'splitClip', clipId:'clip_2', atUs:1500000})`
-- Node 侧引擎:`@velocut/core-ts`(workspace 内消费;独立发包在路线图上)
+- DevTools / external scripts: `window.velocut.apply({type:'splitClip', clipId:'clip_2', atUs:1500000})`
+- Node-side engine: `@velocut/core-ts` (consumed inside the workspace; standalone npm publish is on the roadmap).
 
-命令协议详见 [PROTOCOL.md](PROTOCOL.md),架构决策详见 [ARCHITECTURE.md](ARCHITECTURE.md),安全与信任模型详见 [SECURITY.md](SECURITY.md)。
+Command protocol → [PROTOCOL.md](PROTOCOL.md). Architecture decisions → [ARCHITECTURE.md](ARCHITECTURE.md). Security & trust model → [SECURITY.md](SECURITY.md).
 
 ## License
 
-MIT
+MIT © 2026 willbean

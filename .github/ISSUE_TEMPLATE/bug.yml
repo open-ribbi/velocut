@@ -1,0 +1,34 @@
+name: Bug report
+description: Something is broken or behaves unexpectedly.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: input
+    id: engine
+    attributes:
+      label: Active engine
+      description: The badge in the top-right — "engine: Rust/WASM" or "engine: TS fallback".
+      placeholder: e.g. TS fallback
+  - type: input
+    id: browser
+    attributes:
+      label: Browser & OS
+      placeholder: e.g. Chrome 130 / macOS 15
+  - type: textarea
+    id: console
+    attributes:
+      label: Console errors (if any)
+      render: text
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before filing
+      options:
+        - label: I'm on a supported browser (Chrome / Edge 113+).
+        - label: I'm not attaching copyrighted media (a repro spec/steps is enough).
