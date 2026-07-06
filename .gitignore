@@ -12,3 +12,8 @@ web/apps/editor/public/*.mkv
 
 # Claude Code 本地权限配置(个人机器专属)
 .claude/settings.local.json
+
+# 内部审计/红队笔记与本地便签永不入库(可能含未修复攻击路径)
+redteam*.md
+*.local.md
+audit*.md

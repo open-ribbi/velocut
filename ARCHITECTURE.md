@@ -26,6 +26,7 @@
 │ 协同与落盘(@velocut/collab-sdk):Yjs 实体级 CRDT 镜像,     │
 │   BroadcastChannel 多标签页实时;IndexedDB 文档 + OPFS 媒体 │
 └──────────────────────────────────────────────────────────┘
+```
 
 ## SDK 化(packages/)
 
@@ -36,7 +37,6 @@
 - `@velocut/agent-sdk` — LLM 剪辑 agent(浏览器直连 Anthropic API,可注入
   transport 供测试)
 - `@velocut/collab-sdk` — CollabSession(Yjs/BC/IndexedDB) + OPFS 媒体库
-```
 
 ## 核心决策与理由
 
