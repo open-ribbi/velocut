@@ -261,8 +261,9 @@ export class Observer {
     return encodeJpeg(this.c2d, quality);
   }
 
-  /** Loudness of the mixed audio in a window centred on `atUs`. */
-  async audio(slices: AudioSliceRef[], atUs: number, windowUs = 300_000): Promise<AudioMetrics> {
+  /** Loudness of the mixed audio in a window around each slice's source time
+   *  (the slices already carry the evaluate-time source positions). */
+  async audio(slices: AudioSliceRef[], _atUs: number, windowUs = 300_000): Promise<AudioMetrics> {
     const half = windowUs / 2;
     let sumSq = 0;
     let n = 0;

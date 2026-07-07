@@ -23,12 +23,13 @@ fn run_vector(path: &PathBuf) {
 
     for (i, step) in v["steps"].as_array().unwrap().iter().enumerate() {
         if let Some(cmd) = step.get("apply") {
-            let resp: Value =
-                serde_json::from_str(&engine.apply_json(&cmd.to_string())).unwrap();
+            let resp: Value = serde_json::from_str(&engine.apply_json(&cmd.to_string())).unwrap();
             assert!(
                 resp["ok"].as_bool() == Some(true),
                 "[{}] step {}: expected ok, got {}",
-                name, i, resp
+                name,
+                i,
+                resp
             );
         } else if let Some(e) = step.get("applyErr") {
             let resp: Value =
@@ -36,21 +37,25 @@ fn run_vector(path: &PathBuf) {
             assert!(
                 resp["ok"].as_bool() == Some(false),
                 "[{}] step {}: expected error, got ok",
-                name, i
+                name,
+                i
             );
             assert_eq!(
                 resp["error"]["code"].as_str(),
                 e["code"].as_str(),
                 "[{}] step {}: wrong error code: {}",
-                name, i, resp
+                name,
+                i,
+                resp
             );
         } else if let Some(doc) = step.get("load") {
-            let resp: Value =
-                serde_json::from_str(&engine.load_json(&doc.to_string())).unwrap();
+            let resp: Value = serde_json::from_str(&engine.load_json(&doc.to_string())).unwrap();
             assert!(
                 resp["ok"].as_bool() == Some(true),
                 "[{}] step {}: load failed: {}",
-                name, i, resp
+                name,
+                i,
+                resp
             );
         } else if step.get("undo").is_some() {
             engine.undo().expect("nothing to undo");
@@ -103,7 +108,9 @@ fn run_vector(path: &PathBuf) {
             if let Some(w) = want.get("speed") {
                 assert!(
                     approx(clip["speed"].as_f64().unwrap(), w.as_f64().unwrap()),
-                    "[{}] {} speed", name, id
+                    "[{}] {} speed",
+                    name,
+                    id
                 );
             }
         }
@@ -118,7 +125,13 @@ fn run_vector(path: &PathBuf) {
                 .find(|t| t["id"].as_str() == Some(track_id))
                 .map(|t| t["clips"].as_array().unwrap().len())
                 .unwrap_or(usize::MAX);
-            assert_eq!(n as u64, want.as_u64().unwrap(), "[{}] clip count on {}", name, track_id);
+            assert_eq!(
+                n as u64,
+                want.as_u64().unwrap(),
+                "[{}] clip count on {}",
+                name,
+                track_id
+            );
         }
     }
 
@@ -139,18 +152,28 @@ fn run_vector(path: &PathBuf) {
                     if let Some(w) = want.get("gain") {
                         assert!(
                             approx(slice["gain"].as_f64().unwrap(), w.as_f64().unwrap()),
-                            "[{}] t={} {} gain: got {}", name, t, cid, slice["gain"]
+                            "[{}] t={} {} gain: got {}",
+                            name,
+                            t,
+                            cid,
+                            slice["gain"]
                         );
                     }
                     if let Some(w) = want.get("sourceTimeUs") {
-                        assert_eq!(&slice["sourceTimeUs"], w, "[{}] t={} {} audio sourceTime", name, t, cid);
+                        assert_eq!(
+                            &slice["sourceTimeUs"], w,
+                            "[{}] t={} {} audio sourceTime",
+                            name, t, cid
+                        );
                     }
                 }
                 assert_eq!(
                     got_audio.len(),
                     want_audio.len(),
                     "[{}] eval t={} audio slice count: got {}",
-                    name, t, fg
+                    name,
+                    t,
+                    fg
                 );
             }
             let Some(want_layers) = case.get("layers").and_then(|l| l.as_array()) else {
@@ -161,7 +184,9 @@ fn run_vector(path: &PathBuf) {
                 got_layers.len(),
                 want_layers.len(),
                 "[{}] eval t={} layer count: got {}",
-                name, t, fg
+                name,
+                t,
+                fg
             );
             for want in want_layers {
                 let cid = want["clipId"].as_str().unwrap();
@@ -170,18 +195,36 @@ fn run_vector(path: &PathBuf) {
                     .find(|l| l["clipId"].as_str() == Some(cid))
                     .unwrap_or_else(|| panic!("[{}] eval t={} missing layer {}", name, t, cid));
                 if let Some(w) = want.get("sourceTimeUs") {
-                    assert_eq!(&layer["sourceTimeUs"], w, "[{}] t={} {} sourceTime", name, t, cid);
+                    assert_eq!(
+                        &layer["sourceTimeUs"], w,
+                        "[{}] t={} {} sourceTime",
+                        name, t, cid
+                    );
                 }
                 if let Some(w) = want.get("opacity") {
                     assert!(
-                        approx(layer["transform"]["opacity"].as_f64().unwrap(), w.as_f64().unwrap()),
-                        "[{}] t={} {} opacity: got {}", name, t, cid, layer["transform"]["opacity"]
+                        approx(
+                            layer["transform"]["opacity"].as_f64().unwrap(),
+                            w.as_f64().unwrap()
+                        ),
+                        "[{}] t={} {} opacity: got {}",
+                        name,
+                        t,
+                        cid,
+                        layer["transform"]["opacity"]
                     );
                 }
                 if let Some(w) = want.get("x") {
                     assert!(
-                        approx(layer["transform"]["x"].as_f64().unwrap(), w.as_f64().unwrap()),
-                        "[{}] t={} {} x: got {}", name, t, cid, layer["transform"]["x"]
+                        approx(
+                            layer["transform"]["x"].as_f64().unwrap(),
+                            w.as_f64().unwrap()
+                        ),
+                        "[{}] t={} {} x: got {}",
+                        name,
+                        t,
+                        cid,
+                        layer["transform"]["x"]
                     );
                 }
             }

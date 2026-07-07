@@ -228,7 +228,8 @@ pub fn evaluate(doc: &Document, time_us: TimeUs) -> FrameGraph {
         if !track.muted {
             if let Some(aid) = &clip.asset_id {
                 if let Some(asset) = doc.find_asset(aid) {
-                    if asset.has_audio && matches!(asset.kind, AssetKind::Video | AssetKind::Audio) {
+                    if asset.has_audio && matches!(asset.kind, AssetKind::Video | AssetKind::Audio)
+                    {
                         let gain_kf = clip
                             .keyframes
                             .get(&Property::Volume)
@@ -247,5 +248,11 @@ pub fn evaluate(doc: &Document, time_us: TimeUs) -> FrameGraph {
         }
     }
 
-    FrameGraph { time_us, width: doc.width, height: doc.height, layers, audio }
+    FrameGraph {
+        time_us,
+        width: doc.width,
+        height: doc.height,
+        layers,
+        audio,
+    }
 }

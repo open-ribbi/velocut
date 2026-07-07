@@ -95,7 +95,10 @@ pub enum EditCommand {
 
     // --- properties / animation ---
     #[serde(rename_all = "camelCase")]
-    SetTransform { clip_id: String, transform: Transform },
+    SetTransform {
+        clip_id: String,
+        transform: Transform,
+    },
     #[serde(rename_all = "camelCase")]
     SetClipVolume { clip_id: String, volume: f64 },
     #[serde(rename_all = "camelCase")]
@@ -165,19 +168,34 @@ pub enum TrimEdge {
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum Event {
     #[serde(rename_all = "camelCase")]
-    AssetAdded { asset_id: String },
+    AssetAdded {
+        asset_id: String,
+    },
     #[serde(rename_all = "camelCase")]
-    TrackAdded { track_id: String },
+    TrackAdded {
+        track_id: String,
+    },
     #[serde(rename_all = "camelCase")]
-    TrackRemoved { track_id: String },
+    TrackRemoved {
+        track_id: String,
+    },
     #[serde(rename_all = "camelCase")]
-    TrackUpdated { track_id: String },
+    TrackUpdated {
+        track_id: String,
+    },
     #[serde(rename_all = "camelCase")]
-    ClipAdded { clip_id: String, track_id: String },
+    ClipAdded {
+        clip_id: String,
+        track_id: String,
+    },
     #[serde(rename_all = "camelCase")]
-    ClipRemoved { clip_id: String },
+    ClipRemoved {
+        clip_id: String,
+    },
     #[serde(rename_all = "camelCase")]
-    ClipUpdated { clip_id: String },
+    ClipUpdated {
+        clip_id: String,
+    },
     DocumentReplaced,
 }
 
@@ -192,7 +210,10 @@ pub struct CmdError {
 
 impl CmdError {
     pub fn new(code: &str, message: impl Into<String>) -> Self {
-        CmdError { code: code.into(), message: message.into() }
+        CmdError {
+            code: code.into(),
+            message: message.into(),
+        }
     }
     pub fn not_found(what: &str, id: &str) -> Self {
         Self::new("notFound", format!("{} '{}' not found", what, id))
@@ -217,11 +238,23 @@ pub type CmdResult = Result<Vec<Event>, CmdError>;
 pub fn apply(doc: &mut Document, cmd: &EditCommand) -> CmdResult {
     use EditCommand::*;
     match cmd {
-        AddAsset { kind, src, name, duration_us, width, height, has_audio, id } => {
+        AddAsset {
+            kind,
+            src,
+            name,
+            duration_us,
+            width,
+            height,
+            has_audio,
+            id,
+        } => {
             let asset_id = match id {
                 Some(explicit) => {
                     if doc.find_asset(explicit).is_some() {
-                        return Err(CmdError::invalid(format!("asset id '{}' already exists", explicit)));
+                        return Err(CmdError::invalid(format!(
+                            "asset id '{}' already exists",
+                            explicit
+                        )));
                     }
                     explicit.clone()
                 }
@@ -263,7 +296,9 @@ pub fn apply(doc: &mut Document, cmd: &EditCommand) -> CmdResult {
                 .position(|t| t.id == *track_id)
                 .ok_or_else(|| CmdError::not_found("track", track_id))?;
             doc.tracks.remove(i);
-            Ok(vec![Event::TrackRemoved { track_id: track_id.clone() }])
+            Ok(vec![Event::TrackRemoved {
+                track_id: track_id.clone(),
+            }])
         }
 
         MoveTrack { track_id, to_index } => {
@@ -275,10 +310,18 @@ pub fn apply(doc: &mut Document, cmd: &EditCommand) -> CmdResult {
             let to = (*to_index).min(doc.tracks.len() - 1);
             let t = doc.tracks.remove(i);
             doc.tracks.insert(to, t);
-            Ok(vec![Event::TrackUpdated { track_id: track_id.clone() }])
+            Ok(vec![Event::TrackUpdated {
+                track_id: track_id.clone(),
+            }])
         }
 
-        AddClip { track_id, asset_id, start_us, duration_us, source_in_us } => {
+        AddClip {
+            track_id,
+            asset_id,
+            start_us,
+            duration_us,
+            source_in_us,
+        } => {
             let asset = doc
                 .find_asset(asset_id)
                 .ok_or_else(|| CmdError::not_found("asset", asset_id))?
@@ -295,7 +338,9 @@ pub fn apply(doc: &mut Document, cmd: &EditCommand) -> CmdResult {
                 return Err(CmdError::locked(track_id));
             }
             if track.overlaps(*start_us, dur, None) {
-                return Err(CmdError::overlap("clip would overlap an existing clip on this track"));
+                return Err(CmdError::overlap(
+                    "clip would overlap an existing clip on this track",
+                ));
             }
             track.clips.push(Clip {
                 id: clip_id.clone(),
@@ -312,10 +357,18 @@ pub fn apply(doc: &mut Document, cmd: &EditCommand) -> CmdResult {
                 transition: None,
             });
             track.sort_clips();
-            Ok(vec![Event::ClipAdded { clip_id, track_id: track_id.clone() }])
+            Ok(vec![Event::ClipAdded {
+                clip_id,
+                track_id: track_id.clone(),
+            }])
         }
 
-        AddTextClip { track_id, start_us, duration_us, text } => {
+        AddTextClip {
+            track_id,
+            start_us,
+            duration_us,
+            text,
+        } => {
             if *duration_us <= 0 || *start_us < 0 {
                 return Err(CmdError::invalid("duration must be > 0 and start >= 0"));
             }
@@ -327,7 +380,9 @@ pub fn apply(doc: &mut Document, cmd: &EditCommand) -> CmdResult {
                 return Err(CmdError::locked(track_id));
             }
             if track.overlaps(*start_us, *duration_us, None) {
-                return Err(CmdError::overlap("clip would overlap an existing clip on this track"));
+                return Err(CmdError::overlap(
+                    "clip would overlap an existing clip on this track",
+                ));
             }
             track.clips.push(Clip {
                 id: clip_id.clone(),
@@ -344,7 +399,10 @@ pub fn apply(doc: &mut Document, cmd: &EditCommand) -> CmdResult {
                 transition: None,
             });
             track.sort_clips();
-            Ok(vec![Event::ClipAdded { clip_id, track_id: track_id.clone() }])
+            Ok(vec![Event::ClipAdded {
+                clip_id,
+                track_id: track_id.clone(),
+            }])
         }
 
         RemoveClip { clip_id } => {
@@ -355,10 +413,16 @@ pub fn apply(doc: &mut Document, cmd: &EditCommand) -> CmdResult {
                 return Err(CmdError::locked(&doc.tracks[ti].id.clone()));
             }
             doc.tracks[ti].clips.remove(ci);
-            Ok(vec![Event::ClipRemoved { clip_id: clip_id.clone() }])
+            Ok(vec![Event::ClipRemoved {
+                clip_id: clip_id.clone(),
+            }])
         }
 
-        MoveClip { clip_id, track_id, start_us } => {
+        MoveClip {
+            clip_id,
+            track_id,
+            start_us,
+        } => {
             if *start_us < 0 {
                 return Err(CmdError::invalid("start must be >= 0"));
             }
@@ -380,18 +444,30 @@ pub fn apply(doc: &mut Document, cmd: &EditCommand) -> CmdResult {
                 return Err(CmdError::locked(&doc.tracks[dest_ti].id.clone()));
             }
             let dur = doc.tracks[ti].clips[ci].duration_us;
-            let ignore = if dest_ti == ti { Some(clip_id.as_str()) } else { None };
+            let ignore = if dest_ti == ti {
+                Some(clip_id.as_str())
+            } else {
+                None
+            };
             if doc.tracks[dest_ti].overlaps(*start_us, dur, ignore) {
-                return Err(CmdError::overlap("destination range overlaps an existing clip"));
+                return Err(CmdError::overlap(
+                    "destination range overlaps an existing clip",
+                ));
             }
             let mut clip = doc.tracks[ti].clips.remove(ci);
             clip.start_us = *start_us;
             doc.tracks[dest_ti].clips.push(clip);
             doc.tracks[dest_ti].sort_clips();
-            Ok(vec![Event::ClipUpdated { clip_id: clip_id.clone() }])
+            Ok(vec![Event::ClipUpdated {
+                clip_id: clip_id.clone(),
+            }])
         }
 
-        TrimClip { clip_id, edge, to_us } => {
+        TrimClip {
+            clip_id,
+            edge,
+            to_us,
+        } => {
             let (ti, ci) = doc
                 .locate_clip(clip_id)
                 .ok_or_else(|| CmdError::not_found("clip", clip_id))?;
@@ -406,9 +482,13 @@ pub fn apply(doc: &mut Document, cmd: &EditCommand) -> CmdResult {
                     }
                     let to = (*to_us).max(0);
                     let delta = to - clip.start_us; // may be negative (extend head)
-                    let src_in = clip.source_in_us + ((delta as f64) * clip.speed).round() as TimeUs;
+                    let src_in =
+                        clip.source_in_us + ((delta as f64) * clip.speed).round() as TimeUs;
                     if src_in < 0 {
-                        return Err(CmdError::new("outOfRange", "cannot extend before source start"));
+                        return Err(CmdError::new(
+                            "outOfRange",
+                            "cannot extend before source start",
+                        ));
                     }
                     (to, clip.end_us() - to, src_in)
                 }
@@ -423,9 +503,13 @@ pub fn apply(doc: &mut Document, cmd: &EditCommand) -> CmdResult {
             if let Some(aid) = &clip.asset_id {
                 if let Some(asset) = doc.find_asset(aid) {
                     if asset.kind != AssetKind::Image && asset.duration_us > 0 {
-                        let src_out = new_src_in + ((new_dur as f64) * clip.speed).round() as TimeUs;
+                        let src_out =
+                            new_src_in + ((new_dur as f64) * clip.speed).round() as TimeUs;
                         if src_out > asset.duration_us {
-                            return Err(CmdError::new("outOfRange", "trim exceeds source media duration"));
+                            return Err(CmdError::new(
+                                "outOfRange",
+                                "trim exceeds source media duration",
+                            ));
                         }
                     }
                 }
@@ -438,7 +522,9 @@ pub fn apply(doc: &mut Document, cmd: &EditCommand) -> CmdResult {
             c.duration_us = new_dur;
             c.source_in_us = new_src_in;
             doc.tracks[ti].sort_clips();
-            Ok(vec![Event::ClipUpdated { clip_id: clip_id.clone() }])
+            Ok(vec![Event::ClipUpdated {
+                clip_id: clip_id.clone(),
+            }])
         }
 
         SplitClip { clip_id, at_us } => {
@@ -450,7 +536,9 @@ pub fn apply(doc: &mut Document, cmd: &EditCommand) -> CmdResult {
             }
             let clip = doc.tracks[ti].clips[ci].clone();
             if *at_us <= clip.start_us || *at_us >= clip.end_us() {
-                return Err(CmdError::invalid("split point must be strictly inside the clip"));
+                return Err(CmdError::invalid(
+                    "split point must be strictly inside the clip",
+                ));
             }
             let right_id = doc.mint_id("clip");
             let split_local = *at_us - clip.start_us;
@@ -473,7 +561,10 @@ pub fn apply(doc: &mut Document, cmd: &EditCommand) -> CmdResult {
                     let shifted: Vec<Keyframe> = kfs
                         .iter()
                         .filter(|k| k.time_us >= split_local)
-                        .map(|k| Keyframe { time_us: k.time_us - split_local, ..*k })
+                        .map(|k| Keyframe {
+                            time_us: k.time_us - split_local,
+                            ..*k
+                        })
                         .collect();
                     (*p, shifted)
                 })
@@ -488,13 +579,19 @@ pub fn apply(doc: &mut Document, cmd: &EditCommand) -> CmdResult {
             track.clips.push(right);
             track.sort_clips();
             Ok(vec![
-                Event::ClipUpdated { clip_id: clip_id.clone() },
-                Event::ClipAdded { clip_id: right_id, track_id },
+                Event::ClipUpdated {
+                    clip_id: clip_id.clone(),
+                },
+                Event::ClipAdded {
+                    clip_id: right_id,
+                    track_id,
+                },
             ])
         }
 
         SetClipSpeed { clip_id, speed } => {
-            if !(*speed > 0.0) || !speed.is_finite() {
+            // NaN must fail too, so "not greater than zero" (not `<= 0`).
+            if !speed.is_finite() || speed.partial_cmp(&0.0) != Some(std::cmp::Ordering::Greater) {
                 return Err(CmdError::invalid("speed must be a finite number > 0"));
             }
             let (ti, ci) = doc
@@ -511,12 +608,16 @@ pub fn apply(doc: &mut Document, cmd: &EditCommand) -> CmdResult {
                 return Err(CmdError::invalid("resulting duration would be zero"));
             }
             if doc.tracks[ti].overlaps(clip.start_us, new_dur, Some(clip_id)) {
-                return Err(CmdError::overlap("speed change would overlap the next clip; move or trim it first"));
+                return Err(CmdError::overlap(
+                    "speed change would overlap the next clip; move or trim it first",
+                ));
             }
             let c = &mut doc.tracks[ti].clips[ci];
             c.speed = *speed;
             c.duration_us = new_dur;
-            Ok(vec![Event::ClipUpdated { clip_id: clip_id.clone() }])
+            Ok(vec![Event::ClipUpdated {
+                clip_id: clip_id.clone(),
+            }])
         }
 
         SetTransform { clip_id, transform } => {
@@ -524,7 +625,9 @@ pub fn apply(doc: &mut Document, cmd: &EditCommand) -> CmdResult {
                 .find_clip_mut(clip_id)
                 .ok_or_else(|| CmdError::not_found("clip", clip_id))?;
             c.transform = *transform;
-            Ok(vec![Event::ClipUpdated { clip_id: clip_id.clone() }])
+            Ok(vec![Event::ClipUpdated {
+                clip_id: clip_id.clone(),
+            }])
         }
 
         SetClipVolume { clip_id, volume } => {
@@ -535,7 +638,9 @@ pub fn apply(doc: &mut Document, cmd: &EditCommand) -> CmdResult {
                 .find_clip_mut(clip_id)
                 .ok_or_else(|| CmdError::not_found("clip", clip_id))?;
             c.volume = *volume;
-            Ok(vec![Event::ClipUpdated { clip_id: clip_id.clone() }])
+            Ok(vec![Event::ClipUpdated {
+                clip_id: clip_id.clone(),
+            }])
         }
 
         SetText { clip_id, text } => {
@@ -546,10 +651,15 @@ pub fn apply(doc: &mut Document, cmd: &EditCommand) -> CmdResult {
                 return Err(CmdError::invalid("clip is not a text clip"));
             }
             c.text = Some(text.clone());
-            Ok(vec![Event::ClipUpdated { clip_id: clip_id.clone() }])
+            Ok(vec![Event::ClipUpdated {
+                clip_id: clip_id.clone(),
+            }])
         }
 
-        SetTransition { clip_id, transition } => {
+        SetTransition {
+            clip_id,
+            transition,
+        } => {
             if let Some(tr) = transition {
                 if tr.duration_us <= 0 {
                     return Err(CmdError::invalid("transition duration must be > 0"));
@@ -559,10 +669,16 @@ pub fn apply(doc: &mut Document, cmd: &EditCommand) -> CmdResult {
                 .find_clip_mut(clip_id)
                 .ok_or_else(|| CmdError::not_found("clip", clip_id))?;
             c.transition = transition.clone();
-            Ok(vec![Event::ClipUpdated { clip_id: clip_id.clone() }])
+            Ok(vec![Event::ClipUpdated {
+                clip_id: clip_id.clone(),
+            }])
         }
 
-        SetKeyframe { clip_id, property, keyframe } => {
+        SetKeyframe {
+            clip_id,
+            property,
+            keyframe,
+        } => {
             let c = doc
                 .find_clip_mut(clip_id)
                 .ok_or_else(|| CmdError::not_found("clip", clip_id))?;
@@ -577,10 +693,16 @@ pub fn apply(doc: &mut Document, cmd: &EditCommand) -> CmdResult {
                     kfs.sort_by_key(|k| k.time_us);
                 }
             }
-            Ok(vec![Event::ClipUpdated { clip_id: clip_id.clone() }])
+            Ok(vec![Event::ClipUpdated {
+                clip_id: clip_id.clone(),
+            }])
         }
 
-        RemoveKeyframe { clip_id, property, time_us } => {
+        RemoveKeyframe {
+            clip_id,
+            property,
+            time_us,
+        } => {
             let c = doc
                 .find_clip_mut(clip_id)
                 .ok_or_else(|| CmdError::not_found("clip", clip_id))?;
@@ -596,10 +718,16 @@ pub fn apply(doc: &mut Document, cmd: &EditCommand) -> CmdResult {
             if kfs.is_empty() {
                 c.keyframes.remove(property);
             }
-            Ok(vec![Event::ClipUpdated { clip_id: clip_id.clone() }])
+            Ok(vec![Event::ClipUpdated {
+                clip_id: clip_id.clone(),
+            }])
         }
 
-        AddEffect { clip_id, effect, params } => {
+        AddEffect {
+            clip_id,
+            effect,
+            params,
+        } => {
             let effect_id = doc.mint_id("fx");
             let c = doc
                 .find_clip_mut(clip_id)
@@ -610,7 +738,9 @@ pub fn apply(doc: &mut Document, cmd: &EditCommand) -> CmdResult {
                 params: params.clone(),
                 enabled: Some(true),
             });
-            Ok(vec![Event::ClipUpdated { clip_id: clip_id.clone() }])
+            Ok(vec![Event::ClipUpdated {
+                clip_id: clip_id.clone(),
+            }])
         }
 
         RemoveEffect { clip_id, effect_id } => {
@@ -622,10 +752,16 @@ pub fn apply(doc: &mut Document, cmd: &EditCommand) -> CmdResult {
             if c.effects.len() == before {
                 return Err(CmdError::not_found("effect", effect_id));
             }
-            Ok(vec![Event::ClipUpdated { clip_id: clip_id.clone() }])
+            Ok(vec![Event::ClipUpdated {
+                clip_id: clip_id.clone(),
+            }])
         }
 
-        SetEffectParams { clip_id, effect_id, params } => {
+        SetEffectParams {
+            clip_id,
+            effect_id,
+            params,
+        } => {
             let c = doc
                 .find_clip_mut(clip_id)
                 .ok_or_else(|| CmdError::not_found("clip", clip_id))?;
@@ -635,7 +771,9 @@ pub fn apply(doc: &mut Document, cmd: &EditCommand) -> CmdResult {
                 .find(|e| e.id == *effect_id)
                 .ok_or_else(|| CmdError::not_found("effect", effect_id))?;
             fx.params = params.clone();
-            Ok(vec![Event::ClipUpdated { clip_id: clip_id.clone() }])
+            Ok(vec![Event::ClipUpdated {
+                clip_id: clip_id.clone(),
+            }])
         }
 
         SetTrackMuted { track_id, muted } => {
@@ -643,7 +781,9 @@ pub fn apply(doc: &mut Document, cmd: &EditCommand) -> CmdResult {
                 .find_track_mut(track_id)
                 .ok_or_else(|| CmdError::not_found("track", track_id))?;
             t.muted = *muted;
-            Ok(vec![Event::TrackUpdated { track_id: track_id.clone() }])
+            Ok(vec![Event::TrackUpdated {
+                track_id: track_id.clone(),
+            }])
         }
 
         SetTrackLocked { track_id, locked } => {
@@ -651,7 +791,9 @@ pub fn apply(doc: &mut Document, cmd: &EditCommand) -> CmdResult {
                 .find_track_mut(track_id)
                 .ok_or_else(|| CmdError::not_found("track", track_id))?;
             t.locked = *locked;
-            Ok(vec![Event::TrackUpdated { track_id: track_id.clone() }])
+            Ok(vec![Event::TrackUpdated {
+                track_id: track_id.clone(),
+            }])
         }
 
         Batch { commands } => {

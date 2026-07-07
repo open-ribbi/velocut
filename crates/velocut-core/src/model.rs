@@ -159,9 +159,9 @@ impl Track {
     /// True if [start, start+duration) overlaps any clip except `ignore`.
     pub fn overlaps(&self, start: TimeUs, duration: TimeUs, ignore: Option<&str>) -> bool {
         let end = start + duration;
-        self.clips.iter().any(|c| {
-            Some(c.id.as_str()) != ignore && start < c.end_us() && c.start_us < end
-        })
+        self.clips
+            .iter()
+            .any(|c| Some(c.id.as_str()) != ignore && start < c.end_us() && c.start_us < end)
     }
     pub fn sort_clips(&mut self) {
         self.clips.sort_by_key(|c| c.start_us);
@@ -187,7 +187,14 @@ pub struct Transform {
 
 impl Default for Transform {
     fn default() -> Self {
-        Transform { x: 0.0, y: 0.0, scale_x: 1.0, scale_y: 1.0, rotation: 0.0, opacity: 1.0 }
+        Transform {
+            x: 0.0,
+            y: 0.0,
+            scale_x: 1.0,
+            scale_y: 1.0,
+            rotation: 0.0,
+            opacity: 1.0,
+        }
     }
 }
 
@@ -210,7 +217,12 @@ pub enum Easing {
     Linear,
     Hold,
     /// CSS-style cubic bezier with control points (x1,y1,x2,y2), x in [0,1].
-    Bezier { x1: f64, y1: f64, x2: f64, y2: f64 },
+    Bezier {
+        x1: f64,
+        y1: f64,
+        x2: f64,
+        y2: f64,
+    },
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]

@@ -28,14 +28,23 @@ pub struct Engine {
 #[serde(rename_all = "camelCase", untagged)]
 pub enum Envelope {
     #[serde(rename_all = "camelCase")]
-    Ok { ok: bool, revision: u64, events: Vec<Event> },
+    Ok {
+        ok: bool,
+        revision: u64,
+        events: Vec<Event>,
+    },
     #[serde(rename_all = "camelCase")]
     Err { ok: bool, error: CmdError },
 }
 
 impl Envelope {
     fn ok(revision: u64, events: Vec<Event>) -> String {
-        serde_json::to_string(&Envelope::Ok { ok: true, revision, events }).unwrap()
+        serde_json::to_string(&Envelope::Ok {
+            ok: true,
+            revision,
+            events,
+        })
+        .unwrap()
     }
     fn err(error: CmdError) -> String {
         serde_json::to_string(&Envelope::Err { ok: false, error }).unwrap()
@@ -150,7 +159,7 @@ impl Engine {
         };
         if let Some(assets) = value.get_mut("assets").and_then(|a| a.as_array_mut()) {
             for asset in assets {
-                if asset.get("hasAudio").map_or(true, |v| v.is_null()) {
+                if asset.get("hasAudio").is_none_or(|v| v.is_null()) {
                     let is_image = asset.get("kind").and_then(|k| k.as_str()) == Some("image");
                     asset["hasAudio"] = serde_json::Value::Bool(!is_image);
                 }

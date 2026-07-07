@@ -14,7 +14,7 @@
 import type { FrameGraph, Layer, TextPayload } from '@velocut/protocol';
 import type { MediaLibrary } from './media';
 import { resolveColorAdjust, resolvePassEffects, transitionWgsl, TRANSITIONS, type PassEffect } from './effects';
-import { computeTextLayout, fontSpecOf, type TextLayout, type TextLine } from './textlayout';
+import { computeTextLayout, fontSpecOf, type TextLayout } from './textlayout';
 
 // Re-exported so consumers (and the SDK barrel) keep importing these from the
 // renderer even though the layout math now lives in ./textlayout (shared with
