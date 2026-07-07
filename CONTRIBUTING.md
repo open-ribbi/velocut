@@ -36,7 +36,7 @@ A vector looks like this (`protocol/vectors/03_trim_undo_redo.json`):
 Key points:
 
 - ids are minted deterministically by the engine (`<kind>_<nextId>`, monotonically increasing) — count ids by following the existing vectors
-- Error paths use `applyErr` (asserting the error code); evaluation assertions use `eval` — the existing 5 vectors have examples of every form
+- Error paths use `applyErr` (asserting the error code); evaluation assertions use `eval` (layers and/or `audio` gain); document-load behavior uses a `load` step — the existing vectors have examples of every form
 - Put new files in `protocol/vectors/`; tests on both sides discover them automatically (by directory traversal), no registration needed
 
 How to run:
@@ -60,6 +60,25 @@ cd web && npx tsc -b apps/editor   # type check
 If you changed the Rust engine, remember to rebuild wasm (see README for the command) —
 otherwise you are still running the old engine or the TS engine locally. The badge in the
 top-right corner will tell you the truth.
+
+## Common pitfalls
+
+- **"Do I need Rust installed?"** No — without the wasm bundle the app falls
+  back to the TS reference engine automatically. You only need Rust to work on
+  the canonical engine itself.
+- **"I changed the engine but nothing happened."** If the top-right badge says
+  `engine: Rust/WASM`, the browser is running the *prebuilt* wasm from
+  `web/apps/editor/public/wasm` — rebuild it (`just build-wasm`) or your change
+  only exists in native `cargo test`.
+- **"`npm install` / `npm test` fails."** Check `node --version` — the test
+  runner relies on `--experimental-strip-types`, which needs Node ≥ 22.6
+  (`nvm use` picks up the repo's `.nvmrc`).
+- **"My command is rejected with `invalidArg: Expected integer`."** All times
+  are integer microseconds; round before dispatching. The boundary rejects
+  fractions on purpose — the two engines would round them differently.
+- **First contribution idea:** copy an existing vector, change one step, make
+  a prediction about `expect`, and run both suites. If your prediction is
+  wrong, you just learned real engine semantics — cheaper than reading code.
 
 ## Style
 
