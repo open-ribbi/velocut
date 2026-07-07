@@ -138,7 +138,14 @@ export type AgentEvent =
 export type AgentMessageStream = ReturnType<InstanceType<typeof Anthropic>['messages']['stream']>;
 
 export interface AgentTurnOptions {
+  /** Key for the default transport. With auth = 'bearer' it is sent as
+   *  `Authorization: Bearer`; otherwise as Anthropic's native `x-api-key`. */
   apiKey: string;
+  /** Anthropic-protocol endpoint root. Defaults to the official API; point it
+   *  at any protocol-compatible relay/gateway (LiteLLM, one-api, a corporate
+   *  proxy) to route the agent elsewhere. Ignored when a transport is injected. */
+  baseURL?: string;
+  auth?: 'x-api-key' | 'bearer';
   model?: string;
   /** Prior conversation (user/assistant turns incl. tool blocks). */
   history: Anthropic.MessageParam[];
@@ -390,7 +397,14 @@ export async function runAgentTurn(opts: AgentTurnOptions): Promise<Anthropic.Me
   // real key, so we stream by default.
   const client =
     !opts.createMessage && !opts.createStream
-      ? new Anthropic({ apiKey: opts.apiKey, dangerouslyAllowBrowser: true })
+      ? new Anthropic({
+          // 'bearer' routes the key through Authorization (gateway convention);
+          // the SDK's apiKey field is Anthropic's native x-api-key header.
+          apiKey: opts.auth === 'bearer' ? null : opts.apiKey,
+          authToken: opts.auth === 'bearer' ? opts.apiKey : null,
+          baseURL: opts.baseURL,
+          dangerouslyAllowBrowser: true,
+        })
       : null;
   const createStream =
     opts.createStream ?? (client ? (p: Anthropic.MessageStreamParams) => client.messages.stream(p) : undefined);

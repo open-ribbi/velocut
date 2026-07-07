@@ -6,12 +6,21 @@ Below are the boundaries you should understand before using the Agent features.
 
 ## Where the API key lives
 
-- Your Anthropic key is pasted into the Agent console and **stored in plaintext in
-  your browser's localStorage** (`velocut.anthropicApiKey`). Requests go directly
-  to Anthropic, through no intermediate server of any kind.
+- Your API key is entered in the Agent console's provider settings and **stored
+  in plaintext in your browser's localStorage** (`velocut.llm`, together with the
+  endpoint/model configuration). Requests go directly from the browser to the
+  configured endpoint, through no intermediate server of Velocut's.
 - This means: anything that can execute JS on that page (browser extensions, XSS,
   the script tool described below) can read it. Use a rate-limited key, and clear
   it from the console when not in use.
+- **Configuring a relay/gateway base URL is a trust decision.** The default
+  endpoint is the official Anthropic API. If you point the base URL at a
+  third-party Anthropic-protocol-compatible gateway (LiteLLM, one-api, a
+  corporate proxy), your key, your prompts, and the observation frames the agent
+  looks at are sent to THAT service instead. Only configure endpoints you trust.
+  Browser-direct calls also require the endpoint to allow cross-origin (CORS)
+  requests; the settings panel's "Test connection" verifies URL, auth, CORS and
+  the model id in one round trip.
 - The Gemini search and MiniMax TTS keys are injected via the Vite dev server
   proxy; the browser never holds them (see README "Optional capabilities and key
   conventions").

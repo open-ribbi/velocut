@@ -49,9 +49,9 @@ Velocut's first "user" is the AI agent. Click the **⌘ Agent** bubble (bottom-r
 
 ![The agent reads the project and lands a styled closing title card in one atomic batch — through the exact same command protocol the UI uses](docs/media/agent.png)
 
-- **The key lives only in your browser's localStorage; requests go straight to Anthropic with no intermediary server** (trust model: [SECURITY.md](SECURITY.md)).
+- **The key lives only in your browser's localStorage; requests go straight from the browser to the configured endpoint with no intermediary server** (trust model: [SECURITY.md](SECURITY.md)).
 - The agent can *see* (frame grabs / contact sheets), *hear* (loudness & silence analysis), and *cut* (shot-boundary detection). Every edit uses the same command protocol as the UI, so each step is visible in a chat card and the branching history tree — click to jump, undo to roll back.
-- To route to a different model via a local proxy: in dev mode set `localStorage.setItem('velocut.devProxy','1')`; any Anthropic-protocol-compatible proxy on `127.0.0.1:3141` works (optional, not required).
+- **Relays/gateways are first-class**: the ⚙ provider settings take any Anthropic-protocol-compatible base URL (LiteLLM, one-api, a corporate proxy), a choice of `x-api-key` or `Authorization: Bearer` auth, custom model ids, and a one-click connection test. The endpoint must allow browser (CORS) requests.
 
 ### Optional capabilities & key convention (dev server only)
 

@@ -49,9 +49,9 @@ Anthropic API key(`sk-ant-...`)即可用自然语言剪辑——"把静音段都
 
 ![Agent 读取工程后用一个原子 batch 落好风格匹配的片尾字卡——走的是与 UI 完全相同的命令协议](docs/media/agent.png)
 
-- **Key 只存在你本机浏览器的 localStorage,请求直连 Anthropic,不经任何中间服务器**(信任模型详见 [SECURITY.md](SECURITY.md))
+- **Key 只存在你本机浏览器的 localStorage,请求从浏览器直连所配置的端点,不经任何中间服务器**(信任模型详见 [SECURITY.md](SECURITY.md))
 - Agent 能看(抽帧/拼图观察)、能听(响度与静音分析)、能切(镜头边界检测),所有编辑走与 UI 相同的命令协议,每一步都在聊天卡片和历史树里可见、可点击跳转、可回滚
-- 想走本地代理调其它模型:dev 模式下 `localStorage.setItem('velocut.devProxy','1')`,任何 Anthropic 协议兼容的代理挂在 `127.0.0.1:3141` 即可(可选项,非必需)
+- **中转/网关一等公民**:⚙ 供应商设置支持任意 Anthropic 协议兼容的 Base URL(LiteLLM、one-api、企业代理),`x-api-key` 或 `Authorization: Bearer` 两种鉴权,自定义模型 id,以及一键连接测试;端点需允许浏览器跨域(CORS)请求
 
 ### 可选能力与密钥约定(仅 dev server)
 

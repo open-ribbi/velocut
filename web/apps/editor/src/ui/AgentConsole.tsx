@@ -16,11 +16,16 @@ import { synthesizeNarration } from '../services/tts';
 import { runAgentScript } from '../services/script';
 import { createMotionClip, type MotionClipOptions } from '../services/motion';
 import { searchWeb } from '../services/search';
+import {
+  loadLlmConfig,
+  saveLlmConfig,
+  modelOptions,
+  testLlmConnection,
+  OFFICIAL_BASE_URL,
+  BUILTIN_MODELS,
+  type LlmConfig,
+} from '../services/llm';
 import { useFloatingDock } from './useDraggable';
-
-const KEY_STORAGE = 'velocut.anthropicApiKey';
-const MODEL_STORAGE = 'velocut.agentModel';
-const MODELS = ['claude-opus-4-8', 'claude-sonnet-4-6', 'claude-haiku-4-5'];
 
 interface ChatItem {
   role: 'user' | 'assistant' | 'thinking' | 'tool' | 'error';
@@ -178,9 +183,8 @@ export function AgentConsole({
   tts: TextToSpeech;
 }) {
   const [open, setOpen] = useState(false);
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem(KEY_STORAGE) ?? '');
-  const [model, setModel] = useState(() => localStorage.getItem(MODEL_STORAGE) ?? MODELS[0]);
-  const [keyDraft, setKeyDraft] = useState('');
+  const [cfg, setCfg] = useState<LlmConfig>(loadLlmConfig);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [input, setInput] = useState('');
   const [items, setItems] = useState<ChatItem[]>([]);
   const [busy, setBusy] = useState(false);
@@ -204,8 +208,11 @@ export function AgentConsole({
       const injected = (window as never as Record<string, unknown>).__velocutAgentTransport;
       const injectedStream = (window as never as Record<string, unknown>).__velocutAgentStream;
       history.current = await runAgentTurn({
-        apiKey,
-        model,
+        apiKey: cfg.apiKey,
+        // undefined = the SDK's official default; anything else is a relay.
+        baseURL: cfg.baseUrl === OFFICIAL_BASE_URL ? undefined : cfg.baseUrl,
+        auth: cfg.auth,
+        model: cfg.model,
         history: history.current,
         userText: text,
         // Effect docs come from the render-sdk registry → adding an effect
@@ -215,7 +222,7 @@ export function AgentConsole({
           // Attribute every edit this turn to the AI (with the model + the
           // prompt that triggered it) on the history board.
           dispatch: (cmd) =>
-            store.dispatch(cmd, { kind: 'ai', peerId: store.getLocalUser().peerId, name: 'AI', model }, text),
+            store.dispatch(cmd, { kind: 'ai', peerId: store.getLocalUser().peerId, name: 'AI', model: cfg.model }, text),
           document: () => store.getState().doc,
           evaluate: store.evaluate,
           caption: (o) => captionAsset(store, media, transcriber, o),
@@ -229,7 +236,7 @@ export function AgentConsole({
             runAgentScript(
               {
                 apply: (cmd) =>
-                  store.dispatch(cmd as never, { kind: 'ai', peerId: store.getLocalUser().peerId, name: 'AI', model }, text),
+                  store.dispatch(cmd as never, { kind: 'ai', peerId: store.getLocalUser().peerId, name: 'AI', model: cfg.model }, text),
                 tts: (o) => synthesizeNarration(store, media, tts, o),
                 observe: async (input) => {
                   const r = await observeForAgent(store, observer, input);
@@ -336,36 +343,24 @@ export function AgentConsole({
   // A dev proxy transport (streaming or non-streaming) substitutes for a key.
   const w = window as never as Record<string, unknown>;
   const hasTransport = typeof w.__velocutAgentTransport === 'function' || typeof w.__velocutAgentStream === 'function';
-  if (!apiKey && !hasTransport) {
+  if (settingsOpen || (!cfg.apiKey && !hasTransport)) {
     return (
       <div className="agent-console" ref={dock.panelRef} style={dock.panelStyle}>
         <div className="agent-head" onPointerDown={dock.onPanelDragStart}>
           <span className="drag-grip" title="Drag to move">⠿</span>
-          <span className="agent-title">AI Editing Assistant — Setup</span>
+          <span className="agent-title">AI Assistant — Provider Settings</span>
           <button onClick={() => setOpen(false)}>×</button>
         </div>
-        <div className="agent-setup">
-          <p>
-            Enter your Anthropic API key to edit with natural language. The key is stored only in this
-            browser (localStorage); requests go directly from the browser to Anthropic.
-          </p>
-          <input
-            type="password"
-            value={keyDraft}
-            placeholder="sk-ant-..."
-            onChange={(e) => setKeyDraft(e.target.value)}
-          />
-          <button
-            className="primary"
-            disabled={!keyDraft.trim()}
-            onClick={() => {
-              localStorage.setItem(KEY_STORAGE, keyDraft.trim());
-              setApiKey(keyDraft.trim());
-            }}
-          >
-            Save
-          </button>
-        </div>
+        <LlmSettings
+          cfg={cfg}
+          canClose={Boolean(cfg.apiKey) || hasTransport}
+          onSave={(next) => {
+            saveLlmConfig(next);
+            setCfg(next);
+            setSettingsOpen(false);
+          }}
+          onClose={() => setSettingsOpen(false)}
+        />
       </div>
     );
   }
@@ -376,23 +371,18 @@ export function AgentConsole({
         <span className="drag-grip" title="Drag to move">⠿</span>
         <span className="agent-title">AI Editing Assistant</span>
         <select
-          value={model}
+          value={cfg.model}
           onChange={(e) => {
-            setModel(e.target.value);
-            localStorage.setItem(MODEL_STORAGE, e.target.value);
+            const next = { ...cfg, model: e.target.value };
+            saveLlmConfig(next);
+            setCfg(next);
           }}
         >
-          {MODELS.map((m) => (
+          {modelOptions(cfg).map((m) => (
             <option key={m}>{m}</option>
           ))}
         </select>
-        <button
-          title="Clear API key"
-          onClick={() => {
-            localStorage.removeItem(KEY_STORAGE);
-            setApiKey('');
-          }}
-        >
+        <button title="Provider settings (endpoint, key, models)" onClick={() => setSettingsOpen(true)}>
           ⚙
         </button>
         <button onClick={() => setOpen(false)}>×</button>
@@ -478,6 +468,147 @@ export function AgentConsole({
         <div className="obs-lightbox" onClick={() => setLightbox(null)}>
           <img src={lightbox} alt="agent observation (enlarged)" />
         </div>
+      )}
+    </div>
+  );
+}
+
+/** Provider settings — the standard BYOK surface: endpoint (any Anthropic-
+ *  protocol-compatible relay), auth scheme, key, model management and a
+ *  one-round-trip connection test. */
+function LlmSettings({
+  cfg,
+  canClose,
+  onSave,
+  onClose,
+}: {
+  cfg: LlmConfig;
+  canClose: boolean;
+  onSave: (next: LlmConfig) => void;
+  onClose: () => void;
+}) {
+  const [baseUrl, setBaseUrl] = useState(cfg.baseUrl);
+  const [auth, setAuth] = useState<LlmConfig['auth']>(cfg.auth);
+  // The saved key is never echoed back into the field; typing replaces it.
+  const [keyDraft, setKeyDraft] = useState('');
+  const [model, setModel] = useState(cfg.model);
+  const [customModels, setCustomModels] = useState(cfg.customModels);
+  const [newModel, setNewModel] = useState('');
+  const [testState, setTestState] = useState<{ busy: boolean; message?: string; ok?: boolean }>({ busy: false });
+
+  const draft = (): LlmConfig => ({
+    baseUrl: baseUrl.trim().replace(/\/+$/, '') || OFFICIAL_BASE_URL,
+    apiKey: keyDraft.trim() || cfg.apiKey,
+    auth,
+    model: model.trim() || cfg.model,
+    customModels,
+  });
+  const valid = Boolean(draft().apiKey);
+
+  const addModel = () => {
+    const id = newModel.trim();
+    if (!id) return;
+    if (!customModels.includes(id)) setCustomModels([...customModels, id]);
+    setModel(id);
+    setNewModel('');
+  };
+
+  const options = [...BUILTIN_MODELS, ...customModels];
+  if (model && !options.includes(model)) options.push(model);
+
+  return (
+    <div className="agent-setup llm-settings">
+      <p>
+        Works with the official Anthropic API or any Anthropic-protocol-compatible relay (LiteLLM,
+        one-api, a corporate gateway). The key is stored only in this browser; requests go directly
+        from the browser to the endpoint below, which must allow cross-origin (CORS) requests.
+      </p>
+      <label className="llm-row">
+        <span>Base URL</span>
+        <input
+          type="url"
+          value={baseUrl}
+          placeholder={OFFICIAL_BASE_URL}
+          onChange={(e) => setBaseUrl(e.target.value)}
+        />
+      </label>
+      {import.meta.env.DEV && (
+        <button className="llm-devproxy" onClick={() => setBaseUrl(`${location.origin}/llm-proxy`)}>
+          Use local dev proxy (:3141 via Vite)
+        </button>
+      )}
+      <label className="llm-row">
+        <span>Auth</span>
+        <select value={auth} onChange={(e) => setAuth(e.target.value as LlmConfig['auth'])}>
+          <option value="x-api-key">x-api-key (Anthropic)</option>
+          <option value="bearer">Authorization: Bearer (gateways)</option>
+        </select>
+      </label>
+      <label className="llm-row">
+        <span>API key</span>
+        <input
+          type="password"
+          value={keyDraft}
+          placeholder={cfg.apiKey ? '•••••••• (saved — type to replace)' : 'sk-ant-...'}
+          onChange={(e) => setKeyDraft(e.target.value)}
+        />
+      </label>
+      <label className="llm-row">
+        <span>Model</span>
+        <select value={model} onChange={(e) => setModel(e.target.value)}>
+          {options.map((m) => (
+            <option key={m}>{m}</option>
+          ))}
+        </select>
+      </label>
+      <div className="llm-row">
+        <span>Add model</span>
+        <input
+          value={newModel}
+          placeholder="custom model id (as your relay names it)"
+          onChange={(e) => setNewModel(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && addModel()}
+        />
+        <button disabled={!newModel.trim()} onClick={addModel}>
+          +
+        </button>
+      </div>
+      {customModels.length > 0 && (
+        <div className="llm-custom-list">
+          {customModels.map((m) => (
+            <span key={m} className="llm-chip">
+              {m}
+              <button
+                title={`Remove ${m}`}
+                onClick={() => {
+                  setCustomModels(customModels.filter((x) => x !== m));
+                  if (model === m) setModel(BUILTIN_MODELS[0]);
+                }}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="llm-actions">
+        <button
+          disabled={!valid || testState.busy}
+          onClick={async () => {
+            setTestState({ busy: true });
+            const r = await testLlmConnection(draft());
+            setTestState({ busy: false, ...r });
+          }}
+        >
+          {testState.busy ? 'Testing…' : 'Test connection'}
+        </button>
+        <button className="primary" disabled={!valid} onClick={() => onSave(draft())}>
+          Save
+        </button>
+        {canClose && <button onClick={onClose}>Cancel</button>}
+      </div>
+      {testState.message && (
+        <div className={`llm-test ${testState.ok ? 'llm-test-ok' : 'llm-test-fail'}`}>{testState.message}</div>
       )}
     </div>
   );
