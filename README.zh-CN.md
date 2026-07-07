@@ -9,6 +9,8 @@
 
 Rust + WASM + WebGPU 的 Web 视频剪辑引擎与编辑器。**协议先行、AI-native**:人通过 UI 剪辑、LLM 直接下发 JSON 命令剪辑,两者走同一条命令链路,映射到同一个 UI。
 
+![Velocut 编辑器——多轨时间线(波形/关键帧/转场/变速)+ WebGPU 合成预览](docs/media/editor.png)
+
 ## 环境要求
 
 - **Node ≥ 22.6**(`npm test` 依赖 `--experimental-strip-types`;仓库根有 `.nvmrc`)
@@ -44,6 +46,8 @@ cd web && npm run dev   # badge 变为 "engine: Rust/WASM"
 Velocut 的第一"用户"是 AI Agent:点右下角「⌘ Agent」气泡,粘贴你自己的
 Anthropic API key(`sk-ant-...`)即可用自然语言剪辑——"把静音段都剪掉""给
 开头加个标题"。
+
+![Agent 读取工程后用一个原子 batch 落好风格匹配的片尾字卡——走的是与 UI 完全相同的命令协议](docs/media/agent.png)
 
 - **Key 只存在你本机浏览器的 localStorage,请求直连 Anthropic,不经任何中间服务器**(信任模型详见 [SECURITY.md](SECURITY.md))
 - Agent 能看(抽帧/拼图观察)、能听(响度与静音分析)、能切(镜头边界检测),所有编辑走与 UI 相同的命令协议,每一步都在聊天卡片和历史树里可见、可点击跳转、可回滚
