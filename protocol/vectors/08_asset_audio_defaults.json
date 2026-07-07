@@ -1,0 +1,31 @@
+{
+  "name": "hasAudio defaults are identical across the command path and the document-load path: missing = (kind != image)",
+  "steps": [
+    {"load": {
+      "id": "doc_1",
+      "name": "t",
+      "width": 1920,
+      "height": 1080,
+      "fpsNum": 30,
+      "fpsDen": 1,
+      "nextId": 0,
+      "assets": [
+        {"id": "a_img", "kind": "image", "src": "mem://i", "name": "img"},
+        {"id": "a_vid", "kind": "video", "src": "mem://v", "name": "vid", "durationUs": 5000000},
+        {"id": "a_aud", "kind": "audio", "src": "mem://a", "name": "aud", "durationUs": 5000000, "hasAudio": false}
+      ],
+      "tracks": []
+    }},
+    {"apply": {"type":"addAsset","kind":"image","src":"mem://i2","name":"img2"}},
+    {"apply": {"type":"addAsset","kind":"video","src":"mem://v2","name":"vid2","durationUs":1000000}}
+  ],
+  "expect": {
+    "assets": [
+      {"id": "a_img", "hasAudio": false},
+      {"id": "a_vid", "hasAudio": true},
+      {"id": "a_aud", "hasAudio": false},
+      {"id": "asset_0", "hasAudio": false},
+      {"id": "asset_1", "hasAudio": true}
+    ]
+  }
+}

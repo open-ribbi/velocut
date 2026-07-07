@@ -141,7 +141,22 @@ impl Engine {
     }
 
     pub fn load_json(&mut self, doc_json: &str) -> String {
-        match serde_json::from_str::<Document>(doc_json) {
+        // Normalize before deserializing: legacy documents may omit
+        // asset.hasAudio — fill it with the same kind-aware default the
+        // addAsset command applies, so both engines resolve identical values.
+        let mut value: serde_json::Value = match serde_json::from_str(doc_json) {
+            Ok(v) => v,
+            Err(e) => return Envelope::err(CmdError::new("parse", e.to_string())),
+        };
+        if let Some(assets) = value.get_mut("assets").and_then(|a| a.as_array_mut()) {
+            for asset in assets {
+                if asset.get("hasAudio").map_or(true, |v| v.is_null()) {
+                    let is_image = asset.get("kind").and_then(|k| k.as_str()) == Some("image");
+                    asset["hasAudio"] = serde_json::Value::Bool(!is_image);
+                }
+            }
+        }
+        match serde_json::from_value::<Document>(value) {
             Ok(doc) => {
                 self.doc = doc;
                 self.undo.clear();

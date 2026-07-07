@@ -1,0 +1,34 @@
+{
+  "name": "boundary rejections leave the document untouched: trim/split out of range, invalid speed/volume/keyframe/transition, setText on non-text, empty and nested batch",
+  "steps": [
+    {"apply": {"type":"addAsset","id":"a1","kind":"video","src":"mem://a1","name":"A","durationUs":10000000}},
+    {"apply": {"type":"addTrack","kind":"video"}},
+    {"apply": {"type":"addClip","trackId":"track_1","assetId":"a1","startUs":0,"durationUs":4000000,"sourceInUs":0}},
+
+    {"applyErr": {"cmd": {"type":"trimClip","clipId":"clip_2","edge":"in","toUs":4000000}, "code": "invalidArg"}},
+    {"applyErr": {"cmd": {"type":"trimClip","clipId":"clip_2","edge":"out","toUs":0}, "code": "invalidArg"}},
+    {"applyErr": {"cmd": {"type":"trimClip","clipId":"clip_2","edge":"out","toUs":12000000}, "code": "outOfRange"}},
+
+    {"applyErr": {"cmd": {"type":"splitClip","clipId":"clip_2","atUs":0}, "code": "invalidArg"}},
+    {"applyErr": {"cmd": {"type":"splitClip","clipId":"clip_2","atUs":4000000}, "code": "invalidArg"}},
+
+    {"applyErr": {"cmd": {"type":"setClipSpeed","clipId":"clip_2","speed":0}, "code": "invalidArg"}},
+    {"applyErr": {"cmd": {"type":"setClipSpeed","clipId":"clip_2","speed":-1.5}, "code": "invalidArg"}},
+
+    {"applyErr": {"cmd": {"type":"setKeyframe","clipId":"clip_2","property":"opacity","keyframe":{"timeUs":5000000,"value":1,"easing":{"kind":"linear"}}}, "code": "outOfRange"}},
+    {"applyErr": {"cmd": {"type":"setKeyframe","clipId":"clip_2","property":"opacity","keyframe":{"timeUs":-1,"value":1,"easing":{"kind":"linear"}}}, "code": "outOfRange"}},
+
+    {"applyErr": {"cmd": {"type":"setClipVolume","clipId":"clip_2","volume":5}, "code": "invalidArg"}},
+    {"applyErr": {"cmd": {"type":"setTransition","clipId":"clip_2","transition":{"kind":"dissolve","durationUs":0}}, "code": "invalidArg"}},
+    {"applyErr": {"cmd": {"type":"setText","clipId":"clip_2","text":{"content":"x"}}, "code": "invalidArg"}},
+
+    {"apply": {"type":"batch","commands":[]}},
+    {"apply": {"type":"batch","commands":[{"type":"batch","commands":[{"type":"addTrack","kind":"audio"}]}]}}
+  ],
+  "expect": {
+    "clips": [
+      {"id":"clip_2","trackId":"track_1","startUs":0,"durationUs":4000000,"sourceInUs":0,"speed":1.0}
+    ],
+    "clipCounts": {"track_1": 1, "track_3": 0}
+  }
+}

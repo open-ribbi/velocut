@@ -9,10 +9,12 @@
 
 ## 约定
 
-- 所有时间为 **整数微秒**(`TimeUs`),1 秒 = 1_000_000
+- **协议版本:1**(`PROTOCOL_VERSION`,导出于 `@velocut/protocol`)。仅在命令集或错误契约发生破坏性变更时递增;持久化文档另有独立的 `formatVersion`(见 `migrate.ts`)
+- 所有时间为 **整数微秒**(`TimeUs`),1 秒 = 1_000_000;边界校验(zod)拒绝小数——两引擎按整数寻址时间,小数会产生不同的取整结果
 - JSON 字段一律 camelCase
 - id 由引擎铸造(`clip_N` / `track_N` / `asset_N`),命令返回的 `events` 里带回新 id
 - 同一视频/文字轨上的 clip **不允许重叠**(首尾相接允许)
+- `asset.hasAudio` 缺省时按 `kind != image` 填充——命令路径与文档加载路径同一规则(向量 08 钉死)
 
 ## 信封(每条命令的返回)
 
@@ -35,7 +37,7 @@
 | `addClip` | trackId, assetId, startUs, durationUs?, sourceInUs? | 素材上轨 |
 | `addTextClip` | trackId, startUs, durationUs, text | 文字 clip |
 | `removeClip` | clipId | 删除 clip |
-| `moveClip` | clipId, startUs, trackId? | 移动(可跨同类轨) |
+| `moveClip` | clipId, startUs, trackId? | 移动(仅限**同 kind** 轨间,跨类拒绝 `invalidArg`) |
 | `trimClip` | clipId, edge: in\|out, toUs | 裁剪;in 边同步推进 sourceIn |
 | `splitClip` | clipId, atUs(时间轴坐标) | 一分为二;关键帧按分割点重定基 |
 | `setClipSpeed` | clipId, speed | 变速;保持源素材区间,时长重算 |

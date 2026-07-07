@@ -213,6 +213,9 @@ function applyCommand(doc: VDocument, cmd: Command): EngineEvent[] {
         destTi = doc.tracks.findIndex((t) => t.id === cmd.trackId);
         if (destTi < 0) fail(notFound('track', cmd.trackId));
       }
+      if (destTi !== ti && doc.tracks[destTi].kind !== doc.tracks[ti].kind) {
+        fail(err('invalidArg', 'cannot move a clip across track kinds'));
+      }
       if (doc.tracks[ti].locked || doc.tracks[destTi].locked) {
         fail(err('locked', `track '${doc.tracks[destTi].id}' is locked`));
       }
@@ -671,6 +674,12 @@ export class TsEngine {
 
   load(doc: VDocument): Envelope {
     this.doc = clone(doc);
+    // Normalize legacy documents that omit asset.hasAudio — fill it with the
+    // same kind-aware default the addAsset command applies, mirroring the
+    // Rust engine's load_json, so both engines resolve identical values.
+    for (const asset of this.doc.assets) {
+      asset.hasAudio = asset.hasAudio ?? asset.kind !== 'image';
+    }
     this.undoStack = [];
     this.redoStack = [];
     this.rev += 1;

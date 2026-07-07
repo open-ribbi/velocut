@@ -44,6 +44,14 @@ fn run_vector(path: &PathBuf) {
                 "[{}] step {}: wrong error code: {}",
                 name, i, resp
             );
+        } else if let Some(doc) = step.get("load") {
+            let resp: Value =
+                serde_json::from_str(&engine.load_json(&doc.to_string())).unwrap();
+            assert!(
+                resp["ok"].as_bool() == Some(true),
+                "[{}] step {}: load failed: {}",
+                name, i, resp
+            );
         } else if step.get("undo").is_some() {
             engine.undo().expect("nothing to undo");
         } else if step.get("redo").is_some() {
@@ -55,6 +63,21 @@ fn run_vector(path: &PathBuf) {
 
     let doc: Value = serde_json::from_str(&engine.document_json()).unwrap();
     let expect = &v["expect"];
+
+    if let Some(assets) = expect.get("assets").and_then(|a| a.as_array()) {
+        for want in assets {
+            let id = want["id"].as_str().unwrap();
+            let asset = doc["assets"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|a| a["id"].as_str() == Some(id))
+                .unwrap_or_else(|| panic!("[{}] asset {} not found", name, id));
+            if let Some(w) = want.get("hasAudio") {
+                assert_eq!(&asset["hasAudio"], w, "[{}] {} hasAudio", name, id);
+            }
+        }
+    }
 
     if let Some(clips) = expect.get("clips").and_then(|c| c.as_array()) {
         for want in clips {

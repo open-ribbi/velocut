@@ -373,6 +373,9 @@ pub fn apply(doc: &mut Document, cmd: &EditCommand) -> CmdResult {
                     .ok_or_else(|| CmdError::not_found("track", tid))?,
                 None => ti,
             };
+            if dest_ti != ti && doc.tracks[dest_ti].kind != doc.tracks[ti].kind {
+                return Err(CmdError::invalid("cannot move a clip across track kinds"));
+            }
             if doc.tracks[ti].locked || doc.tracks[dest_ti].locked {
                 return Err(CmdError::locked(&doc.tracks[dest_ti].id.clone()));
             }

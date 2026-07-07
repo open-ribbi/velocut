@@ -1,0 +1,20 @@
+{
+  "name": "moveClip: cross-kind track moves are rejected; same-kind moves relocate the clip",
+  "steps": [
+    {"apply": {"type":"addAsset","id":"a1","kind":"video","src":"mem://a1","name":"A","durationUs":10000000}},
+    {"apply": {"type":"addTrack","kind":"video"}},
+    {"apply": {"type":"addTrack","kind":"audio"}},
+    {"apply": {"type":"addTrack","kind":"video"}},
+    {"apply": {"type":"addClip","trackId":"track_1","assetId":"a1","startUs":0,"durationUs":3000000,"sourceInUs":0}},
+
+    {"applyErr": {"cmd": {"type":"moveClip","clipId":"clip_4","trackId":"track_2","startUs":0}, "code": "invalidArg"}},
+    {"applyErr": {"cmd": {"type":"moveClip","clipId":"clip_4","startUs":-1}, "code": "invalidArg"}},
+    {"apply": {"type":"moveClip","clipId":"clip_4","trackId":"track_3","startUs":1000000}}
+  ],
+  "expect": {
+    "clips": [
+      {"id":"clip_4","trackId":"track_3","startUs":1000000,"durationUs":3000000,"sourceInUs":0}
+    ],
+    "clipCounts": {"track_1": 0, "track_2": 0, "track_3": 1}
+  }
+}

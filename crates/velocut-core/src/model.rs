@@ -121,12 +121,12 @@ pub struct Asset {
     pub width: u32,
     #[serde(default)]
     pub height: u32,
-    #[serde(default = "default_true")]
+    /// Always explicit in persisted documents. Loaders fill a missing value as
+    /// `kind != image` (see Engine::load_json) — the same default the addAsset
+    /// command applies — so both engines resolve identical values. Keeping the
+    /// field required makes any other deserialization path loud instead of
+    /// silently diverging.
     pub has_audio: bool,
-}
-
-fn default_true() -> bool {
-    true
 }
 
 // ---------------------------------------------------------------------------

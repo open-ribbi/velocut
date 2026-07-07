@@ -16,6 +16,7 @@ const vectorsDir = join(here, '../../../../protocol/vectors');
 type Step =
   | { apply: Command }
   | { applyErr: { cmd: Command; code: string } }
+  | { load: unknown }
   | { undo: true }
   | { redo: true };
 
@@ -23,6 +24,7 @@ interface Vector {
   name: string;
   steps: Step[];
   expect: {
+    assets?: Array<{ id: string; hasAudio?: boolean }>;
     clips?: Array<{
       id: string;
       trackId?: string;
@@ -71,6 +73,9 @@ for (const file of files) {
         if (!resp.ok) {
           assert.equal(resp.error.code, step.applyErr.code, `step ${i}: wrong error code`);
         }
+      } else if ('load' in step) {
+        const resp = engine.load(step.load as VDocument);
+        assert.ok(resp.ok, `step ${i}: load failed`);
       } else if ('undo' in step) {
         const resp = engine.undo();
         assert.ok(resp.ok, `step ${i}: nothing to undo`);
@@ -83,6 +88,13 @@ for (const file of files) {
     });
 
     const doc = engine.document();
+
+    for (const want of vec.expect.assets ?? []) {
+      const asset = doc.assets.find((a) => a.id === want.id);
+      assert.ok(asset, `asset ${want.id} not found`);
+      if (want.hasAudio !== undefined)
+        assert.equal(asset!.hasAudio, want.hasAudio, `${want.id} hasAudio`);
+    }
 
     for (const want of vec.expect.clips ?? []) {
       const found = findClip(doc, want.id);

@@ -12,7 +12,17 @@
 
 import { z } from 'zod';
 
+/** Command-protocol version. Bump only on a breaking change to the command
+ *  set or error contract; consumers can compare against it to detect a
+ *  mismatched peer. (Persisted-document versioning is separate: migrate.ts.) */
+export const PROTOCOL_VERSION = 1;
+
 // ------------------------------------------------------------- value types
+
+/** Timeline/source times are integer microseconds — both engines address time
+ *  as i64/integer; a fractional value would round differently between them,
+ *  so the boundary rejects it outright. */
+const TimeUsField = z.number().int();
 
 export const AssetKind = z.enum(['video', 'audio', 'image']);
 export type AssetKind = z.infer<typeof AssetKind>;
@@ -44,7 +54,7 @@ export const Transform = z.object({
 export type Transform = z.infer<typeof Transform>;
 
 export const Keyframe = z.object({
-  timeUs: z.number(),
+  timeUs: TimeUsField,
   value: z.number(),
   easing: Easing,
 });
@@ -82,7 +92,7 @@ export type TextPayload = z.infer<typeof TextPayload>;
 
 export const Transition = z.object({
   kind: z.string(),
-  durationUs: z.number(),
+  durationUs: TimeUsField,
   /** Optional custom WGSL transition body (AI-authored): from(uv)/to(uv) =
    *  outgoing/incoming straight-alpha color, progress 0→1; return straight RGBA.
    *  Overrides the built-in `kind` shader. */
@@ -100,9 +110,9 @@ const cAddAsset = z.object({
   kind: AssetKind,
   src: z.string(),
   name: z.string(),
-  durationUs: z.number().optional(),
-  width: z.number().optional(),
-  height: z.number().optional(),
+  durationUs: TimeUsField.optional(),
+  width: z.number().int().optional(),
+  height: z.number().int().optional(),
   hasAudio: z.boolean().nullish(),
   id: z.string().nullish(),
 });
@@ -118,15 +128,15 @@ const cAddClip = z.object({
   type: z.literal('addClip'),
   trackId: z.string(),
   assetId: z.string(),
-  startUs: z.number(),
-  durationUs: z.number().nullish(),
-  sourceInUs: z.number().optional(),
+  startUs: TimeUsField,
+  durationUs: TimeUsField.nullish(),
+  sourceInUs: TimeUsField.optional(),
 });
 const cAddTextClip = z.object({
   type: z.literal('addTextClip'),
   trackId: z.string(),
-  startUs: z.number(),
-  durationUs: z.number(),
+  startUs: TimeUsField,
+  durationUs: TimeUsField,
   text: TextPayload,
 });
 const cRemoveClip = z.object({ type: z.literal('removeClip'), clipId: z.string() });
@@ -134,15 +144,15 @@ const cMoveClip = z.object({
   type: z.literal('moveClip'),
   clipId: z.string(),
   trackId: z.string().nullish(),
-  startUs: z.number(),
+  startUs: TimeUsField,
 });
 const cTrimClip = z.object({
   type: z.literal('trimClip'),
   clipId: z.string(),
   edge: TrimEdge,
-  toUs: z.number(),
+  toUs: TimeUsField,
 });
-const cSplitClip = z.object({ type: z.literal('splitClip'), clipId: z.string(), atUs: z.number() });
+const cSplitClip = z.object({ type: z.literal('splitClip'), clipId: z.string(), atUs: TimeUsField });
 const cSetClipSpeed = z.object({ type: z.literal('setClipSpeed'), clipId: z.string(), speed: z.number() });
 const cSetTransform = z.object({ type: z.literal('setTransform'), clipId: z.string(), transform: Transform });
 const cSetClipVolume = z.object({ type: z.literal('setClipVolume'), clipId: z.string(), volume: z.number() });
@@ -162,7 +172,7 @@ const cRemoveKeyframe = z.object({
   type: z.literal('removeKeyframe'),
   clipId: z.string(),
   property: Property,
-  timeUs: z.number(),
+  timeUs: TimeUsField,
 });
 const cAddEffect = z.object({
   type: z.literal('addEffect'),
