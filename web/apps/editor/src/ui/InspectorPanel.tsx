@@ -26,8 +26,8 @@ export function InspectorPanel({
   if (!clip) {
     return (
       <div className="inspector-panel" style={width ? { width } : undefined}>
-        <div className="panel-title">属性</div>
-        <div className="empty-hint">选中一个 clip 查看属性</div>
+        <div className="panel-title">Properties</div>
+        <div className="empty-hint">Select a clip to view its properties</div>
       </div>
     );
   }
@@ -65,7 +65,7 @@ export function InspectorPanel({
       />
       <button
         className="kf-btn"
-        title="在播放头处打关键帧"
+        title="Add keyframe at playhead"
         onClick={() => addKeyframeHere(property, value)}
       >
         ◆
@@ -75,21 +75,21 @@ export function InspectorPanel({
 
   return (
     <div className="inspector-panel" style={width ? { width } : undefined}>
-      <div className="panel-title">属性 · {clip.id}</div>
+      <div className="panel-title">Properties · {clip.id}</div>
 
       <div className="prop-group">
-        <div className="group-title">变换</div>
+        <div className="group-title">Transform</div>
         {row('X', 'x', clip.transform.x)}
         {row('Y', 'y', clip.transform.y)}
-        {row('缩放X', 'scaleX', clip.transform.scaleX, 0.05)}
-        {row('缩放Y', 'scaleY', clip.transform.scaleY, 0.05)}
-        {row('旋转', 'rotation', clip.transform.rotation)}
-        {row('透明度', 'opacity', clip.transform.opacity, 0.05)}
+        {row('Scale X', 'scaleX', clip.transform.scaleX, 0.05)}
+        {row('Scale Y', 'scaleY', clip.transform.scaleY, 0.05)}
+        {row('Rotation', 'rotation', clip.transform.rotation)}
+        {row('Opacity', 'opacity', clip.transform.opacity, 0.05)}
       </div>
 
       {clip.text && (
         <div className="prop-group">
-          <div className="group-title">文字</div>
+          <div className="group-title">Text</div>
           <textarea
             className="text-edit"
             value={clip.text.content}
@@ -102,7 +102,7 @@ export function InspectorPanel({
             }
           />
           <div className="prop-row">
-            <span className="prop-label">字体</span>
+            <span className="prop-label">Font</span>
             <select
               className="font-select"
               value={clip.text.fontFamily ?? fonts.options()[0].family}
@@ -117,13 +117,13 @@ export function InspectorPanel({
               {fonts.options().map((f) => (
                 <option key={f.family} value={f.family}>
                   {f.label}
-                  {f.custom ? ' (自定义)' : ''}
+                  {f.custom ? ' (custom)' : ''}
                 </option>
               ))}
             </select>
           </div>
           <button className="font-import" onClick={() => fontInputRef.current?.click()}>
-            + 导入字体文件
+            + Import Font File
           </button>
           <input
             ref={fontInputRef}
@@ -139,7 +139,7 @@ export function InspectorPanel({
             }}
           />
           <div className="prop-row">
-            <span className="prop-label">字号</span>
+            <span className="prop-label">Font Size</span>
             <input
               type="number"
               value={clip.text.fontSize ?? 64}
@@ -153,7 +153,7 @@ export function InspectorPanel({
             />
           </div>
           <div className="prop-row">
-            <span className="prop-label">颜色</span>
+            <span className="prop-label">Color</span>
             <input
               type="color"
               value={clip.text.color ?? '#ffffff'}
@@ -161,11 +161,11 @@ export function InspectorPanel({
             />
           </div>
           <div className="prop-row">
-            <span className="prop-label">样式</span>
+            <span className="prop-label">Style</span>
             <button
               className="style-btn"
               style={{ fontWeight: 700, opacity: clip.text.bold ? 1 : 0.5 }}
-              title="加粗"
+              title="Bold"
               onClick={() => patchText({ bold: !clip.text!.bold })}
             >
               B
@@ -173,7 +173,7 @@ export function InspectorPanel({
             <button
               className="style-btn"
               style={{ fontStyle: 'italic', opacity: clip.text.italic ? 1 : 0.5 }}
-              title="斜体"
+              title="Italic"
               onClick={() => patchText({ italic: !clip.text!.italic })}
             >
               I
@@ -182,13 +182,13 @@ export function InspectorPanel({
               value={clip.text.align ?? 'center'}
               onChange={(e) => patchText({ align: e.target.value })}
             >
-              <option value="left">左对齐</option>
-              <option value="center">居中</option>
-              <option value="right">右对齐</option>
+              <option value="left">Align Left</option>
+              <option value="center">Center</option>
+              <option value="right">Align Right</option>
             </select>
           </div>
           <div className="prop-row">
-            <span className="prop-label">描边</span>
+            <span className="prop-label">Stroke</span>
             <input
               type="color"
               value={clip.text.strokeColor ?? '#000000'}
@@ -199,16 +199,16 @@ export function InspectorPanel({
             <input
               type="number"
               min={0}
-              title="描边宽度(像素)"
+              title="Stroke width (px)"
               value={clip.text.strokeWidth ?? 0}
               onChange={(e) => patchText({ strokeWidth: Number(e.target.value) })}
             />
-            <button className="kf-btn" title="清除描边" onClick={() => patchText({ strokeColor: null, strokeWidth: null })}>
+            <button className="kf-btn" title="Clear stroke" onClick={() => patchText({ strokeColor: null, strokeWidth: null })}>
               ×
             </button>
           </div>
           <div className="prop-row">
-            <span className="prop-label">阴影</span>
+            <span className="prop-label">Shadow</span>
             <input
               type="color"
               value={clip.text.shadowColor ?? '#000000'}
@@ -224,16 +224,16 @@ export function InspectorPanel({
             <input
               type="number"
               min={0}
-              title="模糊半径(像素)"
+              title="Blur radius (px)"
               value={clip.text.shadowBlur ?? 0}
               onChange={(e) => patchText({ shadowBlur: Number(e.target.value) })}
             />
-            <button className="kf-btn" title="清除阴影" onClick={() => patchText({ shadowColor: null })}>
+            <button className="kf-btn" title="Clear shadow" onClick={() => patchText({ shadowColor: null })}>
               ×
             </button>
           </div>
           <div className="prop-row">
-            <span className="prop-label">背景</span>
+            <span className="prop-label">Background</span>
             <input
               type="color"
               value={clip.text.backgroundColor ?? '#000000'}
@@ -246,11 +246,11 @@ export function InspectorPanel({
               min={0}
               max={1}
               step={0.05}
-              title="背景不透明度"
+              title="Background opacity"
               value={clip.text.backgroundOpacity ?? 1}
               onChange={(e) => patchText({ backgroundOpacity: Number(e.target.value) })}
             />
-            <button className="kf-btn" title="清除背景" onClick={() => patchText({ backgroundColor: null })}>
+            <button className="kf-btn" title="Clear background" onClick={() => patchText({ backgroundColor: null })}>
               ×
             </button>
           </div>
@@ -258,7 +258,7 @@ export function InspectorPanel({
       )}
 
       <div className="prop-group">
-        <div className="group-title">特效</div>
+        <div className="group-title">Effects</div>
         {clip.effects.map((fx) => {
           const schema = EFFECT_REGISTRY[fx.effect];
           return (
@@ -316,9 +316,9 @@ export function InspectorPanel({
       </div>
 
       <div className="prop-group">
-        <div className="group-title">转场（与前一片段之间）</div>
+        <div className="group-title">Transition (from previous clip)</div>
         <div className="prop-row">
-          <span className="prop-label">类型</span>
+          <span className="prop-label">Type</span>
           <select
             value={clip.transition?.kind ?? ''}
             onChange={(e) =>
@@ -331,7 +331,7 @@ export function InspectorPanel({
               })
             }
           >
-            <option value="">无</option>
+            <option value="">None</option>
             {TRANSITIONS.map((t) => (
               <option key={t.kind} value={t.kind}>
                 {t.label}
@@ -341,7 +341,7 @@ export function InspectorPanel({
         </div>
         {clip.transition && (
           <div className="prop-row">
-            <span className="prop-label">时长(秒)</span>
+            <span className="prop-label">Duration (s)</span>
             <input
               type="number"
               step={0.1}
@@ -363,9 +363,9 @@ export function InspectorPanel({
       </div>
 
       <div className="prop-group">
-        <div className="group-title">关键帧</div>
+        <div className="group-title">Keyframes</div>
         {Object.entries(clip.keyframes).length === 0 && (
-          <div className="empty-hint">点属性旁的 ◆ 在播放头处打关键帧</div>
+          <div className="empty-hint">Click ◆ next to a property to add a keyframe at the playhead</div>
         )}
         {Object.entries(clip.keyframes).map(([prop, kfs]) => (
           <div key={prop} className="kf-list">
@@ -374,7 +374,7 @@ export function InspectorPanel({
               <span
                 key={k.timeUs}
                 className="kf-chip"
-                title="点击删除"
+                title="Click to delete"
                 onClick={() =>
                   store.dispatch({
                     type: 'removeKeyframe',

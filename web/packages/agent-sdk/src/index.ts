@@ -166,13 +166,13 @@ const TOOLS: Anthropic.Tool[] = [
   {
     name: 'velocut_apply',
     description:
-      '对文档执行一条剪辑命令(或 type:"batch" 的原子批量)。返回引擎信封:成功时含 revision 和 events(新铸造的 id 在这里),失败时含错误码与原因。',
+      'Apply one editing command to the document (or an atomic batch via type:"batch"). Returns the engine envelope: on success it carries revision and events (freshly minted ids are in there); on failure, an error code and reason.',
     input_schema: {
       type: 'object',
       properties: {
         command: {
           type: 'object',
-          description: 'Velocut 协议命令 JSON,如 {"type":"splitClip","clipId":"clip_1","atUs":1500000}',
+          description: 'Velocut protocol command JSON, e.g. {"type":"splitClip","clipId":"clip_1","atUs":1500000}',
         },
       },
       required: ['command'],
@@ -180,65 +180,65 @@ const TOOLS: Anthropic.Tool[] = [
   },
   {
     name: 'velocut_get_document',
-    description: '读取完整工程文档(轨道、clip、素材、nextId、时长)。动手前先看一眼。',
+    description: 'Read the full project document (tracks, clips, assets, nextId, duration). Take a look before making changes.',
     input_schema: { type: 'object', properties: {} },
   },
   {
     name: 'velocut_evaluate',
-    description: '求值某一时刻的合成清单 FrameGraph(分层画面 + 音频切片),用于理解该时刻画面上有什么。',
+    description: 'Evaluate the composite manifest FrameGraph (layered picture + audio slices) at a given time, to understand what is on screen at that moment.',
     input_schema: {
       type: 'object',
-      properties: { timeUs: { type: 'number', description: '时间(微秒)' } },
+      properties: { timeUs: { type: 'number', description: 'Time in microseconds' } },
       required: ['timeUs'],
     },
   },
   {
     name: 'velocut_observe',
     description:
-      '看见并测量画面(render-and-see):返回真实渲染的合成帧图像 + 数值读数(亮度/对比/色温/锐度/鲜艳度、音频响度)。这是你的眼睛和耳朵——动手前先看,改完再看,凭实际画面决策,而不是只读结构。\n' +
-      'mode:"frame" 看某一刻(返回 1 张图+数值);"contact" 缩略图网格(默认每个视频片段一格的分镜,或对 source.assetId 在整段时长上抽样——用于把长素材的场景映射成时间轴);"scan" 只返回数值时间线(逐窗的响度/亮度/疑似镜头切换分),无图,用于粗略找静音间隙、最响高光、镜头切点;"audio" 对 source.assetId 的原始音频在 [from,to] 区间做**细粒度**分析(~21ms),返回精确的静音**段** {startUs,endUs}(干净切点/对白缝,在段中点切不切断台词)和能量**峰/onset**(卡节拍/找高光起点),无图——先用 scan 粗定位、再用 audio 在窗口内精修切点。\n' +
-      '"shots" 对视频 asset(source 传 {assetId} 或 {clipId},省略=首个视频)做整片**镜头切分**:返回镜头边界列表(每个 {index,startUs,endUs,keyUs},均为源时间)+ 帧差异曲线,无图。用于**按镜头推理**——把剪辑/插入对齐到真实切点(别切在镜头中间)、按镜头时长控节奏(对长镜头提速或裁剪)、定位「某个镜头」。比 scan 的粗「镜头切换分」精确得多;首次是一次前向解码(秒级)、结果按 asset 缓存,可反复引用。\n' +
-      'source 省略=看用户所见的合成画面;{clipId} 单独看某片段;{assetId} 看素材原始内容(忽略时间轴)。\n' +
-      'metricsOnly:true 只要数值不要图(便宜,用于"调一个参数→读一个数→再调"的优化回路)。先用 contact/scan 纵览,再用 frame 细看;能用数值判断就别出图。',
+      'See and measure the picture (render-and-see): returns actually rendered composite frame images + numeric readings (brightness/contrast/color temperature/sharpness/vibrance, audio loudness). This is your eyes and ears — look before you act, look again after you change, and decide from the actual picture instead of reading structure alone.\n' +
+      'mode:"frame" looks at one instant (returns 1 image + metrics); "contact" is a thumbnail grid (by default one cell per video clip as a storyboard, or sampled across the full duration of source.assetId — used to map a long asset\'s scenes onto a timeline); "scan" returns a metrics-only timeline (per-window loudness/brightness/likely shot-change score), no images, for roughly locating silence gaps, the loudest highlights, and shot cut points; "audio" runs a **fine-grained** (~21ms) analysis of source.assetId\'s raw audio over [from,to], returning precise silence **segments** {startUs,endUs} (clean cut points / dialogue gaps — cut at a segment midpoint so no line gets clipped) and energy **peaks/onsets** (beat matching / locating highlight starts), no images — use scan for coarse localization first, then audio to refine cut points within that window.\n' +
+      '"shots" performs whole-video **shot segmentation** on a video asset (pass {assetId} or {clipId} in source; omitted = first video): returns a list of shot boundaries (each {index,startUs,endUs,keyUs}, all in source time) + a frame-difference curve, no images. Use it to **reason shot by shot** — align cuts/inserts to real cut points (never cut mid-shot), pace by shot length (speed up or trim long shots), and locate "that particular shot". Far more precise than scan\'s coarse shot-change score; the first run is one forward decode (seconds), and results are cached per asset so you can reference them repeatedly.\n' +
+      'Omit source = look at the composite the user sees; {clipId} looks at one clip in isolation; {assetId} looks at the asset\'s raw content (ignoring the timeline).\n' +
+      'metricsOnly:true returns metrics without images (cheap; for the "tweak a parameter → read a number → tweak again" optimization loop). Survey with contact/scan first, then inspect closely with frame; when a number can decide, skip the image.',
     input_schema: {
       type: 'object',
       properties: {
-        mode: { type: 'string', enum: ['frame', 'contact', 'scan', 'audio', 'shots'], description: '观察模式,默认 frame' },
+        mode: { type: 'string', enum: ['frame', 'contact', 'scan', 'audio', 'shots'], description: 'Observation mode, default frame' },
         source: {
           type: 'object',
-          description: '看什么;省略=合成画面',
+          description: 'What to look at; omitted = the composite',
           properties: {
-            clipId: { type: 'string', description: '只看这个片段(合成里隔离出来)' },
-            assetId: { type: 'string', description: '看素材原始内容,at/from/to 为源时间' },
+            clipId: { type: 'string', description: 'Look at this clip only (isolated from the composite)' },
+            assetId: { type: 'string', description: "Look at the asset's raw content; at/from/to are source times" },
           },
         },
-        at: { type: 'number', description: 'frame:观察的时刻(微秒)。合成为时间轴时间,assetId 为源时间' },
-        from: { type: 'number', description: 'contact/scan 区间起点(微秒)' },
-        to: { type: 'number', description: 'contact/scan 区间终点(微秒)' },
-        count: { type: 'number', description: 'contact 抽样格数(≤24)/ scan 窗数(≤120)' },
-        resolution: { type: 'string', enum: ['thumb', 'preview', 'full'], description: '分辨率,默认 frame=preview、contact=thumb;full 仅在抠细节时用' },
+        at: { type: 'number', description: 'frame: the instant to observe (microseconds). Timeline time for the composite, source time with assetId' },
+        from: { type: 'number', description: 'Start of the contact/scan range (microseconds)' },
+        to: { type: 'number', description: 'End of the contact/scan range (microseconds)' },
+        count: { type: 'number', description: 'Number of contact sample cells (≤24) / scan windows (≤120)' },
+        resolution: { type: 'string', enum: ['thumb', 'preview', 'full'], description: 'Resolution; defaults: frame=preview, contact=thumb; use full only when scrutinizing fine detail' },
         region: {
           type: 'object',
-          description: 'frame:归一化裁剪 0~1,放大看局部(如盯人脸/字幕是否清晰)',
+          description: 'frame: normalized crop 0~1, zoom into a region (e.g. checking whether a face or a subtitle is sharp)',
           properties: { x: { type: 'number' }, y: { type: 'number' }, w: { type: 'number' }, h: { type: 'number' } },
         },
-        metricsOnly: { type: 'boolean', description: '只回数值不回图(优化回路)' },
+        metricsOnly: { type: 'boolean', description: 'Return metrics only, no images (optimization loop)' },
       },
     },
   },
   {
     name: 'velocut_tts',
     description:
-      '生成旁白配音:把一句解说文本合成语音,作为一条音频 clip 落到「旁白」轨。引擎知道这段音频的精确时长(返回 durationUs),所以音画同步是结构性的——你不需要手动对齐。\n' +
-      'atUs 省略时自动接在旁白轨末尾(逐句调用即可顺次排好)。language 按文本语言传 "chinese"/"english"。首次运行会下载语音模型(数十秒)。返回 clipId / durationUs / atUs。\n' +
-      '这是「创造」而非「裁剪」——做解说/速览视频时,先看素材(observe)+写文案,再逐句 velocut_tts 生成旁白,把镜头(裁剪原片的 clip)放到对应旁白时间,字幕用 addTextClip。',
+      'Generate narration voice-over: synthesize one line of narration text into speech and lay it down as an audio clip on the "Narration" track. The engine knows the exact duration of the audio (returns durationUs), so audio-visual sync is structural — you never need to align by hand.\n' +
+      'When atUs is omitted, the clip is appended at the end of the Narration track (call once per line and they line up in order). Pass language as "chinese"/"english" to match the text. The first run downloads the voice model (tens of seconds). Returns clipId / durationUs / atUs.\n' +
+      'This is "creation", not "trimming" — for a recap/commentary video, first study the footage (observe) and write the script, then generate narration line by line with velocut_tts, place the shots (clips trimmed from the original) at the matching narration times, and add subtitles with addTextClip.',
     input_schema: {
       type: 'object',
       properties: {
-        text: { type: 'string', description: '这一句旁白文本' },
-        atUs: { type: 'number', description: '放置起点(微秒);省略=接在旁白轨末尾' },
-        trackId: { type: 'string', description: '目标音频轨;省略=自动用/建「旁白」轨' },
-        language: { type: 'string', description: '文本语言:"chinese" / "english"' },
+        text: { type: 'string', description: 'The narration text for this line' },
+        atUs: { type: 'number', description: 'Placement start (microseconds); omitted = appended at the end of the Narration track' },
+        trackId: { type: 'string', description: 'Target audio track; omitted = automatically use/create the "Narration" track' },
+        language: { type: 'string', description: 'Text language: "chinese" / "english"' },
       },
       required: ['text'],
     },
@@ -246,17 +246,17 @@ const TOOLS: Anthropic.Tool[] = [
   {
     name: 'velocut_transcribe',
     description:
-      '自动语音转字幕:识别某素材里的语音,生成一条「字幕」文字轨(底部居中,逐句一个文字 clip,均为可再编辑的普通文字)。assetId 省略时自动选第一个有音频的素材。首次运行会下载语音模型,可能耗时数十秒。返回生成的轨道 id 与字幕条数。',
+      'Automatic speech-to-subtitles: transcribes the speech in an asset and generates a "Captions" text track (bottom-centered, one text clip per sentence, all normal re-editable text). When assetId is omitted, the first asset with audio is picked automatically. The first run downloads the speech model and may take tens of seconds. Returns the generated track id and the subtitle count.',
     input_schema: {
       type: 'object',
       properties: {
-        assetId: { type: 'string', description: '素材 id;省略则自动选第一个含音频的素材' },
-        fontSize: { type: 'number', description: '字号(像素),省略按画面高度自适应' },
-        color: { type: 'string', description: '文字颜色 #RRGGBB,默认白色' },
+        assetId: { type: 'string', description: 'Asset id; omitted = the first asset with audio is picked automatically' },
+        fontSize: { type: 'number', description: 'Font size (pixels); omitted = adapts to the frame height' },
+        color: { type: 'string', description: 'Text color #RRGGBB, default white' },
         language: {
           type: 'string',
           description:
-            "语音的语言,用于让识别输出对应语言(否则会自动检测,中文常被误转成英文)。中文音频传 'chinese',英文传 'english'。",
+            "Language of the speech, so recognition outputs that language (otherwise it auto-detects, and Chinese is often mis-transcribed as English). Pass 'chinese' for Chinese audio, 'english' for English.",
         },
       },
     },
@@ -264,35 +264,35 @@ const TOOLS: Anthropic.Tool[] = [
   {
     name: 'velocut_search',
     description:
-      '联网查证(grounded web search):给一个问题,返回一段带来源的答案 + sources 列表。用来在动手前核实事实——人物/角色名、剧情顺序、谁是谁、哪个是名场面、专有名词、上映/版本信息等——而不是凭训练记忆瞎写(尤其做解说/速览时,旁白讲错事实很致命)。\n' +
-      '做长剪短的规划阶段:observe 看懂画面 + velocut_search 核实剧情事实,两者结合再写文案。问题尽量具体(带作品名/版本/集数)。返回 {answer, sources}。',
+      'Grounded web search: given a question, returns a cited answer + a sources list. Use it to verify facts before acting — people/character names, plot order, who is who, which scene is the famous one, proper nouns, release/version info — instead of writing from training memory (especially for recap/commentary videos, where a narration getting a fact wrong is fatal).\n' +
+      'In the planning phase of a long-to-short cut: understand the footage with observe + verify plot facts with velocut_search, and only write the script after combining both. Make the question as specific as possible (include the title/version/episode). Returns {answer, sources}.',
     input_schema: {
       type: 'object',
-      properties: { query: { type: 'string', description: '要查证的问题,尽量具体(含作品名/版本/集数等限定词)' } },
+      properties: { query: { type: 'string', description: 'The question to verify; as specific as possible (include qualifiers like title/version/episode)' } },
       required: ['query'],
     },
   },
   {
     name: 'velocut_script',
     description:
-      '运行一段编辑程序(JavaScript)——在一次调用里批量完成多步剪辑,相当于「写个脚本跑一遍」。这是你做"几十个单元的批量任务"(如长剪短/混剪/批量改速/按节拍切)的主力:别用几十次单步工具调用,先用 velocut_get_document/velocut_observe 规划好,再用一段脚本一次铺完。\n' +
-      '脚本里可 await 调用全局 velocut:\n' +
-      '• velocut.apply(cmd) → 执行一条协议命令,返回引擎信封(成功含 revision 和 events;新铸造的 id 在 events 里)。\n' +
-      '• await velocut.tts({text, atUs?, trackId?, language}) → 生成旁白音频 clip,返回 {ok, clipId, durationUs, atUs}。逐句调用,用返回的 durationUs 决定对应镜头/字幕的时长。\n' +
-      '• await velocut.observe(input) → 看画面/读数值,返回 {ok, summary, data}(脚本里拿不到图,用 data 里的数值)。\n' +
-      '• await velocut.motionClip({spec, atUs?, trackId?, name?}) → 用一份「声明式 spec」生成一段「动态图形」clip(标题卡/下三分之一条/动态字幕/信息图),自动落在「图形」视频轨。spec 是纯 JSON(不是代码),会被持久化——刷新/导出后照样重现。\n' +
-      '  spec = {version:1, durationUs, fps?, width?, height?, background?(整帧填色), layers:[…]}。每个 layer 有可动画的变换:x,y,opacity(0..1),scale(1=100%),rotation(度),以及可选 in/out(秒,layer 的显示窗口)。任一变换值可以是常数,或一串关键帧 [{t(秒),v(值),ease?}](ease 用 GSAP 名:"none"/"power2.out"/"back.out"/"elastic.out"…,描述到达该帧那一段的缓动;第一帧前/最后帧后保持不变)。\n' +
-      '  layer 类型:①{type:"text", text, size?, weight?, color?, align?("left"/"center"/"right"), baseline?, maxWidth?(自动测量折行,支持中文), lineHeight?, stroke?, strokeWidth?, shadow?:{color,blur?,x?,y?}} ②{type:"rect", w, h, radius?, fill?, stroke?, lineWidth?} ③{type:"ellipse", w, h, fill?, stroke?, lineWidth?} ④{type:"image", src(CORS URL), w?, h?}。变换以 (x,y) 为原点做 translate→rotate→scale,layer 自身坐标相对该原点(text 从原点起绘、rect/ellipse 从原点向右下铺 w×h)。坐标系=输出分辨率(默认整帧 w×h,常从 velocut.document() 读 doc.width/height)。返回 {ok, assetId, clipId, trackId, frameCount}。\n' +
-      '  例:开场标题卡(淡入上移 0.5s、末尾淡出 0.4s):velocut.motionClip({atUs:0, spec:{version:1, durationUs:2_500_000, layers:[{type:"text", text:"全职猎人", size:96, weight:800, color:"#fff", align:"center", x:960, y:[{t:0,v:580},{t:0.5,v:540,ease:"power3.out"}], opacity:[{t:0,v:0},{t:0.5,v:1,ease:"power2.out"},{t:2.1,v:1},{t:2.5,v:0}], shadow:{color:"rgba(0,0,0,.6)",blur:24}}]}})。动态字幕跟旁白对齐:每句 tts 拿到 durationUs,就用同 atUs/durationUs 建一个 motionClip 字幕,入/出场用 opacity 关键帧。\n' +
-      '• velocut.evaluate(timeUs) → 求值某刻合成清单;velocut.document() → 读完整文档。\n' +
-      '支持循环/条件/用上一步返回值算下一步。典型(长剪短一次铺完):维护时间游标 T,for 每个单元 { const r = await velocut.tts({text, atUs:T, language:"chinese"}); velocut.apply(加镜头 startUs:T 时长 r.durationUs 源起点…); velocut.apply(加字幕条 同 T 同时长); T += r.durationUs; }。\n' +
-      'return 一个 JSON 值作为结果(如 {units, totalUs});脚本里的 console.log 会回给你;抛错会回错误信息+栈,修了重跑。命令字段名以 velocut_get_document 看到的文档结构和命令一览为准。',
+      'Run an editing program (JavaScript) — complete many editing steps in a single call, i.e. "write a script and run it once". This is your workhorse for batch tasks of dozens of units (long-to-short cuts, mashups, bulk speed changes, beat-synced cutting): instead of dozens of single-step tool calls, plan first with velocut_get_document/velocut_observe, then lay everything down with one script.\n' +
+      'Inside the script you can await the global velocut API:\n' +
+      '• velocut.apply(cmd) → execute one protocol command; returns the engine envelope (on success it carries revision and events; freshly minted ids are in events).\n' +
+      '• await velocut.tts({text, atUs?, trackId?, language}) → generate a narration audio clip; returns {ok, clipId, durationUs, atUs}. Call once per line and use the returned durationUs to size the matching shot/subtitle.\n' +
+      '• await velocut.observe(input) → look at the picture / read metrics; returns {ok, summary, data} (no images inside a script — use the numbers in data).\n' +
+      '• await velocut.motionClip({spec, atUs?, trackId?, name?}) → generate a motion-graphics clip (title card / lower third / animated caption / infographic) from a declarative spec; it lands automatically on the "Graphics" video track. The spec is pure JSON (not code) and is persisted — it reproduces identically after refresh/export.\n' +
+      '  spec = {version:1, durationUs, fps?, width?, height?, background? (full-frame fill color), layers:[…]}. Each layer has animatable transforms: x, y, opacity (0..1), scale (1 = 100%), rotation (degrees), plus optional in/out (seconds, the layer\'s visibility window). Any transform value can be a constant, or a list of keyframes [{t (seconds), v (value), ease?}] (ease takes GSAP names: "none"/"power2.out"/"back.out"/"elastic.out"…, describing the easing of the segment arriving at that keyframe; the value holds before the first and after the last keyframe).\n' +
+      '  Layer types: ①{type:"text", text, size?, weight?, color?, align? ("left"/"center"/"right"), baseline?, maxWidth? (auto-measured line wrapping, CJK supported), lineHeight?, stroke?, strokeWidth?, shadow?:{color,blur?,x?,y?}} ②{type:"rect", w, h, radius?, fill?, stroke?, lineWidth?} ③{type:"ellipse", w, h, fill?, stroke?, lineWidth?} ④{type:"image", src (CORS URL), w?, h?}. Transforms apply translate→rotate→scale around the (x,y) origin; the layer\'s own coordinates are relative to that origin (text draws from the origin; rect/ellipse extend w×h down-right from it). Coordinate system = output resolution (defaults to the full frame w×h; usually read doc.width/height from velocut.document()). Returns {ok, assetId, clipId, trackId, frameCount}.\n' +
+      '  Example: opening title card (fade in + rise over 0.5s, fade out over the final 0.4s): velocut.motionClip({atUs:0, spec:{version:1, durationUs:2_500_000, layers:[{type:"text", text:"Opening Title", size:96, weight:800, color:"#fff", align:"center", x:960, y:[{t:0,v:580},{t:0.5,v:540,ease:"power3.out"}], opacity:[{t:0,v:0},{t:0.5,v:1,ease:"power2.out"},{t:2.1,v:1},{t:2.5,v:0}], shadow:{color:"rgba(0,0,0,.6)",blur:24}}]}}). Animated captions aligned to narration: for each line, take the durationUs from tts and create a motionClip caption with the same atUs/durationUs, with opacity keyframes for the entrance/exit.\n' +
+      '• velocut.evaluate(timeUs) → evaluate the composite manifest at an instant; velocut.document() → read the full document.\n' +
+      'Loops/conditionals/computing the next step from the previous return value are all supported. Typical pattern (laying down a long-to-short cut in one pass): keep a time cursor T; for each unit { const r = await velocut.tts({text, atUs:T, language:"chinese"}); velocut.apply(add the shot at startUs:T with duration r.durationUs and its source offset…); velocut.apply(add the subtitle bar at the same T and duration); T += r.durationUs; }.\n' +
+      'return a JSON value as the result (e.g. {units, totalUs}); console.log output inside the script is sent back to you; a thrown error comes back with message + stack — fix and re-run. Command field names follow the document structure seen via velocut_get_document and the command reference.',
     input_schema: {
       type: 'object',
       properties: {
         code: {
           type: 'string',
-          description: 'JavaScript 源码。顶层可直接用 await;用 return 返回一个 JSON 可序列化的结果。全局有 velocut(apply/tts/observe/motionClip/evaluate/document/seek)和 console。',
+          description: 'JavaScript source. Top-level await is allowed; use return to produce a JSON-serializable result. Globals: velocut (apply/tts/observe/motionClip/evaluate/document/seek) and console.',
         },
       },
       required: ['code'],
@@ -330,7 +330,7 @@ async function executeTool(
         return text(true, JSON.stringify(await host.evaluate(t)));
       }
       case 'velocut_observe': {
-        if (!host.observe) return text(false, '观察能力未接入(无渲染器)');
+        if (!host.observe) return text(false, 'Observe capability not wired (no renderer)');
         const r = await host.observe((input ?? {}) as Record<string, unknown>);
         const digest = r.summary + (r.data ? '\n' + JSON.stringify(r.data) : '') + (r.message ? '\n' + r.message : '');
         const blocks: Array<Anthropic.TextBlockParam | Anthropic.ImageBlockParam> = [{ type: 'text', text: digest }];
@@ -345,30 +345,30 @@ async function executeTool(
         return { ok: r.ok, content: blocks, summary: r.summary, images: r.images, data: r.data };
       }
       case 'velocut_tts': {
-        if (!host.speak) return text(false, 'TTS 能力未接入(无语音合成)');
+        if (!host.speak) return text(false, 'TTS capability not wired (no speech synthesizer)');
         const r = await host.speak((input ?? {}) as { text: string; atUs?: number; trackId?: string; language?: string });
         return text(r.ok, JSON.stringify(r));
       }
       case 'velocut_transcribe': {
-        if (!host.caption) return text(false, '转写能力未接入(无 transcriber)');
+        if (!host.caption) return text(false, 'Transcription capability not wired (no transcriber)');
         const r = await host.caption(
           (input ?? {}) as { assetId?: string; fontSize?: number; color?: string; language?: string },
         );
         return text(r.ok, JSON.stringify(r));
       }
       case 'velocut_search': {
-        if (!host.search) return text(false, '联网查证能力未接入(无搜索后端)');
+        if (!host.search) return text(false, 'Web search capability not wired (no search backend)');
         const r = await host.search((input as { query: string }).query);
-        if (!r.ok) return text(false, r.message ?? '搜索失败');
-        const src = r.sources.length ? '\n来源: ' + r.sources.map((s) => `${s.title || s.url}`).join('; ') : '';
+        if (!r.ok) return text(false, r.message ?? 'Search failed');
+        const src = r.sources.length ? '\nSources: ' + r.sources.map((s) => `${s.title || s.url}`).join('; ') : '';
         return { ok: true, content: r.answer + src, summary: r.answer.slice(0, 80) };
       }
       case 'velocut_script': {
-        if (!host.runScript) return text(false, '脚本执行能力未接入(无运行时)');
+        if (!host.runScript) return text(false, 'Script execution capability not wired (no runtime)');
         const r = await host.runScript((input as { code: string }).code);
         // JSON in/out: result + logs the model reads, error+stack on failure.
         const digest = JSON.stringify({ ok: r.ok, result: r.result, logs: r.logs, error: r.error });
-        return { ok: r.ok, content: digest, summary: r.error ? `脚本出错: ${r.error.split('\n')[0]}` : '脚本执行完成' };
+        return { ok: r.ok, content: digest, summary: r.error ? `Script error: ${r.error.split('\n')[0]}` : 'Script completed' };
       }
       default:
         return text(false, `unknown tool: ${name}`);

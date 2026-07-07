@@ -56,7 +56,7 @@ export class Store {
 
   constructor(engine: ICoreEngine, opts: StoreOptions = {}) {
     this.engine = engine;
-    this.localUser = opts.localUser ?? { kind: 'user', peerId: 'local', name: '你' };
+    this.localUser = opts.localUser ?? { kind: 'user', peerId: 'local', name: 'You' };
     this.onHistory = opts.onHistory;
     this.history = opts.restoredHistory ?? new HistoryTree(engine.document(), this.localUser);
     // If a history was restored, the head snapshot is authoritative.
@@ -190,7 +190,7 @@ export class Store {
       // rebuild — we can't see the command, so record one sync node. If it
       // matches head (the restore echo of our own persisted history), do
       // nothing — no spurious node on reload.
-      this.history.record(null, doc, { kind: 'user', peerId: 'remote', name: '协同' }, '远端同步');
+      this.history.record(null, doc, { kind: 'user', peerId: 'remote', name: 'Collaborator' }, 'Remote sync');
     }
     this.syncFromEngine({ selectedClipId: null });
     this.historyChanged();

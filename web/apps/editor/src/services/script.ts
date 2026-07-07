@@ -31,8 +31,8 @@ export interface ScriptApi {
   /** Execute one protocol command; returns the engine envelope (events carry
    *  freshly-minted ids). Same path as velocut_apply. */
   apply(cmd: unknown): unknown;
-  /** Synthesize one narration clip onto the 旁白 track; resolves with the exact
-   *  duration so the program can size the matching shot/subtitle. */
+  /** Synthesize one narration clip onto the Narration track; resolves with the
+   *  exact duration so the program can size the matching shot/subtitle. */
   tts(opts: { text: string; atUs?: number; trackId?: string; language?: string }): Promise<unknown>;
   /** Render-and-measure; the program gets numbers (no images — there's no model
    *  in the loop to look at them). */
@@ -194,7 +194,7 @@ export function runAgentScript(api: ScriptApi, code: string): Promise<ScriptResu
     };
 
     const timer = setTimeout(() => {
-      finish({ ok: false, error: `脚本执行超时(>${SCRIPT_TIMEOUT_MS / 1000}s),已中止。` });
+      finish({ ok: false, error: `Script timed out (>${SCRIPT_TIMEOUT_MS / 1000}s) and was aborted.` });
     }, SCRIPT_TIMEOUT_MS);
 
     // Cap total RPC calls per run: a tight loop hammering observe/tts (each a heavy
@@ -223,7 +223,7 @@ export function runAgentScript(api: ScriptApi, code: string): Promise<ScriptResu
           if (settled) return;
           try {
             if (++rpcCount > RPC_LIMIT) {
-              finish({ ok: false, error: `脚本 API 调用次数超过上限(${RPC_LIMIT}),已中止。` });
+              finish({ ok: false, error: `Script exceeded the API call limit (${RPC_LIMIT}) and was aborted.` });
               return;
             }
             if (!method || !(RPC_METHODS as readonly string[]).includes(method)) {

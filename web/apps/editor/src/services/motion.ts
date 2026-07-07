@@ -5,7 +5,7 @@
 // graph of layers with keyframed transforms. This file is the glue: validate +
 // compile the spec, PERSIST it (so the clip survives reload / export — the spec
 // is stored, not the frames), attach the compiled per-frame rasterizer, and lay
-// it on a 图形 (graphics) track. Mirrors services/tts.ts (generate → addAsset +
+// it on a Graphics track. Mirrors services/tts.ts (generate → addAsset +
 // addClip) and services/caption.ts.
 //
 // The spec being data (not a closure) is what makes it persistable AND safe to
@@ -75,7 +75,7 @@ async function attachSpec(store: Store, media: MediaLibrary, assetId: string, sp
 
 /**
  * Create a procedural motion-graphics clip from a declarative spec and lay it on
- * a 图形 (graphics) video track. Same surface as window.velocut.motionClip and the
+ * a Graphics video track. Same surface as window.velocut.motionClip and the
  * agent's velocut_script `velocut.motionClip`. The spec is persisted, so the clip
  * re-renders deterministically after reload and on export.
  */
@@ -86,22 +86,22 @@ export async function createMotionClip(store: Store, media: MediaLibrary, opts: 
 
   const durationUs = Math.round(spec.durationUs);
 
-  // Resolve the graphics track (reuse a video track named 图形, else create one —
+  // Resolve the graphics track (reuse a video track named Graphics, else create one —
   // appended last so overlays composite on top).
   let trackId = opts.trackId;
   if (!trackId) {
-    const existing = store.getState().doc.tracks.find((t) => t.kind === 'video' && t.name === '图形');
+    const existing = store.getState().doc.tracks.find((t) => t.kind === 'video' && t.name === 'Graphics');
     if (existing) trackId = existing.id;
     else {
-      const r = store.dispatch({ type: 'addTrack', kind: 'video', name: '图形' });
+      const r = store.dispatch({ type: 'addTrack', kind: 'video', name: 'Graphics' });
       const ev = r.ok ? r.events.find((e) => e.kind === 'trackAdded') : undefined;
       trackId = ev?.kind === 'trackAdded' ? ev.trackId : undefined;
     }
   }
-  if (!trackId) return { ok: false, message: '无法创建图形轨。' };
+  if (!trackId) return { ok: false, message: 'Failed to create the graphics track.' };
 
   const atUs = Math.max(0, Math.round(opts.atUs ?? 0));
-  const name = opts.name ?? '动态图形';
+  const name = opts.name ?? 'Motion graphics';
   const width = Math.round(spec.width ?? store.getState().doc.width);
   const height = Math.round(spec.height ?? store.getState().doc.height);
 
@@ -110,7 +110,7 @@ export async function createMotionClip(store: Store, media: MediaLibrary, opts: 
   const aResp = store.dispatch({ type: 'addAsset', kind: 'image', src: 'motion://pending', name, durationUs, width, height });
   const aEv = aResp.ok ? aResp.events.find((e) => e.kind === 'assetAdded') : undefined;
   const assetId = aEv?.kind === 'assetAdded' ? aEv.assetId : undefined;
-  if (!assetId) return { ok: false, message: '登记图形素材失败。' };
+  if (!assetId) return { ok: false, message: 'Failed to register the graphics asset.' };
 
   // Persist first, then attach (so a reload before attach still finds the spec).
   let frameCount: number | undefined;
@@ -118,11 +118,11 @@ export async function createMotionClip(store: Store, media: MediaLibrary, opts: 
     await saveSpec(assetId, spec);
     frameCount = (await attachSpec(store, media, assetId, spec)).frameCount;
   } catch (e) {
-    return { ok: false, message: 'motion 编译/渲染出错:' + (e instanceof Error ? e.message : String(e)) };
+    return { ok: false, message: 'Motion compile/render error: ' + (e instanceof Error ? e.message : String(e)) };
   }
 
   const cResp = store.dispatch({ type: 'addClip', trackId, assetId, startUs: atUs, durationUs });
-  if (!cResp.ok) return { ok: false, message: `上轨失败:${cResp.error?.message ?? ''}` };
+  if (!cResp.ok) return { ok: false, message: `Failed to place the clip on the track: ${cResp.error?.message ?? ''}` };
   const cEv = cResp.events.find((e) => e.kind === 'clipAdded');
   const clipId = cEv?.kind === 'clipAdded' ? cEv.clipId : undefined;
   return { ok: true, assetId, clipId, trackId, atUs, durationUs, frameCount };

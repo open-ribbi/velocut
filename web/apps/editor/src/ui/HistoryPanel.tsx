@@ -13,9 +13,9 @@ import { useFloatingDock } from './useDraggable';
 
 function relTime(ts: number): string {
   const d = Date.now() - ts;
-  if (d < 5000) return '刚刚';
-  if (d < 60000) return `${Math.floor(d / 1000)}秒前`;
-  if (d < 3600000) return `${Math.floor(d / 60000)}分钟前`;
+  if (d < 5000) return 'just now';
+  if (d < 60000) return `${Math.floor(d / 1000)}s ago`;
+  if (d < 3600000) return `${Math.floor(d / 60000)}m ago`;
   const t = new Date(ts);
   return `${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`;
 }
@@ -49,9 +49,9 @@ export function HistoryPanel({ store, state }: { store: Store; state: UiState })
         className="hist-fab"
         style={dock.fabStyle}
         onPointerDown={dock.onFabPointerDown}
-        title="拖动移动 · 点击打开历史记录看板"
+        title="Drag to move · Click to open the history board"
       >
-        🕘 历史
+        🕘 History
       </button>
     );
   }
@@ -68,7 +68,7 @@ export function HistoryPanel({ store, state }: { store: Store; state: UiState })
       <div
         key={node.id}
         className={`hist-node ${actorClass(node)}${isHead ? ' hist-head' : ''}${onHeadPath ? ' hist-onpath' : ''}`}
-        title={node.prompt ? `「${node.prompt}」` : node.command ? node.label : ''}
+        title={node.prompt ? `"${node.prompt}"` : node.command ? node.label : ''}
         onClick={() => {
           if (!isHead) store.jumpTo(node.id);
         }}
@@ -80,7 +80,7 @@ export function HistoryPanel({ store, state }: { store: Store; state: UiState })
           <span className="hist-model">{node.actor.model.replace(/^claude-/, '')}</span>
         )}
         <span className="hist-time">{relTime(node.ts)}</span>
-        {isHead && <span className="hist-now">当前</span>}
+        {isHead && <span className="hist-now">current</span>}
         {kids.length > 1 && <span className="hist-fork">⑂{kids.length}</span>}
       </div>
     );
@@ -112,9 +112,9 @@ export function HistoryPanel({ store, state }: { store: Store; state: UiState })
   return (
     <div className="hist-panel" ref={dock.panelRef} style={dock.panelStyle}>
       <div className="hist-head-bar" onPointerDown={dock.onPanelDragStart}>
-        <span className="drag-grip" title="拖动移动">⠿</span>
-        <span>历史记录</span>
-        <span className="hist-hint">拖动标题移动 · 点任意节点回到该状态 · 回到过去再编辑会开新分支</span>
+        <span className="drag-grip" title="Drag to move">⠿</span>
+        <span>History</span>
+        <span className="hist-hint">Drag the title to move · Click any node to restore that state · Editing after going back starts a new branch</span>
         <button onClick={() => setOpen(false)}>×</button>
       </div>
       <div className="hist-list" ref={listRef}>{renderChain(root)}</div>

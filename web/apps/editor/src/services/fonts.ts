@@ -16,11 +16,11 @@ export interface FontOption {
 }
 
 const BUILTINS: FontOption[] = [
-  { family: 'system-ui, sans-serif', label: '系统默认' },
-  { family: '"PingFang SC", sans-serif', label: '苹方' },
-  { family: '"Hiragino Sans GB", sans-serif', label: '冬青黑' },
-  { family: '"Songti SC", serif', label: '宋体' },
-  { family: '"STKaiti", "Kaiti SC", serif', label: '楷体' },
+  { family: 'system-ui, sans-serif', label: 'System default' },
+  { family: '"PingFang SC", sans-serif', label: 'PingFang' },
+  { family: '"Hiragino Sans GB", sans-serif', label: 'Hiragino Sans' },
+  { family: '"Songti SC", serif', label: 'Songti' },
+  { family: '"STKaiti", "Kaiti SC", serif', label: 'Kaiti' },
   { family: 'Georgia, serif', label: 'Georgia' },
   { family: '"Courier New", monospace', label: 'Courier' },
 ];

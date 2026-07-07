@@ -164,7 +164,7 @@ function sample(a: Animatable | undefined, t: number, fallback: number): number 
 function wrapText(ctx: Ctx, text: string, maxWidth: number): string[] {
   const out: string[] = [];
   for (const para of text.split('\n')) {
-    const tokens = para.match(/[　-〿㐀-鿿＀-￯]|[^\s　-〿㐀-鿿＀-￯]+|\s+/g) ?? [];
+    const tokens = para.match(/[\u3000-\u303f\u3400-\u9fff\uff00-\uffef]|[^\s\u3000-\u303f\u3400-\u9fff\uff00-\uffef]+|\s+/g) ?? [];
     let line = '';
     for (const tk of tokens) {
       const test = line + tk;
@@ -238,18 +238,18 @@ function drawEllipse(ctx: Ctx, L: EllipseLayer): void {
 
 /** Validate a spec (structural). Returns an error message or null. */
 export function validateMotionSpec(spec: unknown): string | null {
-  if (!spec || typeof spec !== 'object') return 'spec 必须是对象。';
+  if (!spec || typeof spec !== 'object') return 'spec must be an object.';
   const s = spec as MotionSpec;
-  if (s.version !== 1) return 'spec.version 必须为 1。';
-  if (!(typeof s.durationUs === 'number' && s.durationUs > 0)) return 'durationUs 必须为正数(微秒)。';
-  if (!Array.isArray(s.layers)) return 'layers 必须是数组。';
-  if (s.layers.length > 200) return 'layers 过多(上限 200)。';
+  if (s.version !== 1) return 'spec.version must be 1.';
+  if (!(typeof s.durationUs === 'number' && s.durationUs > 0)) return 'durationUs must be a positive number (microseconds).';
+  if (!Array.isArray(s.layers)) return 'layers must be an array.';
+  if (s.layers.length > 200) return 'too many layers (limit 200).';
   for (const L of s.layers) {
-    if (!L || typeof L !== 'object' || !('type' in L)) return 'layer 缺少 type。';
+    if (!L || typeof L !== 'object' || !('type' in L)) return 'layer is missing type.';
     const t = (L as MotionLayer).type;
-    if (t !== 'text' && t !== 'rect' && t !== 'ellipse' && t !== 'image') return `未知 layer.type:${t}`;
-    if (t === 'text' && typeof (L as TextLayer).text !== 'string') return 'text layer 需要 text 字符串。';
-    if (t === 'image' && typeof (L as ImageLayer).src !== 'string') return 'image layer 需要 src 字符串。';
+    if (t !== 'text' && t !== 'rect' && t !== 'ellipse' && t !== 'image') return `unknown layer.type: ${t}`;
+    if (t === 'text' && typeof (L as TextLayer).text !== 'string') return 'text layer requires a text string.';
+    if (t === 'image' && typeof (L as ImageLayer).src !== 'string') return 'image layer requires a src string.';
   }
   return null;
 }
@@ -272,7 +272,7 @@ export function compileMotionSpec(
 
   const canvas = new OffscreenCanvas(width, height);
   const ctx = canvas.getContext('2d', { alpha: true });
-  if (!ctx) throw new Error('无法创建 2D canvas 上下文。');
+  if (!ctx) throw new Error('Failed to create a 2D canvas context.');
 
   const images = new Map<string, CanvasImageSource>();
 

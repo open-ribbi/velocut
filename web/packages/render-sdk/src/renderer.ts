@@ -269,7 +269,7 @@ export class Renderer {
 
   private async initDevice(canvas: HTMLCanvasElement | OffscreenCanvas): Promise<void> {
     if (!('gpu' in navigator)) {
-      throw new Error('WebGPU 不可用 — 请使用 Chrome/Edge 113+');
+      throw new Error('WebGPU unavailable — please use Chrome/Edge 113+');
     }
     // Drop every GPU resource cached against a prior device — a re-init acquires
     // a new one, and mixing resources across devices is a hard error. Bumping the
@@ -283,7 +283,7 @@ export class Renderer {
     this.fxH = 0;
 
     const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
-    if (!adapter) throw new Error('未找到 GPU adapter');
+    if (!adapter) throw new Error('No GPU adapter found');
     this.device = await adapter.requestDevice();
     this.device.addEventListener('uncapturederror', (e) => {
       console.error('[velocut][GPU]', (e as GPUUncapturedErrorEvent).error.message);

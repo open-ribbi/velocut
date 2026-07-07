@@ -10,7 +10,7 @@
 //      every other edit, so captions are normal, hand-editable text clips.
 //
 // The agent triggers the whole thing via the velocut_transcribe tool; the
-// Toolbar's 自动字幕 button runs the identical pipeline.
+// Toolbar's Auto Captions button runs the identical pipeline.
 
 import type { Command, Envelope, VDocument } from '@velocut/protocol';
 
@@ -70,7 +70,7 @@ export async function transcribeAsset(
   durationUs: number,
   opts?: { language?: string; onProgress?: (frac: number, label: string) => void },
 ): Promise<CaptionSegment[]> {
-  opts?.onProgress?.(0, '解码音频');
+  opts?.onProgress?.(0, 'Decoding audio');
   const WINDOW_US = 30_000_000;
   // One preallocated mono-16k buffer filled window-by-window — peak memory is
   // 1× the audio (not 2× from accumulating all windows then concatenating).
@@ -90,9 +90,9 @@ export async function transcribeAsset(
       audio.set(mono, pos);
       pos += mono.length;
     }
-    opts?.onProgress?.(Math.min(0.3, (off / durationUs) * 0.3), '解码音频');
+    opts?.onProgress?.(Math.min(0.3, (off / durationUs) * 0.3), 'Decoding audio');
   }
-  opts?.onProgress?.(0.35, '识别中（首次会下载模型）');
+  opts?.onProgress?.(0.35, 'Transcribing (first run downloads the model)');
   return transcriber.transcribe(audio.subarray(0, pos), { language: opts?.language });
 }
 
@@ -179,7 +179,7 @@ export function applyCaptions(
   const color = style.color ?? '#ffffff';
   const yBottom = Math.round(doc.height * (style.bottomFraction ?? 0.36));
 
-  const trackResp = dispatch({ type: 'addTrack', kind: 'text', name: style.trackName ?? '字幕' });
+  const trackResp = dispatch({ type: 'addTrack', kind: 'text', name: style.trackName ?? 'Captions' });
   if (!trackResp.ok) return null;
   const trackId = trackResp.events.find((e) => e.kind === 'trackAdded')?.trackId;
   if (!trackId) return null;

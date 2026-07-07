@@ -53,23 +53,23 @@ function graphSummary(fg: FrameGraph): string {
   return (
     fg.layers
       .map((l) => {
-        let s = l.assetId ? l.clipId : `${l.clipId}(文字)`;
+        let s = l.assetId ? l.clipId : `${l.clipId}(text)`;
         const fx = l.effects?.map((e) => e.effect).filter(Boolean);
-        if (fx?.length) s += ` 特效:${fx.join('+')}`;
-        if (l.transition) s += ` ←转场${l.transition.kind}(自${l.transition.from?.clipId})`;
+        if (fx?.length) s += ` effects:${fx.join('+')}`;
+        if (l.transition) s += ` ←transition ${l.transition.kind}(from ${l.transition.from?.clipId})`;
         return s;
       })
-      .join(', ') || '(空帧)'
+      .join(', ') || '(empty frame)'
   );
 }
 
 function metricsLine(m: FrameMetrics): string {
-  const tone = m.luma < 60 ? '暗' : m.luma > 180 ? '亮' : '中';
-  const temp = m.temperature > 0.08 ? '暖' : m.temperature < -0.08 ? '冷' : '中性';
+  const tone = m.luma < 60 ? 'dark' : m.luma > 180 ? 'bright' : 'mid';
+  const temp = m.temperature > 0.08 ? 'warm' : m.temperature < -0.08 ? 'cold' : 'neutral';
   return (
-    `luma ${m.luma}(${tone}) 对比 ${m.contrast} ${temp} 锐度 ${m.sharpness} 鲜艳 ${m.colorfulness}` +
-    (m.overexposed > 0.02 ? ` 过曝${Math.round(m.overexposed * 100)}%` : '') +
-    (m.underexposed > 0.3 ? ` 欠曝${Math.round(m.underexposed * 100)}%` : '')
+    `luma ${m.luma}(${tone}) contrast ${m.contrast} ${temp} sharpness ${m.sharpness} colorfulness ${m.colorfulness}` +
+    (m.overexposed > 0.02 ? ` overexposed ${Math.round(m.overexposed * 100)}%` : '') +
+    (m.underexposed > 0.3 ? ` underexposed ${Math.round(m.underexposed * 100)}%` : '')
   );
 }
 
@@ -86,7 +86,7 @@ export async function observeForAgent(
   input: ObserveInput,
 ): Promise<ObserveResult> {
   const doc = store.getState().doc;
-  if (!doc.tracks.length && !doc.assets.length) return { ok: false, summary: '工程为空,没有可观察的内容。', images: [] };
+  if (!doc.tracks.length && !doc.assets.length) return { ok: false, summary: 'The project is empty; there is nothing to observe.', images: [] };
   const frameDur = (1e6 * doc.fpsDen) / doc.fpsNum;
   const snap = (t: number) => Math.max(0, Math.round(t / frameDur) * frameDur);
   const mode = input.mode ?? 'frame';
@@ -106,24 +106,24 @@ export async function observeForAgent(
       at = snap(input.at ?? 0);
       spec = { kind: 'asset', assetId: aid, sourceTimeUs: at };
       audioRefs = [{ assetId: aid, sourceTimeUs: at, gain: 1 }];
-      head = `素材 ${aid} 源${(at / 1e6).toFixed(2)}s`;
+      head = `asset ${aid} source ${(at / 1e6).toFixed(2)}s`;
     } else {
       const clip = cid ? visualClips(doc).find((c) => c.id === cid) : null;
       at = snap(input.at ?? (clip ? clip.startUs + clip.durationUs / 2 : 0));
       const full = store.evaluate(at);
       spec = { kind: 'graph', fg: cid ? isolateClip(full, cid) : full };
       audioRefs = audioSlices(full);
-      gfx = cid ? `仅片段 ${cid}` : graphSummary(full);
-      head = `${cid ? '片段 ' + cid : '合成'} @${(at / 1e6).toFixed(2)}s`;
+      gfx = cid ? `clip ${cid} only` : graphSummary(full);
+      head = `${cid ? 'clip ' + cid : 'composite'} @${(at / 1e6).toFixed(2)}s`;
     }
     const grab = await observer.grab(spec, target, input.region);
-    if (!grab) return { ok: false, summary: `${head}: 无可渲染内容(未解码或越界)。`, images: [] };
+    if (!grab) return { ok: false, summary: `${head}: nothing renderable (not decoded yet, or out of range).`, images: [] };
     const audio = await observer.audio(audioRefs, at);
     const images = input.metricsOnly ? [] : [{ base64: await observer.toJpeg(grab.bitmap), mediaType: JPEG }];
     grab.bitmap.close();
     return {
       ok: true,
-      summary: `${head} | ${metricsLine(grab.metrics)} | 音频 ${audio.loudnessDbfs}dBFS${audio.silent ? '(静音)' : ''}${gfx ? ' | ' + gfx : ''}`,
+      summary: `${head} | ${metricsLine(grab.metrics)} | audio ${audio.loudnessDbfs}dBFS${audio.silent ? '(silent)' : ''}${gfx ? ' | ' + gfx : ''}`,
       images,
       data: { metrics: grab.metrics, audio, graph: gfx },
     };
@@ -171,14 +171,14 @@ export async function observeForAgent(
       cells.push({ bitmap: g.bitmap, label: p.label });
       index.push({ label: p.label, timeUs: p.t, luma: g.metrics.luma, temperature: g.metrics.temperature, sharpness: g.metrics.sharpness });
     }
-    if (!cells.length) return { ok: false, summary: '没有可渲染的帧(素材可能尚未解码)。', images: [] };
+    if (!cells.length) return { ok: false, summary: 'No renderable frames (assets may not be decoded yet).', images: [] };
     const cols = Math.min(cells.length, Math.ceil(Math.sqrt(cells.length)));
     const sheet = await observer.toSheet(cells, cols, cells[0].bitmap.width, cells[0].bitmap.height);
     cells.forEach((c) => c.bitmap.close());
-    const what = aid ? `素材 ${aid}` : span ? '时间轴区间' : '时间轴分镜';
+    const what = aid ? `asset ${aid}` : span ? 'timeline range' : 'timeline storyboard';
     return {
       ok: true,
-      summary: `${what} 接触印像 ${cells.length} 格(${cols} 列),格上标注为${aid || span ? '时间' : '片段 id'}。`,
+      summary: `${what} contact sheet: ${cells.length} cells (${cols} columns); each cell is labeled with ${aid || span ? 'its time' : 'its clip id'}.`,
       images: [{ base64: sheet, mediaType: JPEG }],
       data: { cells: index },
     };
@@ -190,7 +190,7 @@ export async function observeForAgent(
   // onsets (beats/hits). No images, no frame render — cheap at ~21 ms resolution.
   if (mode === 'audio') {
     const a = aid ?? doc.assets.find((x) => x.kind === 'audio' || x.hasAudio)?.id;
-    if (!a) return { ok: false, summary: '没有可分析的音频素材(source 传 {assetId} 或先导入含音频的素材)。', images: [] };
+    if (!a) return { ok: false, summary: 'No audio asset to analyze (pass {assetId} in source, or import an asset with audio first).', images: [] };
     const assetDur = doc.assets.find((x) => x.id === a)?.durationUs ?? 0;
     const from = Math.max(0, input.from ?? 0);
     // Default to a 30 s window (fine analysis over the whole source is wasteful —
@@ -202,9 +202,9 @@ export async function observeForAgent(
     return {
       ok: true,
       summary:
-        `素材 ${a} 音频分析 ${(from / 1e6).toFixed(1)}–${(to / 1e6).toFixed(1)}s(分辨率 ${Math.round(r.hopUs / 1000)}ms)。` +
-        ` 静音段≈[${sil.slice(0, 15).join(', ')}]s(可做干净切点/对白缝,在段中点切不切断台词);` +
-        ` 能量峰≈[${pk.slice(0, 20).join(', ')}]s(卡节拍/找高光起点)。`,
+        `Asset ${a} audio analysis ${(from / 1e6).toFixed(1)}–${(to / 1e6).toFixed(1)}s (resolution ${Math.round(r.hopUs / 1000)}ms).` +
+        ` Silent segments≈[${sil.slice(0, 15).join(', ')}]s (clean cut points / dialogue gaps; cutting at a segment's midpoint avoids clipping speech);` +
+        ` energy peaks≈[${pk.slice(0, 20).join(', ')}]s (for beat-syncing / locating highlight starts).`,
       images: [],
       data: r,
     };
@@ -220,9 +220,9 @@ export async function observeForAgent(
       aid ??
       (cid ? visualClips(doc).find((c) => c.id === cid)?.assetId : undefined) ??
       doc.assets.find((a) => a.kind === 'video')?.id;
-    if (!target) return { ok: false, summary: '没有可分析的视频素材(source 传 {assetId}/{clipId},或先导入视频)。', images: [] };
+    if (!target) return { ok: false, summary: 'No video asset to analyze (pass {assetId}/{clipId} in source, or import a video first).', images: [] };
     const r = await observer.analyzeShots(target);
-    if (!r.shots.length) return { ok: false, summary: `素材 ${target} 未能解码出帧,无法切分镜头。`, images: [], data: r };
+    if (!r.shots.length) return { ok: false, summary: `Asset ${target} produced no decodable frames; cannot segment shots.`, images: [], data: r };
     const durs = r.shots.map((s) => s.durationUs / 1e6);
     const avg = durs.reduce((s, x) => s + x, 0) / durs.length;
     const minD = durs.reduce((m, x) => Math.min(m, x), Infinity);
@@ -231,10 +231,10 @@ export async function observeForAgent(
     return {
       ok: true,
       summary:
-        `素材 ${target} 镜头切分:${r.shots.length} 个镜头(源 ${(r.fromUs / 1e6).toFixed(1)}–${(r.toUs / 1e6).toFixed(1)}s,采样 ${Math.round(1e6 / r.sampleUs)}fps)。` +
-        ` 平均镜头 ${avg.toFixed(1)}s(最短 ${minD.toFixed(1)} / 最长 ${maxD.toFixed(1)})。` +
-        ` 切点(源时间)≈[${cuts.slice(0, 20).join(', ')}]s${cuts.length > 20 ? ' …' : ''}。` +
-        ` 在切点处剪辑/插入更自然;镜头时长=节奏,可据此对长镜头提速或裁剪。`,
+        `Asset ${target} shot segmentation: ${r.shots.length} shots (source ${(r.fromUs / 1e6).toFixed(1)}–${(r.toUs / 1e6).toFixed(1)}s, sampled at ${Math.round(1e6 / r.sampleUs)}fps).` +
+        ` Average shot ${avg.toFixed(1)}s (shortest ${minD.toFixed(1)} / longest ${maxD.toFixed(1)}).` +
+        ` Cut points (source time)≈[${cuts.slice(0, 20).join(', ')}]s${cuts.length > 20 ? ' …' : ''}.` +
+        ` Cutting/inserting at cut points looks more natural; shot duration = pacing, so long shots can be sped up or trimmed accordingly.`,
       images: [],
       data: r,
     };
@@ -279,10 +279,10 @@ export async function observeForAgent(
   return {
     ok: true,
     summary:
-      `扫描 ${(from / 1e6).toFixed(1)}–${(to / 1e6).toFixed(1)}s,${n} 窗。` +
-      ` 静音点≈[${silences.slice(0, 12).join(', ')}]s;` +
-      ` 疑似镜头切换≈[${cuts.slice(0, 12).join(', ')}]s;` +
-      ` 最响时刻≈[${loud.join(', ')}]s。`,
+      `Scan ${(from / 1e6).toFixed(1)}–${(to / 1e6).toFixed(1)}s, ${n} windows.` +
+      ` Silence points≈[${silences.slice(0, 12).join(', ')}]s;` +
+      ` likely shot changes≈[${cuts.slice(0, 12).join(', ')}]s;` +
+      ` loudest moments≈[${loud.join(', ')}]s.`,
     images: [],
     data: { windows },
   };

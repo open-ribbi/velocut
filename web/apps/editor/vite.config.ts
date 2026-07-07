@@ -39,7 +39,7 @@ export default defineConfig({
   },
   server: {
     headers: {
-      // 为后续 SharedArrayBuffer / 多线程 worker 预留(cross-origin isolation)
+      // Reserved for future SharedArrayBuffer / multithreaded workers (cross-origin isolation)
       'Cross-Origin-Opener-Policy': 'same-origin',
       'Cross-Origin-Embedder-Policy': 'require-corp',
     },

@@ -18,7 +18,7 @@ function fmtTime(us: number): string {
 }
 
 /** Export quality presets → bits-per-pixel-per-frame. The encoder has no app cap;
- *  these just set a sensible target the user (or '自定义' Mbps) can override. */
+ *  these just set a sensible target the user (or 'custom' Mbps) can override. */
 type ExportQuality = 'standard' | 'high' | 'ultra' | 'custom';
 const QUALITY_BPP: Record<Exclude<ExportQuality, 'custom'>, number> = {
   standard: 0.08,
@@ -75,7 +75,7 @@ export function Toolbar({
       }
     }
 
-    // Target bitrate: '自定义' uses the explicit Mbps; presets scale with the
+    // Target bitrate: 'custom' uses the explicit Mbps; presets scale with the
     // pixel rate (bpp × w × h × fps). No cap — passed straight to the encoder.
     const videoBitrate =
       exportQuality === 'custom'
@@ -84,7 +84,7 @@ export function Toolbar({
 
     const abort = new AbortController();
     exportAbort.current = abort;
-    setExportPct({ frac: 0, label: '准备中' });
+    setExportPct({ frac: 0, label: 'Preparing' });
     try {
       const blob = await new Exporter(media).export({
         width: doc.width,
@@ -193,7 +193,7 @@ export function Toolbar({
   return (
     <div className="toolbar">
       <span className="brand">Velocut</span>
-      <button onClick={() => fileRef.current?.click()}>导入素材</button>
+      <button onClick={() => fileRef.current?.click()}>Import Media</button>
       <input
         ref={fileRef}
         type="file"
@@ -208,21 +208,21 @@ export function Toolbar({
         }}
       />
       <span className="divider" />
-      <button onClick={() => playback.toggle()}>{state.playing ? '⏸ 暂停' : '▶ 播放'}</button>
-      <button onClick={() => splitAtPlayhead(store)} title="快捷键 S">
-        ✂ 分割
+      <button onClick={() => playback.toggle()}>{state.playing ? '⏸ Pause' : '▶ Play'}</button>
+      <button onClick={() => splitAtPlayhead(store)} title="Shortcut: S">
+        ✂ Split
       </button>
       <button disabled={!state.canUndo} onClick={() => store.undo()} title="Cmd/Ctrl+Z">
-        ↩ 撤销
+        ↩ Undo
       </button>
       <button disabled={!state.canRedo} onClick={() => store.redo()} title="Cmd/Ctrl+Shift+Z">
-        ↪ 重做
+        ↪ Redo
       </button>
       {selected && (
         <>
           <span className="divider" />
           <label className="speed-label">
-            倍速
+            Speed
             <select
               value={String(selected.speed)}
               onChange={(e) =>
@@ -247,7 +247,7 @@ export function Toolbar({
         className="export-opt"
         value={exportCodec}
         disabled={!!exportPct}
-        title="导出编码(H.265/AV1 同画质更省码率,可超 4K;部分平台编码器可能回退到 H.264)"
+        title="Export codec (H.265/AV1 need less bitrate at the same quality and support beyond 4K; some platform encoders may fall back to H.264)"
         onChange={(e) => {
           const v = e.target.value as VideoCodecFamily;
           setExportCodec(v);
@@ -264,17 +264,17 @@ export function Toolbar({
         className="export-opt"
         value={exportQuality}
         disabled={!!exportPct}
-        title="导出画质(决定目标码率)"
+        title="Export quality (sets the target bitrate)"
         onChange={(e) => {
           const v = e.target.value as ExportQuality;
           setExportQuality(v);
           localStorage.setItem('velocut.exportQuality', v);
         }}
       >
-        <option value="standard">标准</option>
-        <option value="high">高</option>
-        <option value="ultra">极高</option>
-        <option value="custom">自定义</option>
+        <option value="standard">Standard</option>
+        <option value="high">High</option>
+        <option value="ultra">Ultra</option>
+        <option value="custom">Custom</option>
       </select>
       {exportQuality === 'custom' && (
         <input
@@ -284,7 +284,7 @@ export function Toolbar({
           max={2000}
           value={customMbps}
           disabled={!!exportPct}
-          title="目标码率 (Mbps)"
+          title="Target bitrate (Mbps)"
           onChange={(e) => {
             const v = Math.max(1, Math.min(2000, Number(e.target.value) || 1));
             setCustomMbps(v);
@@ -292,8 +292,8 @@ export function Toolbar({
           }}
         />
       )}
-      <button onClick={runExport} disabled={!!exportPct || state.durationUs <= 0} title="导出 MP4">
-        ⬇ 导出
+      <button onClick={runExport} disabled={!!exportPct || state.durationUs <= 0} title="Export MP4">
+        ⬇ Export
       </button>
       <span className="timecode">
         {fmtTime(state.playheadUs)} / {fmtTime(state.durationUs)}
@@ -305,13 +305,13 @@ export function Toolbar({
       {exportPct && (
         <div className="export-modal">
           <div className="export-card">
-            <div className="export-title">导出中 — {exportPct.label}</div>
+            <div className="export-title">Exporting — {exportPct.label}</div>
             <div className="export-bar">
               <div className="export-fill" style={{ width: `${Math.round(exportPct.frac * 100)}%` }} />
             </div>
             <div className="export-pct">{Math.round(exportPct.frac * 100)}%</div>
             <button className="export-cancel" onClick={() => exportAbort.current?.abort()}>
-              取消
+              Cancel
             </button>
           </div>
         </div>

@@ -43,7 +43,7 @@ export async function searchWeb(query: string): Promise<SearchResult> {
       .filter((x) => x.web?.uri)
       .map((x) => ({ title: x.web!.title ?? '', url: x.web!.uri as string }))
       .slice(0, 10);
-    if (!answer) return { ok: false, answer: '', sources, message: d.error?.message ?? '搜索无结果' };
+    if (!answer) return { ok: false, answer: '', sources, message: d.error?.message ?? 'Search returned no results' };
     return { ok: true, answer, sources };
   } catch (e) {
     return { ok: false, answer: '', sources: [], message: String(e instanceof Error ? e.message : e) };

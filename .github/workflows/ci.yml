@@ -1,6 +1,7 @@
-# CI — 把「双引擎由 golden vectors 钉死一致」从口头契约变成机器契约:
-# Rust 与 TS 两侧各自跑 protocol/vectors,任何只改一边的 PR 都过不了门禁;
-# wasm job 保证被 workspace exclude 的 velocut-wasm 绑定至少编译不破。
+# CI — turns "the two engines are pinned to agree via golden vectors" from a verbal
+# contract into a machine contract: Rust and TS each run protocol/vectors, so any PR
+# that changes only one side fails the gate; the wasm job ensures the workspace-excluded
+# velocut-wasm bindings at least still compile.
 name: CI
 
 on:

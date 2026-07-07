@@ -73,7 +73,7 @@ export class CollabSession {
         const res = migrateDocument(doc, stored);
         if (!res.ok) {
           console.error(
-            `[velocut] 无法加载已保存工程:${res.reason === 'future' ? `格式来自更新版本 (v${res.version})` : res.message}。已保留磁盘数据、以空白工程启动本会话。`,
+            `[velocut] Failed to load the saved project: ${res.reason === 'future' ? `format comes from a newer app version (v${res.version})` : res.message}. Disk data was preserved; this session starts with a blank project.`,
           );
           return;
         }

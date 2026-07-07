@@ -65,20 +65,20 @@ export class DocumentFormatError extends Error {
 export function migrateDocument(raw: unknown, storedVersion?: number): MigrateResult {
   let v = storedVersion ?? BASELINE_VERSION;
   if (!Number.isInteger(v) || v < 1) {
-    return { ok: false, reason: 'invalid', message: `formatVersion 非法:${String(storedVersion)}` };
+    return { ok: false, reason: 'invalid', message: `Invalid formatVersion: ${String(storedVersion)}` };
   }
   if (v > CURRENT_FORMAT_VERSION) {
     return { ok: false, reason: 'future', version: v };
   }
   const doc = raw as VDocument | null;
   if (!doc || typeof doc !== 'object' || !Array.isArray(doc.tracks) || !Array.isArray(doc.assets)) {
-    return { ok: false, reason: 'invalid', message: '不是有效文档(缺 tracks/assets)。' };
+    return { ok: false, reason: 'invalid', message: 'Not a valid document (missing tracks/assets).' };
   }
   const from = v;
   let cur = doc;
   while (v < CURRENT_FORMAT_VERSION) {
     const m = MIGRATIONS[v];
-    if (!m) return { ok: false, reason: 'invalid', message: `缺少 v${v}→v${v + 1} 的迁移。` };
+    if (!m) return { ok: false, reason: 'invalid', message: `Missing migration from v${v} to v${v + 1}.` };
     cur = m(cur);
     v++;
   }
@@ -91,7 +91,7 @@ export function migrateDocumentOrThrow(raw: unknown, storedVersion?: number): VD
   const r = migrateDocument(raw, storedVersion);
   if (r.ok) return r.doc;
   if (r.reason === 'future') {
-    throw new DocumentFormatError(`工程来自更新版本(格式 v${r.version} > v${CURRENT_FORMAT_VERSION})。`, 'future', r.version);
+    throw new DocumentFormatError(`Project was saved by a newer app version (format v${r.version} > v${CURRENT_FORMAT_VERSION}).`, 'future', r.version);
   }
   throw new DocumentFormatError(r.message, 'invalid');
 }

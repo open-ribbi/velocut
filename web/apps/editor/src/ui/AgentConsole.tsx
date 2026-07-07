@@ -130,35 +130,35 @@ function toolSummary(e: Extract<AgentEvent, { kind: 'tool' }>): string {
     // Surface the clip id so it matches the chip on the timeline clip.
     return `${cmd?.type ?? 'apply'}${cmd?.clipId ? ' ' + cmd.clipId : ''}${suffix}`;
   }
-  if (e.name === 'velocut_get_document') return '读取工程文档';
+  if (e.name === 'velocut_get_document') return 'Read project document';
   if (e.name === 'velocut_observe') {
     const mode = (e.input as { mode?: string })?.mode ?? 'frame';
-    return `👁 观察(${mode})${e.ok ? '' : ' ✗ ' + e.detail.slice(0, 80)}`;
+    return `👁 Observe (${mode})${e.ok ? '' : ' ✗ ' + e.detail.slice(0, 80)}`;
   }
   if (e.name === 'velocut_tts') {
     const t = ((e.input as { text?: string })?.text ?? '').slice(0, 16);
     if (e.ok) {
       try {
         const r = JSON.parse(e.detail) as { durationUs?: number };
-        return `🔊 旁白「${t}」→ ${((r.durationUs ?? 0) / 1e6).toFixed(1)}s`;
+        return `🔊 Narration "${t}" → ${((r.durationUs ?? 0) / 1e6).toFixed(1)}s`;
       } catch {
-        return `🔊 旁白「${t}」`;
+        return `🔊 Narration "${t}"`;
       }
     }
-    return `🔊 旁白 ✗ ${e.detail.slice(0, 80)}`;
+    return `🔊 Narration ✗ ${e.detail.slice(0, 80)}`;
   }
   if (e.name === 'velocut_evaluate')
-    return `查看 ${(((e.input as { timeUs?: number })?.timeUs ?? 0) / 1e6).toFixed(2)}s 处结构`;
+    return `Inspect structure at ${(((e.input as { timeUs?: number })?.timeUs ?? 0) / 1e6).toFixed(2)}s`;
   if (e.name === 'velocut_transcribe') {
     if (e.ok) {
       try {
         const r = JSON.parse(e.detail) as { count?: number };
-        return `自动字幕 → ${r.count ?? 0} 条`;
+        return `Auto subtitles → ${r.count ?? 0} lines`;
       } catch {
-        return '自动字幕';
+        return 'Auto subtitles';
       }
     }
-    return `自动字幕 ✗ ${e.detail.slice(0, 80)}`;
+    return `Auto subtitles ✗ ${e.detail.slice(0, 80)}`;
   }
   return e.name;
 }
@@ -326,7 +326,7 @@ export function AgentConsole({
         className="agent-fab"
         style={dock.fabStyle}
         onPointerDown={dock.onFabPointerDown}
-        title="拖动移动 · 点击打开 AI 剪辑助手"
+        title="Drag to move · Click to open the AI editing assistant"
       >
         ⌘ Agent
       </button>
@@ -340,14 +340,14 @@ export function AgentConsole({
     return (
       <div className="agent-console" ref={dock.panelRef} style={dock.panelStyle}>
         <div className="agent-head" onPointerDown={dock.onPanelDragStart}>
-          <span className="drag-grip" title="拖动移动">⠿</span>
-          <span className="agent-title">AI 剪辑助手 — 设置</span>
+          <span className="drag-grip" title="Drag to move">⠿</span>
+          <span className="agent-title">AI Editing Assistant — Setup</span>
           <button onClick={() => setOpen(false)}>×</button>
         </div>
         <div className="agent-setup">
           <p>
-            输入 Anthropic API Key 后即可用自然语言剪辑。Key 仅保存在本机浏览器(localStorage),
-            请求直接从浏览器发往 Anthropic。
+            Enter your Anthropic API key to edit with natural language. The key is stored only in this
+            browser (localStorage); requests go directly from the browser to Anthropic.
           </p>
           <input
             type="password"
@@ -363,7 +363,7 @@ export function AgentConsole({
               setApiKey(keyDraft.trim());
             }}
           >
-            保存
+            Save
           </button>
         </div>
       </div>
@@ -373,8 +373,8 @@ export function AgentConsole({
   return (
     <div className="agent-console" ref={dock.panelRef} style={dock.panelStyle}>
       <div className="agent-head" onPointerDown={dock.onPanelDragStart}>
-        <span className="drag-grip" title="拖动移动">⠿</span>
-        <span className="agent-title">AI 剪辑助手</span>
+        <span className="drag-grip" title="Drag to move">⠿</span>
+        <span className="agent-title">AI Editing Assistant</span>
         <select
           value={model}
           onChange={(e) => {
@@ -387,7 +387,7 @@ export function AgentConsole({
           ))}
         </select>
         <button
-          title="清除 API Key"
+          title="Clear API key"
           onClick={() => {
             localStorage.removeItem(KEY_STORAGE);
             setApiKey('');
@@ -400,7 +400,7 @@ export function AgentConsole({
       <div className="agent-chat" ref={listRef}>
         {items.length === 0 && (
           <div className="agent-hint">
-            试试:「在播放头处分割并把后半段静音」「开头加 2 秒标题,淡入」「把字幕移到画面下方」
+            Try: "Split at the playhead and mute the second half" · "Add a 2-second title at the start, fading in" · "Move the subtitles to the bottom of the frame"
           </div>
         )}
         {items.map((m, i) => {
@@ -415,7 +415,7 @@ export function AgentConsole({
               <div
                 key={i}
                 className={cls}
-                title={jump ? '点击跳到改动处' : undefined}
+                title={jump ? 'Click to jump to this edit' : undefined}
                 onClick={
                   jump
                     ? () => {
@@ -436,7 +436,7 @@ export function AgentConsole({
                       key={k}
                       className="obs-thumb"
                       src={url}
-                      alt="agent 观察"
+                      alt="agent observation"
                       onClick={(ev) => {
                         ev.stopPropagation();
                         setLightbox(url);
@@ -455,12 +455,12 @@ export function AgentConsole({
           );
         })}
         {/* The dots show only until the first streamed token arrives. */}
-        {busy && items[items.length - 1]?.role === 'user' && <div className="chat-busy">思考中…</div>}
+        {busy && items[items.length - 1]?.role === 'user' && <div className="chat-busy">Thinking…</div>}
       </div>
       <div className="agent-input-row">
         <textarea
           value={input}
-          placeholder="描述剪辑意图,Enter 发送"
+          placeholder="Describe your editing intent; press Enter to send"
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
@@ -471,12 +471,12 @@ export function AgentConsole({
           }}
         />
         <button className="primary" disabled={busy || !input.trim()} onClick={() => void send()}>
-          发送
+          Send
         </button>
       </div>
       {lightbox && (
         <div className="obs-lightbox" onClick={() => setLightbox(null)}>
-          <img src={lightbox} alt="agent 观察(放大)" />
+          <img src={lightbox} alt="agent observation (enlarged)" />
         </div>
       )}
     </div>

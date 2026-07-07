@@ -279,12 +279,12 @@ export function TimelinePanel({ store, state, media, height }: { store: Store; s
         sx += ctx.measureText(track.kind).width + 7;
         if (track.muted) {
           ctx.fillStyle = '#e8a23f';
-          ctx.fillText('静音', sx, y + 26);
-          sx += ctx.measureText('静音').width + 7;
+          ctx.fillText('muted', sx, y + 26);
+          sx += ctx.measureText('muted').width + 7;
         }
         if (track.locked) {
           ctx.fillStyle = '#ffd24d';
-          ctx.fillText('锁定', sx, y + 26);
+          ctx.fillText('locked', sx, y + 26);
         }
       }
       // lane bg
@@ -390,7 +390,7 @@ export function TimelinePanel({ store, state, media, height }: { store: Store; s
         }
         if (Object.keys(clip.keyframes).length > 0) {
           ctx.fillStyle = '#9ad0ff';
-          ctx.fillText('◆ 关键帧', mx, ly + 40);
+          ctx.fillText('◆ keyframes', mx, ly + 40);
         }
         ctx.restore();
 
@@ -816,7 +816,7 @@ export function TimelinePanel({ store, state, media, height }: { store: Store; s
                     setMenu(null);
                   }}
                 >
-                  ✂ 在播放头分割
+                  ✂ Split at Playhead
                 </button>
                 <button
                   className="ctx-danger"
@@ -825,41 +825,41 @@ export function TimelinePanel({ store, state, media, height }: { store: Store; s
                     setMenu(null);
                   }}
                 >
-                  🗑 删除片段
+                  🗑 Delete Clip
                 </button>
               </>
             )}
             {menu.kind === 'track' && menuTrack && (
               <>
                 <button onClick={() => { store.dispatch({ type: 'setTrackMuted', trackId: menuTrack.id, muted: !menuTrack.muted }); setMenu(null); }}>
-                  {menuTrack.muted ? '取消静音' : '静音'}
+                  {menuTrack.muted ? 'Unmute' : 'Mute'}
                 </button>
                 <button onClick={() => { store.dispatch({ type: 'setTrackLocked', trackId: menuTrack.id, locked: !menuTrack.locked }); setMenu(null); }}>
-                  {menuTrack.locked ? '解锁' : '锁定'}
+                  {menuTrack.locked ? 'Unlock' : 'Lock'}
                 </button>
                 <button onClick={() => { toggleCollapse(menuTrack.id); setMenu(null); }}>
-                  {collapsed.current.has(menuTrack.id) ? '展开轨道' : '折叠轨道'}
+                  {collapsed.current.has(menuTrack.id) ? 'Expand Track' : 'Collapse Track'}
                 </button>
                 <div className="ctx-sep" />
                 <button disabled={menuTrackIdx <= 0} onClick={() => moveTrack(menuTrackIdx - 1)}>
-                  ↑ 上移
+                  ↑ Move Up
                 </button>
                 <button disabled={menuTrackIdx < 0 || menuTrackIdx >= state.doc.tracks.length - 1} onClick={() => moveTrack(menuTrackIdx + 1)}>
-                  ↓ 下移
+                  ↓ Move Down
                 </button>
                 <div className="ctx-sep" />
                 <button
                   className="ctx-danger"
                   onClick={() => {
                     const n = menuTrack.clips.length;
-                    if (n === 0 || window.confirm(`删除轨道「${menuTrack.name}」及其 ${n} 个片段?`)) {
+                    if (n === 0 || window.confirm(`Delete track "${menuTrack.name}" and its ${n} clip(s)?`)) {
                       collapsed.current.delete(menuTrack.id);
                       store.dispatch({ type: 'removeTrack', trackId: menuTrack.id });
                     }
                     setMenu(null);
                   }}
                 >
-                  🗑 删除轨道
+                  🗑 Delete Track
                 </button>
               </>
             )}

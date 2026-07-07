@@ -209,28 +209,28 @@ type NonBatch = z.infer<typeof NonBatchSchema>;
 
 /** type → one-line summary for the agent prompt's command table. */
 const SUMMARIES: Record<string, string> = {
-  addAsset: 'kind:video|audio|image, src, name, durationUs?, width?, height?, hasAudio? — 登记素材',
-  addTrack: 'kind:video|audio|text, name?, index? — 新建轨道',
-  removeTrack: 'trackId — 删除轨道(含其 clips)',
-  moveTrack: 'trackId, toIndex — 重排轨道到第 toIndex 位(0=顶层渲染顺序)',
-  addClip: 'trackId, assetId, startUs, durationUs?, sourceInUs? — 素材上轨',
-  addTextClip: 'trackId, startUs, durationUs, text:TextPayload(见下) — 文字 clip',
-  removeClip: 'clipId — 删除 clip',
-  moveClip: 'clipId, startUs, trackId? — 移动(可跨同类轨)',
-  trimClip: 'clipId, edge:in|out, toUs — 裁剪;in 边同步推进 sourceIn',
-  splitClip: 'clipId, atUs(时间轴坐标) — 一分为二',
-  setClipSpeed: 'clipId, speed — 变速',
-  setTransform: 'clipId, transform:{x,y,scaleX,scaleY,rotation,opacity} — 整体写变换(原点=画面中心,像素)',
-  setClipVolume: 'clipId, volume:0–2 — 音量',
-  setText: 'clipId, text:TextPayload — 改文字(整体替换 text 对象,见下)',
-  setTransition: 'clipId, transition:{kind,durationUs}|null — 入场转场,见下',
-  setKeyframe: 'clipId, property:x|y|scaleX|scaleY|rotation|opacity|volume, keyframe:{timeUs,value,easing} — timeUs 相对 clip 起点',
-  removeKeyframe: 'clipId, property, timeUs — 删关键帧',
-  addEffect: 'clipId, effect:brightnessContrast|colorGrade, params 见「调色」 — 加特效',
-  removeEffect: 'clipId, effectId — 删特效',
-  setEffectParams: 'clipId, effectId, params — 改特效参数',
-  setTrackMuted: 'trackId, muted — 轨道静音',
-  setTrackLocked: 'trackId, locked — 轨道锁定',
+  addAsset: 'kind:video|audio|image, src, name, durationUs?, width?, height?, hasAudio? — register an asset',
+  addTrack: 'kind:video|audio|text, name?, index? — create a track',
+  removeTrack: 'trackId — remove a track (including its clips)',
+  moveTrack: 'trackId, toIndex — reorder the track to position toIndex (0 = top of the render order)',
+  addClip: 'trackId, assetId, startUs, durationUs?, sourceInUs? — place an asset on a track',
+  addTextClip: 'trackId, startUs, durationUs, text:TextPayload (see below) — text clip',
+  removeClip: 'clipId — remove a clip',
+  moveClip: 'clipId, startUs, trackId? — move (may cross tracks of the same kind)',
+  trimClip: 'clipId, edge:in|out, toUs — trim; the in edge advances sourceIn in step',
+  splitClip: 'clipId, atUs (timeline coordinates) — split into two',
+  setClipSpeed: 'clipId, speed — change playback speed',
+  setTransform: 'clipId, transform:{x,y,scaleX,scaleY,rotation,opacity} — write the whole transform (origin = frame center, in pixels)',
+  setClipVolume: 'clipId, volume:0–2 — volume',
+  setText: 'clipId, text:TextPayload — edit text (replaces the whole text object, see below)',
+  setTransition: 'clipId, transition:{kind,durationUs}|null — entrance transition, see below',
+  setKeyframe: 'clipId, property:x|y|scaleX|scaleY|rotation|opacity|volume, keyframe:{timeUs,value,easing} — timeUs is relative to the clip start',
+  removeKeyframe: 'clipId, property, timeUs — remove a keyframe',
+  addEffect: 'clipId, effect:brightnessContrast|colorGrade, params: see "color grading" — add an effect',
+  removeEffect: 'clipId, effectId — remove an effect',
+  setEffectParams: 'clipId, effectId, params — update effect params',
+  setTrackMuted: 'trackId, muted — mute/unmute a track',
+  setTrackLocked: 'trackId, locked — lock/unlock a track',
 };
 
 /** A command — value types inferred from zod; batch is the recursive wrapper. */
@@ -247,7 +247,7 @@ export const CommandSchema: z.ZodType<Command> = z.lazy(() =>
 /** type → one-line summary, for generating the agent prompt's command table. */
 export const COMMAND_CATALOG: Array<{ type: string; summary: string }> = [
   ...Object.entries(SUMMARIES).map(([type, summary]) => ({ type, summary })),
-  { type: 'batch', summary: 'commands[] — 原子批量(任一失败全回滚)' },
+  { type: 'batch', summary: 'commands[] — atomic batch (if any command fails, all roll back)' },
 ];
 
 /** Validate a command at the dispatch boundary. Returns a machine-readable

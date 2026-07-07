@@ -281,7 +281,7 @@ class Source {
       const fallback = await VideoDecoder.isConfigSupported(this.config);
       // Fail the import loudly — otherwise configure() throws on every feed
       // and the preview is a silent black screen.
-      if (!fallback.supported) throw new Error(`不支持的视频编码: ${this.config.codec}`);
+      if (!fallback.supported) throw new Error(`Unsupported video codec: ${this.config.codec}`);
     }
   }
 

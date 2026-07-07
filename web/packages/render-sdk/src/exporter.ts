@@ -116,7 +116,7 @@ export class Exporter {
     const picked =
       (await pickCodec(want, width, height, framerate)) ??
       (want !== 'avc' ? await pickCodec('avc', width, height, framerate) : null);
-    if (!picked) throw new Error(`无可用视频编码器配置(${width}x${height}@${framerate})`);
+    if (!picked) throw new Error(`No usable video encoder config (${width}x${height}@${framerate})`);
 
     // Stream the output to OPFS when possible so the whole MP4 doesn't buffer
     // in memory; otherwise fall back to an in-memory ArrayBuffer (faststart).
@@ -206,7 +206,7 @@ export class Exporter {
 
       // Backpressure: don't let the encode queue run away.
       while (videoEncoder.encodeQueueSize > 8) await new Promise((r) => setTimeout(r, 0));
-      opts.onProgress?.(((n + 1) / totalFrames) * (hasAudio ? 0.85 : 1), '渲染视频帧');
+      opts.onProgress?.(((n + 1) / totalFrames) * (hasAudio ? 0.85 : 1), 'Rendering video frames');
     }
     await videoEncoder.flush();
     videoEncoder.close();
@@ -303,7 +303,7 @@ export class Exporter {
         data.close();
         while (audioEncoder.encodeQueueSize > 16) await new Promise((r) => setTimeout(r, 0));
       }
-      opts.onProgress?.(0.85 + (winStart / total) * 0.15, '编码音频');
+      opts.onProgress?.(0.85 + (winStart / total) * 0.15, 'Encoding audio');
     }
     await audioEncoder.flush();
     audioEncoder.close();

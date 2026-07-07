@@ -31,19 +31,19 @@ export async function captionAsset(
   const asset = opts.assetId
     ? doc.assets.find((a) => a.id === opts.assetId)
     : doc.assets.find((a) => a.hasAudio);
-  if (!asset) return { ok: false, message: '没有可识别的音频素材;请先导入带声音的视频或音频。' };
-  if (!asset.hasAudio) return { ok: false, message: `素材 ${asset.id} 没有音轨。` };
-  if (asset.durationUs <= 0) return { ok: false, message: '素材时长未知。' };
+  if (!asset) return { ok: false, message: 'No audio asset to transcribe; import a video or audio file with sound first.' };
+  if (!asset.hasAudio) return { ok: false, message: `Asset ${asset.id} has no audio track.` };
+  if (asset.durationUs <= 0) return { ok: false, message: 'Asset duration is unknown.' };
 
   const segments = await transcribeAsset(media, transcriber, asset.id, asset.durationUs, {
     language: opts.language,
     onProgress: opts.onProgress,
   });
-  opts.onProgress?.(0.95, '生成字幕轨');
+  opts.onProgress?.(0.95, 'Generating caption track');
   const res = applyCaptions(store.dispatch, store.getState().doc, segments, {
     fontSize: opts.fontSize,
     color: opts.color,
   });
-  if (!res) return { ok: false, message: '未识别到语音内容。' };
+  if (!res) return { ok: false, message: 'No speech detected.' };
   return { ok: true, trackId: res.trackId, count: res.count };
 }

@@ -10,8 +10,8 @@ const sameSet = (a: Set<string>, b: Set<string>) => a.size === b.size && [...a].
 /** Tooltip for an asset the document references but whose media isn't loaded. */
 function unloadedHint(src: string): string {
   return src.startsWith('motion://')
-    ? '动态图形未恢复 —— 刷新后丢失,需重新生成'
-    : '素材文件未加载,可能已丢失 —— 重新导入同名文件即可恢复';
+    ? 'Motion graphic not restored — lost on reload, needs to be regenerated'
+    : 'Asset file not loaded, possibly missing — re-import a file with the same name to restore it';
 }
 
 /**
@@ -122,14 +122,14 @@ export function AssetPanel({ store, media, state, width }: { store: Store; media
   const addTextLayer = () => {
     const doc = state.doc;
     const textTrack = doc.tracks.find((t) => t.kind === 'text' && !t.locked);
-    const text = { content: '双击修改文字', fontSize: 72, color: '#ffffff' };
+    const text = { content: 'Double-click to edit text', fontSize: 72, color: '#ffffff' };
     if (!textTrack) {
       const trackId = `track_${doc.nextId}`;
       selectNewClip(
         store.dispatch({
           type: 'batch',
           commands: [
-            { type: 'addTrack', kind: 'text', name: '文字' },
+            { type: 'addTrack', kind: 'text', name: 'Text' },
             { type: 'addTextClip', trackId, startUs: state.playheadUs, durationUs: 3_000_000, text },
           ],
         }),
@@ -152,16 +152,16 @@ export function AssetPanel({ store, media, state, width }: { store: Store; media
 
   return (
     <div className="asset-panel" style={width ? { width } : undefined}>
-      <div className="panel-title">素材库</div>
+      <div className="panel-title">Assets</div>
       {state.doc.assets.length === 0 && (
-        <div className="empty-hint">导入 视频 / 图片 / 音频 开始剪辑</div>
+        <div className="empty-hint">Import video / images / audio to start editing</div>
       )}
       {state.doc.assets.map((a) => (
         <div
           key={a.id}
           className="asset-item"
           onClick={(e) => e.detail <= 1 && addToTimeline(a.id)}
-          title="点击添加到时间轴"
+          title="Click to add to timeline"
         >
           <span className={`asset-kind asset-${a.kind}`}>{ICON[a.kind] ?? '📄'}</span>
           <span className="asset-name">{a.name}</span>
@@ -175,18 +175,18 @@ export function AssetPanel({ store, media, state, width }: { store: Store; media
       ))}
       <div className="panel-foot">
         <button className="add-text-btn" onClick={addTextLayer}>
-          + 文字图层
+          + Text Layer
         </button>
         <div className="add-track-row">
-          <span className="add-track-label">新增轨道</span>
-          <button onClick={() => addTrack('video', '视频')} title="新增视频轨">
-            视频
+          <span className="add-track-label">Add Track</span>
+          <button onClick={() => addTrack('video', 'Video')} title="Add video track">
+            Video
           </button>
-          <button onClick={() => addTrack('audio', '音频')} title="新增音频轨">
-            音频
+          <button onClick={() => addTrack('audio', 'Audio')} title="Add audio track">
+            Audio
           </button>
-          <button onClick={() => addTrack('text', '文字')} title="新增文字轨">
-            文字
+          <button onClick={() => addTrack('text', 'Text')} title="Add text track">
+            Text
           </button>
         </div>
       </div>

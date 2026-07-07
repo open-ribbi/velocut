@@ -67,7 +67,7 @@ export class HistoryTree {
       ts: Date.now(),
       actor: rootActor,
       command: null,
-      label: '初始',
+      label: 'Initial',
       snapshot: structuredClone(rootDoc),
     };
     this.nodes.set(id, root);
@@ -241,61 +241,61 @@ export class HistoryTree {
 
 // ---------------------------------------------------------------- labels
 
-const trackKindLabel: Record<string, string> = { video: '视频', audio: '音频', text: '文字' };
+const trackKindLabel: Record<string, string> = { video: 'video', audio: 'audio', text: 'text' };
 const us = (n?: number | null) => (n == null ? '?' : (Math.round(n / 1e5) / 10).toFixed(1) + 's');
 
 /** A short human description of a command for the history board. */
 export function describeCommand(cmd: Command): string {
   switch (cmd.type) {
     case 'addAsset':
-      return `导入${trackKindLabel[cmd.kind] ?? ''}「${cmd.name}」`;
+      return `Import ${trackKindLabel[cmd.kind] ?? cmd.kind} "${cmd.name}"`;
     case 'addTrack':
-      return `新增${trackKindLabel[cmd.kind] ?? ''}轨`;
+      return `Add ${trackKindLabel[cmd.kind] ?? cmd.kind} track`;
     case 'removeTrack':
-      return '删除轨道';
+      return 'Remove track';
     case 'moveTrack':
-      return '重排轨道';
+      return 'Reorder tracks';
     case 'addClip':
-      return `素材上轨 @${us(cmd.startUs)}`;
+      return `Place asset on track @${us(cmd.startUs)}`;
     case 'addTextClip':
-      return `加文字「${(cmd.text?.content ?? '').slice(0, 8)}」`;
+      return `Add text "${(cmd.text?.content ?? '').slice(0, 8)}"`;
     case 'removeClip':
-      return '删除片段';
+      return 'Remove clip';
     case 'moveClip':
-      return `移动片段 → ${us(cmd.startUs)}`;
+      return `Move clip → ${us(cmd.startUs)}`;
     case 'trimClip':
-      return `裁剪 ${cmd.edge === 'in' ? '头' : '尾'} → ${us(cmd.toUs)}`;
+      return `Trim ${cmd.edge === 'in' ? 'head' : 'tail'} → ${us(cmd.toUs)}`;
     case 'splitClip':
-      return `分割 @${us(cmd.atUs)}`;
+      return `Split @${us(cmd.atUs)}`;
     case 'setClipSpeed':
-      return `变速 ${cmd.speed}x`;
+      return `Speed ${cmd.speed}x`;
     case 'setTransform':
-      return '调整变换';
+      return 'Adjust transform';
     case 'setClipVolume':
-      return `音量 ${Math.round(cmd.volume * 100)}%`;
+      return `Volume ${Math.round(cmd.volume * 100)}%`;
     case 'setText':
-      return '改文字样式';
+      return 'Edit text style';
     case 'setTransition':
-      return cmd.transition ? `转场·${cmd.transition.kind === 'fadeBlack' ? '转黑' : '溶解'}` : '移除转场';
+      return cmd.transition ? `Transition · ${cmd.transition.kind === 'fadeBlack' ? 'fade to black' : 'dissolve'}` : 'Remove transition';
     case 'setKeyframe':
-      return `关键帧·${cmd.property}`;
+      return `Keyframe · ${cmd.property}`;
     case 'removeKeyframe':
-      return `删关键帧·${cmd.property}`;
+      return `Remove keyframe · ${cmd.property}`;
     case 'addEffect':
-      return cmd.effect === 'colorGrade' ? '调色' : `加特效·${cmd.effect}`;
+      return cmd.effect === 'colorGrade' ? 'Color grade' : `Add effect · ${cmd.effect}`;
     case 'setEffectParams':
-      return '调特效参数';
+      return 'Adjust effect params';
     case 'removeEffect':
-      return '删除特效';
+      return 'Remove effect';
     case 'setTrackMuted':
-      return cmd.muted ? '静音轨道' : '取消静音';
+      return cmd.muted ? 'Mute track' : 'Unmute track';
     case 'setTrackLocked':
-      return cmd.locked ? '锁定轨道' : '解锁轨道';
+      return cmd.locked ? 'Lock track' : 'Unlock track';
     case 'batch': {
       const inner = cmd.commands;
       if (inner.length === 1) return describeCommand(inner[0]);
       const first = inner[0] ? describeCommand(inner[0]) : '';
-      return `批量 ×${inner.length}:${first}…`;
+      return `Batch ×${inner.length}: ${first}…`;
     }
     default:
       return (cmd as { type: string }).type;

@@ -28,7 +28,7 @@ function localActor(): { kind: 'user'; peerId: string; name: string } {
     peerId = 'u' + Date.now().toString(36) + Math.floor(performance.now()).toString(36);
     localStorage.setItem('velocut.peerId', peerId);
   }
-  const name = localStorage.getItem('velocut.peerName') || '你';
+  const name = localStorage.getItem('velocut.peerName') || 'You';
   return { kind: 'user', peerId, name };
 }
 
@@ -192,7 +192,7 @@ async function bootstrap() {
           // The UI and the discrete velocut_tts tool keep the configurable provider.
           tts: (o) => {
             const local = localTts();
-            if (!local) return Promise.resolve({ ok: false, message: '沙箱脚本仅允许本地 TTS,当前无本地语音后端。' });
+            if (!local) return Promise.resolve({ ok: false, message: 'Sandboxed scripts only allow local TTS; no local speech backend is available.' });
             return synthesizeNarration(store, media, local, o);
           },
           observe: async (input) => {

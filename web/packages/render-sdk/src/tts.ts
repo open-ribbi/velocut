@@ -191,7 +191,7 @@ export class MiniMaxTextToSpeech implements TextToSpeech {
     if (!resp.ok) throw new Error(`MiniMax ${resp.status}: ${(await resp.text()).slice(0, 160)}`);
     const json = (await resp.json()) as { data?: { audio?: string }; base_resp?: { status_msg?: string } };
     const hex = json.data?.audio;
-    if (!hex) throw new Error(`MiniMax 无音频返回: ${json.base_resp?.status_msg ?? 'unknown'}`);
+    if (!hex) throw new Error(`MiniMax returned no audio: ${json.base_resp?.status_msg ?? 'unknown'}`);
     const bytes = new Uint8Array(hex.length / 2);
     for (let i = 0; i < bytes.length; i++) bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
     this.ctx ??= new AudioContext();
@@ -203,14 +203,14 @@ export class MiniMaxTextToSpeech implements TextToSpeech {
 // Register the built-ins. A new backend = one registerTtsProvider call.
 registerTtsProvider({
   id: 'mms',
-  label: 'MMS/VITS(浏览器内,无需 key)',
+  label: 'MMS/VITS (in-browser, no key required)',
   kind: 'local',
   languages: ['chinese', 'english'],
   create: (cfg) => new MmsTextToSpeech(cfg as { models?: Record<string, string> }),
 });
 registerTtsProvider({
   id: 'minimax',
-  label: 'MiniMax(云端,需 key/GroupId)',
+  label: 'MiniMax (cloud, requires key/GroupId)',
   kind: 'cloud',
   languages: ['chinese', 'english'],
   voices: ['male-qn-jingying', 'female-shaonv', 'male-qn-qingse'],
