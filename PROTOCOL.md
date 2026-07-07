@@ -69,7 +69,7 @@ Keyframe `easing`: `{"kind":"linear"}` | `{"kind":"hold"}` | `{"kind":"bezier","
 
 ```json
 { "type": "batch", "commands": [
-  { "type": "addTrack", "kind": "text", "name": "Subtitles", "index": 0 },
+  { "type": "addTrack", "kind": "text", "name": "Captions", "index": 0 },
   { "type": "addTextClip", "trackId": "track_2", "startUs": 0, "durationUs": 2000000,
     "text": { "content": "New Arrival", "fontSize": 96, "color": "#ffffff" } }
 ]}
