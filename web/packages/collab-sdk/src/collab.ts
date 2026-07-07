@@ -17,7 +17,7 @@
 import * as Y from 'yjs';
 import type { Track, Asset, VDocument } from '@velocut/protocol';
 import { CURRENT_FORMAT_VERSION, migrateDocument } from '@velocut/protocol';
-import { kvGet, kvPut } from './persistence';
+import { kvGet, kvPut } from './persistence.ts';
 
 export interface CollabHost {
   getState(): { doc: VDocument; revision: number };

@@ -16,9 +16,9 @@ import type {
   EffectInstance,
   TextPayload,
   Transition,
-} from './schema';
+} from './schema.ts';
 
-export * from './schema';
+export * from './schema.ts';
 
 export type TimeUs = number; // integer microseconds
 

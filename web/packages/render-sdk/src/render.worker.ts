@@ -12,8 +12,8 @@
 // the battle-tested offline path, so the worker inherits its correctness. The
 // export Renderer stays on the main thread untouched; only PREVIEW moved.
 
-import { Renderer } from './renderer';
-import type { MediaLibrary } from './media';
+import { Renderer } from './renderer.ts';
+import type { MediaLibrary } from './media.ts';
 import type { FrameGraph, TextPayload, Transform } from '@velocut/protocol';
 
 /** Asset pixel dimensions the renderer needs (proxy frames sample across the

@@ -10,7 +10,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import type { Command, Envelope, FrameGraph, TimeUs, VDocument } from '@velocut/protocol';
-import { SYSTEM_PROMPT } from './protocol-prompt';
+import { SYSTEM_PROMPT } from './protocol-prompt.ts';
 
 export { SYSTEM_PROMPT };
 

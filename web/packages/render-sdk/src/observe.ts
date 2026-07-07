@@ -20,8 +20,8 @@
 //    doc-aware modes (storyboard over clips, scan over windows).
 
 import type { FrameGraph, Layer } from '@velocut/protocol';
-import { Renderer } from './renderer';
-import type { MediaLibrary } from './media';
+import { Renderer } from './renderer.ts';
+import type { MediaLibrary } from './media.ts';
 
 /** Quantitative readouts of one rendered frame — the "instruments". */
 export interface FrameMetrics {

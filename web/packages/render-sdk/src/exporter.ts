@@ -9,8 +9,8 @@
 
 import { Muxer, ArrayBufferTarget, FileSystemWritableFileStreamTarget } from 'mp4-muxer';
 import type { FrameGraph, TimeUs } from '@velocut/protocol';
-import { Renderer } from './renderer';
-import type { MediaLibrary } from './media';
+import { Renderer } from './renderer.ts';
+import type { MediaLibrary } from './media.ts';
 
 const EXPORT_TMP = 'velocut-export-tmp.mp4';
 

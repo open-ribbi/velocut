@@ -14,7 +14,7 @@
 // varispeed is an export-path feature), per-slice gain, additive mixing.
 
 import type { FrameGraph, TimeUs } from '@velocut/protocol';
-import type { MediaLibrary } from './media';
+import type { MediaLibrary } from './media.ts';
 
 /** Keep this much audio scheduled ahead of the playhead. */
 const AHEAD_US = 1_200_000;

@@ -5,7 +5,7 @@
 // and the OPFS media store. The engine stays the single source of editing
 // truth — this SDK only moves documents between sites and disk.
 
-export { CollabSession, type CollabHost } from './collab';
+export { CollabSession, type CollabHost } from './collab.ts';
 export {
   saveMedia,
   loadMedia,
@@ -18,4 +18,4 @@ export {
   listFonts,
   loadFontData,
   type FontRecord,
-} from './persistence';
+} from './persistence.ts';

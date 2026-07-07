@@ -11,7 +11,7 @@
 // playback loop knows a repaint is worthwhile while paused.
 
 import { Muxer, FileSystemWritableFileStreamTarget } from 'mp4-muxer';
-import type { MainToWorker, ProbeResult, WorkerToMain } from './media.worker';
+import type { MainToWorker, ProbeResult, WorkerToMain } from './media.worker.ts';
 
 export type ProbedMedia = ProbeResult;
 

@@ -14,9 +14,9 @@
 // worker owns + closes the clones.
 
 import type { FrameGraph, TextPayload, Transform } from '@velocut/protocol';
-import type { MediaLibrary } from './media';
-import { computeTextLayout, type TextLayout } from './textlayout';
-import type { AssetSize, ClientToRender, RenderToClient } from './render.worker';
+import type { MediaLibrary } from './media.ts';
+import { computeTextLayout, type TextLayout } from './textlayout.ts';
+import type { AssetSize, ClientToRender, RenderToClient } from './render.worker.ts';
 
 /** The preview renderer surface — implemented by both the worker-backed
  *  {@link RendererClient} (preview) and the concrete {@link Renderer} (export

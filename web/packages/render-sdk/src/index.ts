@@ -6,12 +6,12 @@
 // driven by protocol FrameGraphs — the SDK has no knowledge of timeline
 // semantics, documents, or commands.
 
-export { Renderer, type TextLayout, type TextLine } from './renderer';
-export { RendererClient, type PreviewRenderer } from './renderer-client';
-export { MediaLibrary, RemoteVideoSource, type ProbedMedia } from './media';
-export { Playback, type TransportStore } from './playback';
-export { AudioEngine } from './audio';
-export { Exporter, type ExportOptions, type AudioClipPlan, type VideoCodecFamily } from './exporter';
+export { Renderer, type TextLayout, type TextLine } from './renderer.ts';
+export { RendererClient, type PreviewRenderer } from './renderer-client.ts';
+export { MediaLibrary, RemoteVideoSource, type ProbedMedia } from './media.ts';
+export { Playback, type TransportStore } from './playback.ts';
+export { AudioEngine } from './audio.ts';
+export { Exporter, type ExportOptions, type AudioClipPlan, type VideoCodecFamily } from './exporter.ts';
 export {
   WhisperTranscriber,
   transcribeAsset,
@@ -21,7 +21,7 @@ export {
   type Transcriber,
   type CaptionSegment,
   type CaptionStyle,
-} from './transcribe';
+} from './transcribe.ts';
 export {
   Observer,
   isolateClip,
@@ -33,7 +33,7 @@ export {
   type GrabSpec,
   type Shot,
   type ShotAnalysis,
-} from './observe';
+} from './observe.ts';
 export {
   ConfigurableTts,
   MmsTextToSpeech,
@@ -47,7 +47,7 @@ export {
   type TtsConfig,
   type SynthOptions,
   type SynthResult,
-} from './tts';
+} from './tts.ts';
 export {
   compileMotionSpec,
   validateMotionSpec,
@@ -60,7 +60,7 @@ export {
   type EllipseLayer,
   type ImageLayer,
   type CompiledMotion,
-} from './motionspec';
+} from './motionspec.ts';
 export {
   resolveColorAdjust,
   registerEffect,
@@ -70,4 +70,4 @@ export {
   type EffectSchema,
   type EffectParamSchema,
   type ResolvedGrade,
-} from './effects';
+} from './effects.ts';

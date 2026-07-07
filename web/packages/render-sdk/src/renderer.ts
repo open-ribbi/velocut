@@ -12,14 +12,14 @@
 // generated from vertex_index (no vertex buffers), standard alpha blending.
 
 import type { FrameGraph, Layer, TextPayload } from '@velocut/protocol';
-import type { MediaLibrary } from './media';
-import { resolveColorAdjust, resolvePassEffects, transitionWgsl, TRANSITIONS, type PassEffect } from './effects';
-import { computeTextLayout, fontSpecOf, type TextLayout } from './textlayout';
+import type { MediaLibrary } from './media.ts';
+import { resolveColorAdjust, resolvePassEffects, transitionWgsl, TRANSITIONS, type PassEffect } from './effects.ts';
+import { computeTextLayout, fontSpecOf, type TextLayout } from './textlayout.ts';
 
 // Re-exported so consumers (and the SDK barrel) keep importing these from the
 // renderer even though the layout math now lives in ./textlayout (shared with
 // the main-thread editor across the worker boundary).
-export type { TextLayout, TextLine } from './textlayout';
+export type { TextLayout, TextLine } from './textlayout.ts';
 
 /** The active FontFaceSet — document.fonts on the main thread (the export
  *  Renderer), or the worker global's fonts when the Renderer runs inside the

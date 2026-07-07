@@ -7,9 +7,9 @@
 // otherwise the wall clock drives.
 
 import type { FrameGraph, TimeUs } from '@velocut/protocol';
-import type { MediaLibrary } from './media';
-import type { PreviewRenderer } from './renderer-client';
-import type { AudioEngine } from './audio';
+import type { MediaLibrary } from './media.ts';
+import type { PreviewRenderer } from './renderer-client.ts';
+import type { AudioEngine } from './audio.ts';
 
 /** What the transport needs from the app's store — any state container that
  *  fronts an ICoreEngine satisfies this. */
