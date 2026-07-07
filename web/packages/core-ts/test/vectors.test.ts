@@ -36,7 +36,8 @@ interface Vector {
     clipCounts?: Record<string, number>;
     eval?: Array<{
       timeUs: number;
-      layers: Array<{ clipId: string; sourceTimeUs?: number; opacity?: number; x?: number }>;
+      layers?: Array<{ clipId: string; sourceTimeUs?: number; opacity?: number; x?: number }>;
+      audio?: Array<{ clipId: string; gain?: number; sourceTimeUs?: number }>;
     }>;
   };
 }
@@ -117,6 +118,24 @@ for (const file of files) {
 
     for (const evalCase of vec.expect.eval ?? []) {
       const fg = engine.evaluate(evalCase.timeUs);
+      for (const want of evalCase.audio ?? []) {
+        const slice = fg.audio.find((s) => s.clipId === want.clipId);
+        assert.ok(slice, `eval t=${evalCase.timeUs} missing audio slice ${want.clipId}`);
+        if (want.gain !== undefined)
+          assert.ok(
+            approx(slice!.gain, want.gain),
+            `t=${evalCase.timeUs} ${want.clipId} gain: got ${slice!.gain}`,
+          );
+        if (want.sourceTimeUs !== undefined)
+          assert.equal(slice!.sourceTimeUs, want.sourceTimeUs, `t=${evalCase.timeUs} audio sourceTime`);
+      }
+      if (evalCase.audio !== undefined)
+        assert.equal(
+          fg.audio.length,
+          evalCase.audio.length,
+          `eval t=${evalCase.timeUs} audio slice count: got ${JSON.stringify(fg.audio)}`,
+        );
+      if (evalCase.layers === undefined) continue;
       assert.equal(
         fg.layers.length,
         evalCase.layers.length,

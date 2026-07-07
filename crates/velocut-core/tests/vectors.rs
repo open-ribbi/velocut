@@ -126,8 +126,37 @@ fn run_vector(path: &PathBuf) {
         for case in evals {
             let t = case["timeUs"].as_i64().unwrap();
             let fg: Value = serde_json::from_str(&engine.evaluate_json(t)).unwrap();
+            if let Some(want_audio) = case.get("audio").and_then(|a| a.as_array()) {
+                let got_audio = fg["audio"].as_array().unwrap();
+                for want in want_audio {
+                    let cid = want["clipId"].as_str().unwrap();
+                    let slice = got_audio
+                        .iter()
+                        .find(|s| s["clipId"].as_str() == Some(cid))
+                        .unwrap_or_else(|| {
+                            panic!("[{}] eval t={} missing audio slice {}", name, t, cid)
+                        });
+                    if let Some(w) = want.get("gain") {
+                        assert!(
+                            approx(slice["gain"].as_f64().unwrap(), w.as_f64().unwrap()),
+                            "[{}] t={} {} gain: got {}", name, t, cid, slice["gain"]
+                        );
+                    }
+                    if let Some(w) = want.get("sourceTimeUs") {
+                        assert_eq!(&slice["sourceTimeUs"], w, "[{}] t={} {} audio sourceTime", name, t, cid);
+                    }
+                }
+                assert_eq!(
+                    got_audio.len(),
+                    want_audio.len(),
+                    "[{}] eval t={} audio slice count: got {}",
+                    name, t, fg
+                );
+            }
+            let Some(want_layers) = case.get("layers").and_then(|l| l.as_array()) else {
+                continue;
+            };
             let got_layers = fg["layers"].as_array().unwrap();
-            let want_layers = case["layers"].as_array().unwrap();
             assert_eq!(
                 got_layers.len(),
                 want_layers.len(),

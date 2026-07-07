@@ -1,0 +1,23 @@
+{
+  "name": "volume keyframes drive the audio slice gain: linear fade-in, hold past the last keyframe, muted track drops the slice",
+  "steps": [
+    {"apply": {"type":"addAsset","id":"a1","kind":"video","src":"mem://a1","name":"A","durationUs":10000000}},
+    {"apply": {"type":"addTrack","kind":"video"}},
+    {"apply": {"type":"addTrack","kind":"video"}},
+    {"apply": {"type":"addClip","trackId":"track_1","assetId":"a1","startUs":0,"durationUs":4000000,"sourceInUs":0}},
+    {"apply": {"type":"addClip","trackId":"track_2","assetId":"a1","startUs":0,"durationUs":4000000,"sourceInUs":0}},
+    {"apply": {"type":"setClipVolume","clipId":"clip_3","volume":0.8}},
+    {"apply": {"type":"setKeyframe","clipId":"clip_3","property":"volume","keyframe":{"timeUs":0,"value":0,"easing":{"kind":"linear"}}}},
+    {"apply": {"type":"setKeyframe","clipId":"clip_3","property":"volume","keyframe":{"timeUs":1000000,"value":1,"easing":{"kind":"linear"}}}},
+    {"apply": {"type":"setClipVolume","clipId":"clip_4","volume":0.5}},
+    {"apply": {"type":"setTrackMuted","trackId":"track_2","muted":true}}
+  ],
+  "expect": {
+    "eval": [
+      {"timeUs": 0,       "audio": [{"clipId":"clip_3","gain":0.0}]},
+      {"timeUs": 500000,  "audio": [{"clipId":"clip_3","gain":0.5}]},
+      {"timeUs": 1000000, "audio": [{"clipId":"clip_3","gain":1.0}]},
+      {"timeUs": 3000000, "audio": [{"clipId":"clip_3","gain":1.0}]}
+    ]
+  }
+}

@@ -22,6 +22,7 @@ export function InspectorPanel({
   const clip = state.selectedClipId
     ? state.doc.tracks.flatMap((t) => t.clips).find((c) => c.id === state.selectedClipId)
     : null;
+  const asset = clip?.assetId ? state.doc.assets.find((a) => a.id === clip.assetId) : null;
 
   if (!clip) {
     return (
@@ -86,6 +87,32 @@ export function InspectorPanel({
         {row('Rotation', 'rotation', clip.transform.rotation)}
         {row('Opacity', 'opacity', clip.transform.opacity, 0.05)}
       </div>
+
+      {asset?.hasAudio && (asset.kind === 'video' || asset.kind === 'audio') && (
+        <div className="prop-group">
+          <div className="group-title">Audio</div>
+          <div className="prop-row">
+            <span className="prop-label">Volume</span>
+            <input
+              type="number"
+              step={0.05}
+              min={0}
+              max={4}
+              value={num(clip.volume)}
+              onChange={(e) =>
+                store.dispatch({ type: 'setClipVolume', clipId: clip.id, volume: Number(e.target.value) })
+              }
+            />
+            <button
+              className="kf-btn"
+              title="Add volume keyframe at playhead (fade-in/out, ducking)"
+              onClick={() => addKeyframeHere('volume', clip.volume)}
+            >
+              ◆
+            </button>
+          </div>
+        </div>
+      )}
 
       {clip.text && (
         <div className="prop-group">
