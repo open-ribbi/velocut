@@ -14,6 +14,7 @@
 import { compileMotionSpec, validateMotionSpec, type MotionSpec } from '@velocut/render-sdk';
 import type { MediaLibrary } from '@velocut/render-sdk';
 import { kvGet, kvPut } from '@velocut/collab-sdk';
+import { motionKey } from './projects';
 import type { Store } from '../state/store';
 
 export type { MotionSpec } from '@velocut/render-sdk';
@@ -37,7 +38,8 @@ export interface MotionClipOptions {
   name?: string;
 }
 
-const specKey = (assetId: string) => `motion:${assetId}`;
+// Asset ids are only unique within a project, so specs key per project.
+const specKey = (assetId: string) => motionKey(assetId);
 
 /** Persist a motion spec keyed by assetId (IndexedDB, like fonts). */
 async function saveSpec(assetId: string, spec: MotionSpec): Promise<void> {

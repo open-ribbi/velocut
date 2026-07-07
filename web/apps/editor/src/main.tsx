@@ -16,6 +16,7 @@ import { createMotionClip, restoreMotionClip, type MotionClipOptions } from './s
 import { searchWeb } from './services/search';
 import { Store } from './state/store';
 import { HistoryTree } from './state/history';
+import { ensureActiveProject, storageKeys, listProjects, createProject, renameProject, deleteProject, openProject } from './services/projects';
 import type { Command } from '@velocut/protocol';
 import './styles.css';
 
@@ -33,9 +34,9 @@ function localActor(): { kind: 'user'; peerId: string; name: string } {
 }
 
 /** Load the persisted branching history (survives reloads). */
-async function loadHistory(): Promise<HistoryTree | undefined> {
+async function loadHistory(key: string): Promise<HistoryTree | undefined> {
   try {
-    const raw = await kvGet('history');
+    const raw = await kvGet(key);
     if (!raw) return undefined;
     return HistoryTree.deserialize(JSON.parse(new TextDecoder().decode(raw)));
   } catch (e) {
@@ -45,18 +46,18 @@ async function loadHistory(): Promise<HistoryTree | undefined> {
 }
 
 /** Debounced persist of the history tree to IndexedDB. */
-function makeHistorySaver(): (tree: HistoryTree) => void {
+function makeHistorySaver(key: string): (tree: HistoryTree) => void {
   let timer: ReturnType<typeof setTimeout> | null = null;
   return (tree: HistoryTree) => {
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => {
-      void kvPut('history', new TextEncoder().encode(JSON.stringify(tree.serialize()))).catch(() => {});
+      void kvPut(key, new TextEncoder().encode(JSON.stringify(tree.serialize()))).catch(() => {});
     }, 600);
   };
 }
 
 /** Re-attach OPFS-backed media after a reload or a remote peer's import. */
-async function restoreMedia(store: Store, media: MediaLibrary) {
+async function restoreMedia(store: Store, media: MediaLibrary, mediaDir: string) {
   for (const a of store.getState().doc.assets) {
     if (media.hasAsset(a.id)) continue;
     // Procedural motion assets restore from their persisted declarative spec.
@@ -67,7 +68,7 @@ async function restoreMedia(store: Store, media: MediaLibrary) {
     if (!a.src.startsWith('opfs://')) continue;
     // Imported audio re-attaches from its OPFS PCM cache — no re-decode.
     if (a.kind === 'audio' && (await media.restoreAudio(a.id))) continue;
-    const file = await loadMedia(a.src);
+    const file = await loadMedia(a.src, mediaDir);
     if (!file) continue;
     try {
       if (a.kind === 'video') {
@@ -88,16 +89,20 @@ async function restoreMedia(store: Store, media: MediaLibrary) {
 }
 
 async function bootstrap() {
+  // Which project this session runs in decides every storage key below.
+  const project = await ensureActiveProject();
+  const storage = storageKeys(project.id);
+
   const engine = await createEngine({
-    name: 'Untitled',
+    name: project.name,
     width: 1280,
     height: 720,
     fpsNum: 30,
     fpsDen: 1,
   });
 
-  const restoredHistory = await loadHistory();
-  const saveHistory = makeHistorySaver();
+  const restoredHistory = await loadHistory(storage.history);
+  const saveHistory = makeHistorySaver(storage.history);
 
   const container = new Container()
     .registerValue(TOKENS.Engine, engine)
@@ -110,7 +115,7 @@ async function bootstrap() {
           onHistory: saveHistory,
         }),
     )
-    .register(TOKENS.Media, () => new MediaLibrary())
+    .register(TOKENS.Media, () => new MediaLibrary(storage.mediaScope))
     .register(TOKENS.Renderer, () => new RendererClient())
     .register(TOKENS.Observer, (c) => new Observer(c.resolve(TOKENS.Media)))
     .register(TOKENS.Audio, (c) => new AudioEngine(c.resolve(TOKENS.Media)))
@@ -148,16 +153,18 @@ async function bootstrap() {
 
   // Local-first persistence + multi-tab CRDT sync: restores the last
   // session's document from IndexedDB, then mirrors every edit to Y.
-  const collab = new CollabSession(store);
+  // Room + storage key are per project, so tabs on different projects
+  // neither sync nor clobber each other.
+  const collab = new CollabSession(store, storage.room, storage.ydoc);
   await collab.start();
-  await restoreMedia(store, media);
+  await restoreMedia(store, media, storage.mediaDir);
   void container.resolve(TOKENS.Fonts).restore();
   // Remote peers may import assets — re-attach their OPFS media lazily.
   let restoring = false;
   store.subscribe(() => {
     if (restoring) return;
     restoring = true;
-    void restoreMedia(store, media).finally(() => (restoring = false));
+    void restoreMedia(store, media, storage.mediaDir).finally(() => (restoring = false));
   });
 
   // Agent API — the same dispatch path the UI uses. An external agent (or
@@ -217,6 +224,15 @@ async function bootstrap() {
     audio: container.resolve(TOKENS.Audio),
     transcriber: container.resolve(TOKENS.Transcriber),
     collab,
+    // Multi-project surface (also what the UI switcher calls).
+    projects: {
+      active: () => project,
+      list: listProjects,
+      create: createProject,
+      open: openProject,
+      rename: renameProject,
+      delete: deleteProject,
+    },
   };
 
   // Dev convenience: route the in-app agent through a local Anthropic-compatible

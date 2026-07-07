@@ -9,8 +9,11 @@ export { CollabSession, type CollabHost } from './collab';
 export {
   saveMedia,
   loadMedia,
+  removeOpfsDir,
   kvGet,
   kvPut,
+  kvDelete,
+  kvKeys,
   saveFont,
   listFonts,
   loadFontData,

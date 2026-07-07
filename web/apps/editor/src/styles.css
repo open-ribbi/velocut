@@ -383,3 +383,18 @@ html, body, #root {
   margin-top: 12px; background: #2a2e38; color: #d6dbe4; border: 1px solid #3a3f49;
   border-radius: 6px; padding: 5px 14px; cursor: pointer;
 }
+
+/* ------------------------------------------------ project switcher */
+.project-menu { position: relative; }
+.project-current {
+  max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-weight: 600;
+}
+.ctx-menu.project-dropdown {
+  position: absolute; top: calc(100% + 6px); left: 0; min-width: 200px;
+}
+.project-row { display: flex; align-items: stretch; }
+.project-row > button:first-child { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.project-row .project-active { color: #7fb4ff; }
+.project-delete { flex: 0 0 auto; padding: 7px 8px; color: #8891a3; }
+.project-sep { height: 1px; background: #2e323b; margin: 4px 6px; }

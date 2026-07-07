@@ -36,16 +36,16 @@ interface PcmMeta {
   frames: number;
   handle: FileSystemFileHandle;
 }
-async function pcmDir(): Promise<FileSystemDirectoryHandle> {
+async function pcmDir(scope?: string): Promise<FileSystemDirectoryHandle> {
   const root = await navigator.storage.getDirectory();
-  return root.getDirectoryHandle('pcm', { create: true });
+  return root.getDirectoryHandle(scope ? `pcm-${scope}` : 'pcm', { create: true });
 }
 
 /** Low-res preview proxies (transcoded once, decoded cheaply for preview). */
 const PROXY_MAX_DIM = 1280; // downscale anything larger than this for preview
-async function proxyDir(): Promise<FileSystemDirectoryHandle> {
+async function proxyDir(scope?: string): Promise<FileSystemDirectoryHandle> {
   const root = await navigator.storage.getDirectory();
-  return root.getDirectoryHandle('proxy', { create: true });
+  return root.getDirectoryHandle(scope ? `proxy-${scope}` : 'proxy', { create: true });
 }
 async function pickAvc(width: number, height: number, framerate: number): Promise<string> {
   for (const codec of ['avc1.640028', 'avc1.4d0028', 'avc1.42E01F']) {
@@ -224,7 +224,11 @@ export class MediaLibrary {
    *  paused only when this (or the document) changed. */
   version = 0;
 
-  constructor() {
+  constructor(
+    /** Project id scoping the OPFS pcm/proxy caches (asset ids are only unique
+     *  per project). Omitted = the legacy unscoped directories. */
+    private storageScope?: string,
+  ) {
     this.worker = new Worker(new URL('./media.worker.ts', import.meta.url), { type: 'module' });
     this.worker.onmessage = (e: MessageEvent<WorkerToMain>) => this.onMessage(e.data);
   }
@@ -431,7 +435,7 @@ export class MediaLibrary {
    *  resident; falls back to keeping the AudioBuffer in RAM if OPFS fails. */
   async attachAudio(assetId: string, buffer: AudioBuffer): Promise<void> {
     try {
-      const dir = await pcmDir();
+      const dir = await pcmDir(this.storageScope);
       const handle = await dir.getFileHandle(`${assetId}.pcm`, { create: true });
       const writable = await handle.createWritable();
       await writable.write(
@@ -454,7 +458,7 @@ export class MediaLibrary {
    *  false if no PCM file exists (caller then decodes + attachAudio). */
   async restoreAudio(assetId: string): Promise<boolean> {
     try {
-      const dir = await pcmDir();
+      const dir = await pcmDir(this.storageScope);
       const handle = await dir.getFileHandle(`${assetId}.pcm`);
       const file = await handle.getFile();
       if (file.size < PCM_HEADER) return false;
@@ -589,7 +593,7 @@ export class MediaLibrary {
    *  second decoder of the retained original when no proxy exists. */
   private async openFromSource(assetId: string): Promise<void> {
     try {
-      const dir = await proxyDir();
+      const dir = await proxyDir(this.storageScope);
       await dir.getFileHandle(`${assetId}.done`); // throws unless a complete proxy exists
       const file = await (await dir.getFileHandle(`${assetId}.mp4`)).getFile();
       this.fromSources.set(assetId, await this.probeVideo(file));
@@ -613,7 +617,7 @@ export class MediaLibrary {
    *  marker guards against partially-written proxies. */
   async restoreProxy(assetId: string): Promise<boolean> {
     try {
-      const dir = await proxyDir();
+      const dir = await proxyDir(this.storageScope);
       await dir.getFileHandle(`${assetId}.done`); // throws if the build never finished
       const file = await (await dir.getFileHandle(`${assetId}.mp4`)).getFile();
       const proxy = await this.probeVideo(file);
@@ -649,7 +653,7 @@ export class MediaLibrary {
       const fps = opts?.fps ?? 30;
       const frameDurUs = 1e6 / fps;
 
-      const dir = await proxyDir();
+      const dir = await proxyDir(this.storageScope);
       await dir.removeEntry(`${assetId}.done`).catch(() => {});
       const handle = await dir.getFileHandle(`${assetId}.mp4`, { create: true });
       const writable = await handle.createWritable();

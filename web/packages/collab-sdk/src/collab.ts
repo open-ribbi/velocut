@@ -49,6 +49,8 @@ export class CollabSession {
   constructor(
     private host: CollabHost,
     room = 'velocut-default',
+    /** IndexedDB key for the persisted Y update — one per project. */
+    private storageKey = 'ydoc',
   ) {
     this.tracks = this.ydoc.getMap('tracks');
     this.assets = this.ydoc.getMap('assets');
@@ -59,7 +61,7 @@ export class CollabSession {
 
   /** Restore persisted state (if any), then begin syncing. */
   async start(): Promise<void> {
-    const saved = await kvGet('ydoc');
+    const saved = await kvGet(this.storageKey);
     if (saved && saved.byteLength > 0) {
       Y.applyUpdate(this.ydoc, saved, REMOTE);
       const doc = this.rebuildDocument();
@@ -208,7 +210,7 @@ export class CollabSession {
   private scheduleSave() {
     if (this.saveTimer) clearTimeout(this.saveTimer);
     this.saveTimer = setTimeout(() => {
-      void kvPut('ydoc', Y.encodeStateAsUpdate(this.ydoc));
+      void kvPut(this.storageKey, Y.encodeStateAsUpdate(this.ydoc));
     }, 300);
   }
 

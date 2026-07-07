@@ -8,6 +8,8 @@ import {
   type VideoCodecFamily,
 } from '@velocut/render-sdk';
 import { saveMedia } from '@velocut/collab-sdk';
+import { activeStorage } from '../services/projects';
+import { ProjectMenu } from './ProjectMenu';
 import { splitAtPlayhead } from '../App';
 
 function fmtTime(us: number): string {
@@ -122,7 +124,7 @@ export function Toolbar({
       try {
         // Media bytes live in OPFS so projects survive reloads; the
         // document only stores the opfs:// locator.
-        const src = await saveMedia(file).catch(() => `local://${file.name}`);
+        const src = await saveMedia(file, activeStorage().mediaDir).catch(() => `local://${file.name}`);
         if (isAudio) {
           const probe = await media.probeAudio(file);
           const resp = store.dispatch({
@@ -193,6 +195,7 @@ export function Toolbar({
   return (
     <div className="toolbar">
       <span className="brand">Velocut</span>
+      <ProjectMenu />
       <button onClick={() => fileRef.current?.click()}>Import Media</button>
       <input
         ref={fileRef}
