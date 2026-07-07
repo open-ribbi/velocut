@@ -16,7 +16,7 @@ import { createMotionClip, restoreMotionClip, type MotionClipOptions } from './s
 import { searchWeb } from './services/search';
 import { Store } from './state/store';
 import { HistoryTree } from './state/history';
-import { ensureActiveProject, storageKeys, listProjects, createProject, renameProject, deleteProject, openProject } from './services/projects';
+import { ensureActiveProject, storageKeys, listProjects, createProject, renameProject, deleteProject, openProject, registerFlushBeforeSwitch } from './services/projects';
 import type { Command } from '@velocut/protocol';
 import './styles.css';
 
@@ -45,14 +45,33 @@ async function loadHistory(key: string): Promise<HistoryTree | undefined> {
   }
 }
 
-/** Debounced persist of the history tree to IndexedDB. */
-function makeHistorySaver(key: string): (tree: HistoryTree) => void {
+/** Debounced persist of the history tree to IndexedDB. `flush` lands a pending
+ *  write and awaits it (used before app-controlled reloads); the pagehide hook
+ *  is a best-effort backstop for user-initiated instant reloads. */
+function makeHistorySaver(key: string): { save: (tree: HistoryTree) => void; flush: () => Promise<void> } {
   let timer: ReturnType<typeof setTimeout> | null = null;
-  return (tree: HistoryTree) => {
-    if (timer) clearTimeout(timer);
-    timer = setTimeout(() => {
-      void kvPut(key, new TextEncoder().encode(JSON.stringify(tree.serialize()))).catch(() => {});
-    }, 600);
+  let latest: HistoryTree | null = null;
+  const write = async () => {
+    if (!latest) return;
+    await kvPut(key, new TextEncoder().encode(JSON.stringify(latest.serialize()))).catch(() => {});
+  };
+  const flush = async () => {
+    if (!timer) return;
+    clearTimeout(timer);
+    timer = null;
+    await write();
+  };
+  window.addEventListener('pagehide', () => void flush());
+  return {
+    flush,
+    save: (tree: HistoryTree) => {
+      latest = tree;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        timer = null;
+        void write();
+      }, 600);
+    },
   };
 }
 
@@ -102,7 +121,7 @@ async function bootstrap() {
   });
 
   const restoredHistory = await loadHistory(storage.history);
-  const saveHistory = makeHistorySaver(storage.history);
+  const historySaver = makeHistorySaver(storage.history);
 
   const container = new Container()
     .registerValue(TOKENS.Engine, engine)
@@ -112,7 +131,7 @@ async function bootstrap() {
         new Store(c.resolve(TOKENS.Engine), {
           localUser: localActor(),
           restoredHistory,
-          onHistory: saveHistory,
+          onHistory: historySaver.save,
         }),
     )
     .register(TOKENS.Media, () => new MediaLibrary(storage.mediaScope))
@@ -157,6 +176,12 @@ async function bootstrap() {
   // neither sync nor clobber each other.
   const collab = new CollabSession(store, storage.room, storage.ydoc);
   await collab.start();
+  // Project switching reloads the page; land pending persists first so the
+  // last edits in the outgoing project are never raced by the navigation.
+  registerFlushBeforeSwitch(async () => {
+    await collab.flushNow();
+    await historySaver.flush();
+  });
   await restoreMedia(store, media, storage.mediaDir);
   void container.resolve(TOKENS.Fonts).restore();
   // Remote peers may import assets — re-attach their OPFS media lazily.

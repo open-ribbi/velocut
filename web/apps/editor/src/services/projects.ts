@@ -118,8 +118,21 @@ export async function renameProject(id: string, name: string): Promise<void> {
   if (active?.id === id) active = p;
 }
 
+let flushBeforeSwitch: (() => Promise<void>) | null = null;
+
+/** Bootstrap registers the persistence flush here so switching projects can
+ *  deterministically land pending debounced writes before the reload. */
+export function registerFlushBeforeSwitch(fn: () => Promise<void>): void {
+  flushBeforeSwitch = fn;
+}
+
 /** Switch the active project and rebuild the app around it. */
-export function openProject(id: string): void {
+export async function openProject(id: string): Promise<void> {
+  try {
+    await flushBeforeSwitch?.();
+  } catch {
+    /* a failed flush must not strand the user in the old project */
+  }
   localStorage.setItem(ACTIVE_KEY, id);
   location.reload();
 }

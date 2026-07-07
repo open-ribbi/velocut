@@ -17,3 +17,4 @@ web/apps/editor/public/*.mkv
 redteam*.md
 *.local.md
 audit*.md
+test-results/

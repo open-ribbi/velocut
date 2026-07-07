@@ -101,6 +101,7 @@ export class CollabSession {
       if (origin === LOCAL) this.bc.postMessage(update);
       this.scheduleSave();
     });
+    window.addEventListener('pagehide', this.flush);
 
     // Remote updates → Y → engine.
     this.bc.onmessage = (e: MessageEvent<Uint8Array>) => {
@@ -210,14 +211,33 @@ export class CollabSession {
   private scheduleSave() {
     if (this.saveTimer) clearTimeout(this.saveTimer);
     this.saveTimer = setTimeout(() => {
+      this.saveTimer = null;
       void kvPut(this.storageKey, Y.encodeStateAsUpdate(this.ydoc));
     }, 300);
   }
+
+  /** Persist any pending debounced save NOW and wait for the write. App-
+   *  controlled navigations (project switching) await this before reloading —
+   *  the one deterministic way to close the debounce window. */
+  async flushNow(): Promise<void> {
+    if (!this.saveTimer) return;
+    clearTimeout(this.saveTimer);
+    this.saveTimer = null;
+    await kvPut(this.storageKey, Y.encodeStateAsUpdate(this.ydoc));
+  }
+
+  /** Best-effort fire-and-forget flush for pagehide (an async IDB write during
+   *  teardown may not commit — user-initiated instant reloads keep a ≤300ms
+   *  lose-last-write window; see flushNow for the deterministic path). */
+  private flush = () => {
+    void this.flushNow();
+  };
 
   dispose() {
     this.unsubscribe?.();
     if (this.peerTimer) clearInterval(this.peerTimer);
     if (this.saveTimer) clearTimeout(this.saveTimer);
+    window.removeEventListener('pagehide', this.flush);
     this.bc.close();
     this.presence.close();
     this.ydoc.destroy();

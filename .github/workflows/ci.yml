@@ -44,3 +44,24 @@ jobs:
       - run: rustup target add wasm32-unknown-unknown
       - run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
       - run: wasm-pack build crates/velocut-wasm --target web --release --out-dir ../../web/apps/editor/public/wasm
+
+  e2e:
+    # Boot + import + edit + persistence + project switcher in real Chromium.
+    # Designed to stay green on GPU-less runners: it asserts nothing that
+    # needs working WebGPU or proprietary codecs (the preview degrades to an
+    # error card and the app survives).
+    name: Editor · E2E smoke
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npx playwright test

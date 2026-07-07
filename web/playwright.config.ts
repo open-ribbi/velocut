@@ -1,0 +1,26 @@
+// E2E smoke configuration. The suite is designed to stay green on headless CI
+// runners: it exercises boot, import (image), timeline editing, persistence and
+// the project switcher — but asserts nothing that requires working WebGPU or
+// proprietary codecs (the preview degrades to an error card without WebGPU and
+// the app survives; H.264 decode/encode is not guaranteed on CI Chromium).
+import { defineConfig } from '@playwright/test';
+
+export default defineConfig({
+  testDir: './e2e',
+  timeout: 60_000,
+  // Storage (IndexedDB/OPFS) is per browser context; tests that span reloads
+  // keep their context, and each test file starts from a clean slate.
+  use: {
+    baseURL: 'http://localhost:5173',
+    launchOptions: {
+      // Best-effort WebGPU on machines without a real GPU; harmless elsewhere.
+      args: ['--enable-unsafe-webgpu', '--use-angle=swiftshader'],
+    },
+  },
+  webServer: {
+    command: 'npm run dev',
+    url: 'http://localhost:5173',
+    reuseExistingServer: !process.env.CI,
+    timeout: 60_000,
+  },
+});
