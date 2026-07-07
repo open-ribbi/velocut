@@ -13,8 +13,6 @@ An **AI-native, local-first video editor that runs entirely in the browser**. A 
 
 ![Velocut editor — multi-track timeline with waveforms, keyframes, transitions, speed ramps, and a WebGPU-composited preview](docs/media/editor.png)
 
-> Some deeper docs are still Chinese-first. [PROTOCOL.md](PROTOCOL.md) and `web/packages/protocol/src/schema.ts` are the most complete English entry points to the command model.
-
 ## Requirements
 
 - **Node ≥ 22.6** (`npm test` uses `--experimental-strip-types`; a `.nvmrc` is at the repo root)

@@ -1,49 +1,64 @@
-# 安全与信任模型
+# Security & Trust Model
 
-Velocut 是 local-first 的纯浏览器应用:没有后端,你的素材、文档、历史全部
-留在本机(OPFS / IndexedDB / localStorage)。下面是你在使用 Agent 功能前
-应当知道的边界。
+Velocut is a local-first, browser-only app: there is no backend, and your media,
+documents, and history all stay on your machine (OPFS / IndexedDB / localStorage).
+Below are the boundaries you should understand before using the Agent features.
 
-## API key 的存放
+## Where the API key lives
 
-- Anthropic key 由你粘贴进 Agent 控制台,**明文存于本机浏览器 localStorage**
-  (`velocut.anthropicApiKey`),请求直连 Anthropic,不经任何中间服务器。
-- 这意味着:任何能在该页面执行 JS 的东西(浏览器扩展、XSS、下述脚本工具)
-  都能读到它。建议使用限额 key,不用时可在控制台里清除。
-- Gemini 搜索与 MiniMax TTS 的 key 走 Vite dev server 代理注入,浏览器
-  永远不持有(见 README「可选能力与密钥约定」)。
+- Your Anthropic key is pasted into the Agent console and **stored in plaintext in
+  your browser's localStorage** (`velocut.anthropicApiKey`). Requests go directly
+  to Anthropic, through no intermediate server of any kind.
+- This means: anything that can execute JS on that page (browser extensions, XSS,
+  the script tool described below) can read it. Use a rate-limited key, and clear
+  it from the console when not in use.
+- The Gemini search and MiniMax TTS keys are injected via the Vite dev server
+  proxy; the browser never holds them (see README "Optional capabilities and key
+  conventions").
 
-## Agent 的两级执行权限
+## The Agent's two levels of execution privilege
 
-1. **命令级(默认)**:Agent 的一切剪辑经 `velocut_apply` 下发 JSON 命令,
-   过 zod schema 校验,只能修改文档模型——改不了 DOM、发不了网络请求,
-   且每一步都记入可回滚的编辑历史。
-2. **脚本级(`velocut_script`)**:Agent 可以生成 JavaScript 并执行,但它
-   **不在主页面 realm 运行**——而是在一个一次性的 `sandbox="allow-scripts"`
-   iframe(null origin,srcdoc 内联 CSP `connect-src 'none'`)里跑。这个
-   realm:
-   - **读不到 localStorage**(opaque origin 无存储)→ Anthropic key 安全
-   - **发不了任何网络请求**(fetch / XHR / WebSocket / sendBeacon / EventSource
-     / 动态 import 均被 CSP 拦在浏览器层)→ 无法外泄
-   - **碰不到父页 DOM / cookie / `window.velocut`**(跨源隔离)
-   - 只能调用一张白名单 API(`apply`/`tts`/`observe`/`evaluate`/`document`/
-     `seek`),经 MessageChannel RPC 回宿主串行执行;有 60s 墙钟超时防跑飞。
+1. **Command level (default)**: everything the Agent edits goes through
+   `velocut_apply` as JSON commands, validated against the zod schema. It can only
+   modify the document model — it cannot touch the DOM or make network requests,
+   and every step is recorded in the undoable edit history.
+2. **Script level (`velocut_script`)**: the Agent can generate and execute
+   JavaScript, but it does **not run in the main page's realm** — it runs in a
+   one-shot `sandbox="allow-scripts"` iframe (null origin, with an inline CSP
+   `connect-src 'none'` in the srcdoc). This realm:
+   - **Cannot read localStorage** (an opaque origin has no storage) → the
+     Anthropic key is safe
+   - **Cannot make any network request** (fetch / XHR / WebSocket / sendBeacon /
+     EventSource / dynamic import are all blocked at the browser level by the
+     CSP) → no exfiltration
+   - **Cannot touch the parent page's DOM / cookies / `window.velocut`**
+     (cross-origin isolation)
+   - Can only call a whitelisted API (`apply`/`tts`/`observe`/`evaluate`/
+     `document`/`seek`), executed serially on the host via MessageChannel RPC;
+     a 60s wall-clock timeout guards against runaway scripts.
 
-## 已知风险:注入链(已缓解)
+## Known risk: the injection chain (mitigated)
 
-`velocut_search` 会把不可信的网页内容注入模型上下文。理论攻击路径:恶意
-网页内容 → 诱导模型生成恶意 `velocut_script` → 读取 localStorage 中的 key
-或发起任意请求。**上面的沙箱已切断这条链**:脚本拿不到 key、连不上外网。
-仍需注意:
+`velocut_search` injects untrusted web content into the model's context. The
+theoretical attack path: malicious web content → lures the model into generating
+a malicious `velocut_script` → reads the key from localStorage or makes arbitrary
+requests. **The sandbox above severs this chain**: the script cannot get the key
+and cannot reach the outside network. Still worth noting:
 
-- `motionClip` 现接受声明式 JSON spec(不再是 draw 闭包),所以能安全地从沙箱
-  脚本创建——spec 作为纯数据过界,宿主用固定解释器渲染,不 eval 任何东西。
-  spec 里的 image `src` 会由宿主 GET 拉取(仅取图,响应不外发,沙箱也无密钥可
-  塞进 URL,非外泄面)。
-- key 仍以明文存于 localStorage:能读取页面主 realm 的东西(恶意浏览器扩展、
-  页面自身 XSS)仍可拿到它。沙箱只隔离 Agent 脚本,不改变扩展的权限。
+- `motionClip` now accepts a declarative JSON spec (no longer a draw closure), so
+  it can be safely created from sandboxed scripts — the spec crosses the boundary
+  as pure data, and the host renders it with a fixed interpreter, never eval'ing
+  anything. Image `src` values in the spec are fetched by the host via GET (the
+  fetch only retrieves the image, the response is never sent out, and the sandbox
+  has no secrets to smuggle into the URL — not an exfiltration surface).
+- The key is still stored in plaintext in localStorage: anything that can read
+  the page's main realm (a malicious browser extension, XSS in the page itself)
+  can still obtain it. The sandbox only isolates Agent scripts; it does not
+  change what extensions are allowed to do.
 
-## 报告漏洞
+## Reporting vulnerabilities
 
-发现安全问题请开 GitHub issue(不涉及可被远程利用的场景),或通过仓库
-主页联系方式私下报告。这是个个人开源项目,没有赏金,但会认真修。
+If you find a security issue, please open a GitHub issue (for scenarios that are
+not remotely exploitable), or report it privately via the contact information on
+the repository homepage. This is a personal open-source project — there is no
+bounty, but reports will be taken seriously and fixed.
