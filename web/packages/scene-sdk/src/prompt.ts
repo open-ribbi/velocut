@@ -19,7 +19,8 @@ export function scenePromptDoc(manifest: SceneAssetManifest): string {
     const slots = Object.keys(c.bones ?? {});
     lines.push(
       `• ${id}${c.heightM ? ` — height ${c.heightM}m` : ''}: ${clips}` +
-        (slots.length ? ` | attach slots: ${slots.join(', ')}` : ''),
+        (slots.length ? ` | attach slots: ${slots.join(', ')}` : '') +
+        (c.morphs?.length ? ` | expressions: ${c.morphs.join(', ')}` : ''),
     );
   }
   lines.push('Environments: ' + Object.keys(manifest.environments).join(', '));

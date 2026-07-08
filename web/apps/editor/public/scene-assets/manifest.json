@@ -21,6 +21,7 @@
       "heightM": 1.6,
       "baseScale": 0.33,
       "bones": { "handR": "Palm2R", "handL": "Palm2L", "head": "Head" },
+      "morphs": ["Angry", "Surprised", "Sad"],
       "clips": {
         "Idle": { "loop": true },
         "Walking": { "loop": true, "speedMps": 1.4 },

@@ -65,6 +65,8 @@ export interface StageCharacter {
   heightM: number;
   /** Head bone (name matches /head/i), if the rig has one — gaze target. */
   head: THREE.Object3D | null;
+  /** Meshes with morph targets — driven by character.morphs. */
+  morphMeshes: THREE.Mesh[];
   spec: NonNullable<SceneSpec['characters']>[number];
 }
 
@@ -164,8 +166,10 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
     root.add(inner);
     scene.add(root);
     let head: THREE.Object3D | null = null;
+    const morphMeshes: THREE.Mesh[] = [];
     inner.traverse((o) => {
       if (!head && /head/i.test(o.name)) head = o;
+      if ((o as THREE.Mesh).morphTargetDictionary) morphMeshes.push(o as THREE.Mesh);
     });
     const mixer = new three.AnimationMixer(inner);
     const actions = new Map<string, THREE.AnimationAction>();
@@ -175,7 +179,7 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
       actions.set(clip.name, mixer.clipAction(clip));
       clips[clip.name] = { duration: clip.duration, loop: entry.clips[clip.name].loop ?? true };
     }
-    characters.push({ root, mixer, actions, clips, heightM: entry.heightM ?? 1.7, head, spec: c });
+    characters.push({ root, mixer, actions, clips, heightM: entry.heightM ?? 1.7, head, morphMeshes, spec: c });
   }
 
   // ----------------------------------------------------------------- props
@@ -268,6 +272,19 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
         action.time = hit.time;
       }
       c.mixer.update(0);
+
+      // Expression morphs, sampled after the mixer (the animations here don't
+      // drive morphs, so nothing fights) — still a pure function of t.
+      if (c.spec.morphs) {
+        for (const mesh of c.morphMeshes) {
+          for (const [name, w] of Object.entries(c.spec.morphs)) {
+            const idx = mesh.morphTargetDictionary?.[name];
+            if (idx != null && mesh.morphTargetInfluences) {
+              mesh.morphTargetInfluences[idx] = Math.max(0, Math.min(1, sampleAnimatable(w, t, 0)));
+            }
+          }
+        }
+      }
     }
     // Gaze runs after every mixer wrote its pose, so a character can aim at
     // another character's CURRENT-frame position.

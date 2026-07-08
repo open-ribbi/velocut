@@ -46,6 +46,10 @@ export interface SceneCharacter {
   /** Head aim: look at the shot camera or another character (yaw-clamped so
    *  the head never spins). Great for dialogue staging and to-camera beats. */
   gaze?: 'camera' | { character: string };
+  /** Facial expression / blend-shape weights: morph target name (see the
+   *  manifest's per-model `morphs`) → weight 0..1, constant or keyframed.
+   *  A model with mouth morphs gets talking the same way. */
+  morphs?: Record<string, Animatable>;
 }
 
 export interface SceneProp {
@@ -125,6 +129,8 @@ export interface SceneAssetManifest {
       /** Semantic bone slots (handR/handL/head/…) → actual rig bone names,
        *  the vocabulary prop attachTo speaks. */
       bones?: Record<string, string>;
+      /** Morph-target (blend shape) names exposed for character.morphs. */
+      morphs?: string[];
       clips: Record<string, ManifestClip>;
     }
   >;
@@ -180,6 +186,14 @@ export function validateSceneSpec(spec: unknown): string | null {
       if (c.scale != null && !isScale3(c.scale)) return `character '${c.id}': scale must be a number or {x?,y?,z?}`;
       if (c.gaze != null && c.gaze !== 'camera' && typeof (c.gaze as { character?: unknown }).character !== 'string') {
         return `character '${c.id}': gaze must be 'camera' or { character: id }`;
+      }
+      if (c.morphs != null) {
+        if (typeof c.morphs !== 'object' || Array.isArray(c.morphs)) {
+          return `character '${c.id}': morphs must be { name: weight } with animatable weights`;
+        }
+        for (const [name, w] of Object.entries(c.morphs)) {
+          if (!isAnimatable(w)) return `character '${c.id}': morph '${name}' weight must be animatable`;
+        }
       }
       if (c.actions != null) {
         if (!Array.isArray(c.actions) || c.actions.length > 50) return `character '${c.id}': actions must be an array of at most 50`;

@@ -59,6 +59,8 @@ test('validateSceneSpec: rejection table', () => {
     [{ ...base, characters: [{ id: 'a', model: 'char/x', gaze: 'sideways' }] }, /gaze/],
     [{ ...base, props: [{ model: 'prop/cube', attachTo: { bone: 'handR' } }] }, /attachTo/],
     [{ ...base, props: [{ model: 'prop/cube', attachTo: { character: 'ghost' } }] }, /no character with id/],
+    [{ ...base, characters: [{ id: 'a', model: 'char/x', morphs: ['Angry'] }] }, /morphs/],
+    [{ ...base, characters: [{ id: 'a', model: 'char/x', morphs: { Angry: 'very' } }] }, /morph 'Angry'/],
     [{ ...base, camera: { roll: 'tilted' } }, /roll/],
     [{ ...base, camera: { shake: { amplitude: 'lots' } } }, /shake/],
     [{ ...base, shots: [] }, /shots/],
