@@ -3,6 +3,7 @@ import type { Property, Transform, TextPayload } from '@velocut/protocol';
 import type { Store, UiState } from '../state/store';
 import { EFFECT_REGISTRY, TRANSITIONS } from '@velocut/render-sdk';
 import type { FontLibrary } from '../services/fonts';
+import { SceneInspector } from './SceneInspector';
 
 export function InspectorPanel({
   store,
@@ -87,6 +88,8 @@ export function InspectorPanel({
         {row('Rotation', 'rotation', clip.transform.rotation)}
         {row('Opacity', 'opacity', clip.transform.opacity, 0.05)}
       </div>
+
+      {asset?.src.startsWith('scene://') && <SceneInspector store={store} asset={asset} />}
 
       {asset?.hasAudio && (asset.kind === 'video' || asset.kind === 'audio') && (
         <div className="prop-group">

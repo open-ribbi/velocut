@@ -506,6 +506,9 @@ export class MediaLibrary {
     render: (index: number) => VideoFrame,
     opts: { width: number; height: number; frameDurUs: number; frameCount: number },
   ) {
+    // Re-attach (a spec edit / undo / remote change recompiles the source):
+    // close the old source's resident preview frame instead of leaking it to GC.
+    this.motionSources.get(assetId)?.preview?.frame.close();
     this.motionSources.set(assetId, { render, ...opts });
     this.version++;
   }

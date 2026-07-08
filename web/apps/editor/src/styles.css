@@ -420,3 +420,15 @@ html, body, #root {
 .llm-test { font-size: 12px; padding: 6px 8px; border-radius: 6px; }
 .llm-test-ok { background: #17301f; color: #7fd39a; }
 .llm-test-fail { background: #3a1d1d; color: #ff9a9a; }
+
+/* ---------------------------------------------------------- scene inspector */
+.scene-tabs { float: right; display: inline-flex; gap: 4px; }
+.scene-tabs button { font-size: 11px; padding: 2px 8px; border-radius: 5px; background: #1a1d23; color: #9aa3b2; }
+.scene-tabs button.active { background: #2b3242; color: #e6ebf2; }
+.scene-json { width: 100%; min-height: 220px; font-family: ui-monospace, monospace; font-size: 11px; background: #14171c; color: #d7dee8; border-radius: 6px; padding: 8px; resize: vertical; }
+.scene-error { background: #3a1d1d; color: #ff9a9a; font-size: 11px; border-radius: 6px; padding: 6px 8px; margin-bottom: 6px; }
+.scene-vec3 input { width: 52px; }
+.scene-action { gap: 4px; }
+.scene-action select { flex: 1; min-width: 0; }
+.scene-action input[type="number"] { width: 54px; }
+.scene-actions { margin-top: 4px; }

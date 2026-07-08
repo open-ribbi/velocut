@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "characters": {
+    "char/robot": {
+      "file": "characters/robot.glb",
+      "label": "Robot",
+      "license": "CC0-1.0 (Tomás Laulhé / three.js examples)",
+      "heightM": 1.6,
+      "clips": {
+        "Idle": { "loop": true },
+        "Walking": { "loop": true, "speedMps": 1.4 },
+        "Running": { "loop": true, "speedMps": 3.5 },
+        "Dance": { "loop": true },
+        "Wave": { "loop": false },
+        "Yes": { "loop": false },
+        "No": { "loop": false },
+        "ThumbsUp": { "loop": false },
+        "Punch": { "loop": false },
+        "Jump": { "loop": false },
+        "Sitting": { "loop": true },
+        "Standing": { "loop": true },
+        "Death": { "loop": false }
+      }
+    }
+  },
+  "environments": {
+    "env/stage": { "label": "Plain stage", "builtin": true, "license": "generated" },
+    "env/grid": { "label": "Grid floor", "builtin": true, "license": "generated" },
+    "env/void": { "label": "Void (no floor)", "builtin": true, "license": "generated" }
+  },
+  "lighting": {
+    "day": { "label": "Day" },
+    "night": { "label": "Night" },
+    "indoor": { "label": "Indoor" }
+  },
+  "props": {
+    "prop/cube": { "label": "Cube", "builtin": true, "license": "generated" },
+    "prop/sphere": { "label": "Sphere", "builtin": true, "license": "generated" },
+    "prop/pillar": { "label": "Pillar", "builtin": true, "license": "generated" }
+  }
+}

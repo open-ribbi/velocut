@@ -7,10 +7,21 @@
 // docs/design/scene-director.md.
 
 export {
-  compileSceneSpec,
   validateSceneSpec,
   type SceneSpec,
   type SceneCamera,
+  type SceneCharacter,
+  type SceneProp,
+  type SceneAction,
   type Vec3A,
+  type SceneAssetManifest,
+  type ManifestClip,
+} from './types.ts';
+export { resolveActions, type ActivePose, type ClipMeta } from './actions.ts';
+export {
+  compileSceneSpec,
+  loadSceneManifest,
+  resetSceneManifestCache,
+  DEFAULT_ASSET_BASE,
   type CompiledScene,
-} from './scene.ts';
+} from './compile.ts';
