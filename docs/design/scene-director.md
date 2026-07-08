@@ -42,7 +42,7 @@ motionClip established the exact shape this feature needs, end to end:
 |---|---|---|
 | Declarative spec | `MotionSpec` (motionspec.ts) | `SceneSpec` |
 | Validation | `validateMotionSpec()` | `validateSceneSpec()` |
-| Persistence | IndexedDB `motion:<project>:<assetId>` | `scene:<project>:<assetId>` |
+| Persistence | IndexedDB `motion:<project>:<assetId>` — **replaced by in-document specs, see "Spec history"; motion is retrofitted first** | document state (`Asset.spec`) |
 | Asset URL | `src: 'motion://…'` | `src: 'scene://…'` |
 | Compiled form | `CompiledMotion { load(), render(index): VideoFrame }` | `CompiledScene`, same interface |
 | Frame delivery | `MediaLibrary` procedural source map; 1 resident preview frame; fresh frames for export | identical |
@@ -174,8 +174,9 @@ things that exist.
 
 `velocut.sceneClip(opts)` joins the `velocut_script` sandbox RPC list
 (`RPC_METHODS` in services/script.ts), with the same host-side flow as
-motionClip: validate → persist spec → compile → attach → place clip on a
-"Scenes" track → return `{ok, assetId, clipId, trackId, durationUs}`.
+motionClip: validate → dispatch the creation batch (spec travels inside the
+document, see "Spec history") → compile → attach → return
+`{ok, assetId, clipId, trackId, durationUs}`.
 The `velocut_script` docstring gains the SceneSpec schema, the vocabulary doc,
 and one worked example (character walks to a chair and sits; camera pushes in;
 one cut to a close-up). Editing an existing scene = `sceneClip` with the
@@ -204,22 +205,133 @@ versa.
   the spec), camera handles, shot list, scrub-linked preview. A richer input
   device for the same fields the inspector edits.
 
-**Undo/redo**: MVP inherits the motionClip convention — spec replacement is
-keyed to the assetId, so clip-level operations (add/move/trim/delete) are
-undoable through the normal history, but a spec *content* edit replaces the
-stored spec outside the command history. The clean fix (shared with motion) is
-immutable specs: an edit mints a new assetId + swaps the clip's asset through
-a protocol command, making every adjustment undoable for free. Proposed as a
-fast-follow once the inspector exists; noted in Open questions.
+**Undo/redo**: full history support for spec content edits is a hard
+requirement and gets its own section below — specs move *into* the document
+model, so every adjustment (agent or human) is a history node like any other
+command.
+
+## Spec history — specs are document state
+
+### Requirement
+
+Every spec content edit — an agent turn rewriting a scene, a human nudging a
+camera keyframe in the inspector — must participate in the full history
+model: undo/redo, the branching history board (jump to any node, branch from
+it), actor attribution, and multi-tab sync. Not best-effort; by construction.
+
+### Why the current storage cannot satisfy it
+
+Velocut has **three history layers, and all three are whole-document
+snapshots**:
+
+1. Engine undo (`engine.rs`): `undo: Vec<Document>` — every apply pushes a
+   full snapshot.
+2. Editor branching history (`state/history.ts`): a git-style `HistoryTree`
+   where **every node carries a complete `VDocument` snapshot** plus actor
+   attribution; undo/redo/`jumpTo(id)` load a node's snapshot wholesale.
+3. Collab (Yjs CRDT): the document is the synced unit; persistence and
+   multi-tab merge operate on it.
+
+Specs today live in an IndexedDB kv store (`motion:<project>:<assetId>`)
+that is *invisible to all three layers*. No parallel mechanism can patch
+this: `jumpTo` an arbitrary branch node must atomically restore the spec
+state at that node, which is exactly "snapshot the spec with the document" —
+anything else (a shadow journal keyed to history node ids, versioned kv)
+re-implements snapshots poorly and desynchronizes on prune/branch/multi-tab.
+
+### Options considered
+
+| | Mechanism | Verdict |
+|---|---|---|
+| **A. Specs in the document** | `Asset.spec` opaque JSON string; a `setAssetSpec` protocol command | **Chosen.** All three history layers, CRDT sync, branch jump, attribution and persistence work with zero new machinery — snapshots simply carry the spec. |
+| B. Immutable specs + asset swap | Every edit mints a new assetId; a command swaps the clip's asset | GC of orphaned specs must trace reachability across *all* history branches incl. pruned ones — effectively unsolvable without walking every snapshot; asset identity churn breaks references (camera `lookAt.character`, inspector selection); kv write vs doc update ordering races multi-tab. |
+| C. Parallel spec journal | Keep kv, add an undo journal coordinated with the store | Two sources of truth; `jumpTo`/prune/branch-switch cannot be made atomic across them; reinvents layer 2 badly. |
+
+### Design (A)
+
+**Model.** `Asset` gains `spec?: string` (JSON-serialized, absent for media
+assets). It is an **opaque string to the engines**: Rust stores
+`Option<String>`, TS mirrors it, neither interprets the contents. The
+`src` scheme (`motion://` / `scene://`) remains the router that tells the
+render layer which interpreter owns the spec. Spec *content* validation
+(SceneSpec/MotionSpec schemas) happens at the host API layer before
+dispatch, where the interpreters live — the timeline engines must not grow
+a rendering vocabulary, and golden vectors pin storage semantics only.
+
+**Protocol.**
+- `setAssetSpec { assetId, spec: string | null }` — replace (or clear) an
+  asset's spec. Errors: `notFound` (no such asset), `invalidArg` (spec is
+  not parseable JSON, or exceeds the size cap — proposal 256 KB).
+- `addAsset` gains optional `spec`, so procedural asset creation is atomic.
+- Dispatch-boundary validation checks JSON-parseability + cap only.
+- New golden vector `10_asset_specs.json`: set / replace / clear / load with
+  spec present / `notFound` / oversized+unparseable rejections / undo / redo.
+- `PROTOCOL_VERSION` → 2, persisted-document `formatVersion` bump with a
+  migration that folds each `motion:<project>:<assetId>` kv entry into its
+  asset's `spec` and deletes the kv key. Older builds refuse newer docs —
+  already the designed formatVersion behavior.
+
+**Creation flow.** `createMotionClip`/`createSceneClip` dispatch one
+`batch` — `[addAsset(with spec), addTrack?, addClip]` (asset ids are
+deterministic mints, so the host computes the id the same way the engine
+will) — which records as **one history node**: undoing an agent-created
+scene removes it atomically, and the node carries `actor: ai` + the prompt,
+so the history board attributes it.
+
+**Edit flow.** Inspector field commit / agent revision = one `setAssetSpec`
+dispatch = one attributed history node (`describeCommand` gains a label,
+e.g. "Edit scene"). During a live drag the inspector uses a transient
+compiled-scene override and dispatches once on gesture end — the same
+ghost-then-commit pattern the transform gizmos use today.
+
+**Render side.** The store already re-renders on document revision; a
+procedural-source observer diffs `asset.spec` on revision bump and
+re-attaches the compiled source. Undo, redo, branch jump and *remote* edits
+(other tab, other peer) all arrive as document changes, so recompile-on-spec-
+change is one code path with no special cases. This also fixes a latent
+motionClip gap: today another tab never sees a spec change until reload.
+
+**CRDT semantics.** The spec syncs as one atomic string value —
+last-writer-wins per edit, no intra-spec merging. That is the desired
+granularity: a half-merged scene is worse than a lost race, and the history
+board holds every version anyway.
+
+### Cost accounting
+
+- **Engines**: one model field + one command + vectors, both engines.
+  Mechanical; the Rust side is `Option<String>` + a match arm.
+- **History size**: `HistoryTree` keeps ≤ 400 nodes, each a full document
+  snapshot — specs multiply into that. Bounded by the 256 KB cap and, in
+  practice, KB-scale specs; same-realm `structuredClone` shares immutable
+  string storage so the memory cost is far below the naive 400×. The
+  *serialized* history store does duplicate the string per node; if that
+  ever bites, dedup-by-content-hash in `serialize()` is a contained
+  optimization. Not needed up front.
+- **Yjs update log**: whole-string replace per edit accumulates; the
+  existing persistence compaction owns this (same class as any chatty
+  command stream).
+- **Migration risk**: kv → document fold is per-project and idempotent
+  (missing kv entry → spec stays absent, renderer shows the existing
+  missing-spec error card). History stores migrate through the established
+  `formatVersion` chain in `HistoryTree.deserialize`.
+- **Docs**: PROTOCOL.md (+command, +field), ARCHITECTURE.md (procedural
+  assets section), agent prompt docs.
+
+### Sequencing
+
+This lands as **M0, before any 3D work**, by retrofitting motionClip: same
+seam, existing feature, existing tests prove it (unit + vectors + E2E), and
+the scene work then builds on a paved road instead of migrating twice.
 
 ## Implementation plan
 
 | Phase | Deliverable | Size |
 |---|---|---|
+| M0 | **Specs become document state** (see "Spec history"): `Asset.spec` + `setAssetSpec` in both engines, golden vector, formatVersion migration folding motion kv specs into the document, motionClip retrofit (creation batch, observer-driven recompile), PROTOCOL/ARCHITECTURE docs | M–L |
 | P0 | Pipeline spike: `scene-sdk` with hard-coded cube + camera keyframes rendering through `attachProceduralSource` to timeline + export | S |
 | P1 | SceneSpec v1: schema, validator, compiler (characters + actions + camera), asset manifest + CC0 pack vendoring, `sceneClip` host API + restore path, **scene inspector (structured manual editing)** | L |
 | P2 | Agent enablement: sandbox RPC, `scenePromptDoc`, docstring + example, real-LLM verification via the claude-plus proxy flow | M |
-| P3 | Director panel (stage view, drag-to-blocking, shot list); immutable-spec undo fast-follow | L |
+| P3 | Director panel (stage view, drag-to-blocking, shot list) | L |
 | P4+ | Dialogue/TTS + lip-sync, GLB/VRM import, root motion, external generation sources | — |
 
 Each phase lands green (unit + E2E) before the next starts. P0 proves the two
@@ -249,6 +361,8 @@ compositor; export determinism) before any schema work.
 | Agent authors invalid/ungrounded specs | Registry-driven vocabulary in the prompt; validator errors are returned verbatim as tool results so the agent self-corrects (motion parity) |
 | Walk speed vs position keyframes mismatch looks skatey | Gait speeds in the manifest + prompt guidance; acceptable MVP artifact, root motion later |
 | three.js WebGPU renderer temptation | Stay on WebGL2 until three's WebGPU path is stable; the seam (VideoFrame out) hides the choice |
+| History bloat from spec snapshots | 256 KB spec cap; `structuredClone` shares immutable strings in memory; dedup-by-hash in history serialization as a contained fallback |
+| formatVersion migration (kv → document) | Idempotent per-project fold; missing kv entry degrades to the existing missing-spec error card; downgrade protection already designed (newer-format refusal) |
 
 ## Open questions
 
@@ -257,6 +371,6 @@ compositor; export determinism) before any schema work.
    own? Proposal: own track, name `Scenes`.
 3. Environment scale conventions (meters) need one worked reference scene to
    calibrate agent spatial reasoning; pick the living-room env as canonical.
-4. Immutable specs for undoable content edits: does the asset swap reuse an
-   existing protocol command or need a new one (`setClipAsset`)? A new command
-   touches both engines + a golden vector — size it when the inspector lands.
+4. Spec size cap: 256 KB proposed — generous for scenes (KB-scale), small
+   enough to bound history snapshots. Confirm against the largest realistic
+   agent-authored scene before freezing the vector.
