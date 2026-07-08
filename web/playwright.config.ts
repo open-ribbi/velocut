@@ -8,6 +8,9 @@ import { defineConfig } from '@playwright/test';
 export default defineConfig({
   testDir: './e2e',
   timeout: 60_000,
+  // Cold CI runners re-transform every module through the Vite dev server on
+  // a reload; the app takes well over the 5s default to re-bootstrap.
+  expect: { timeout: 15_000 },
   // Storage (IndexedDB/OPFS) is per browser context; tests that span reloads
   // keep their context, and each test file starts from a clean slate.
   use: {

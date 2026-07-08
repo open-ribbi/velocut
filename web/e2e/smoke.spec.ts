@@ -42,7 +42,7 @@ test('boots with an engine, imports media, edits, and survives a reload', async 
   // write during teardown isn't guaranteed), so let the debounce land first.
   await page.waitForTimeout(600);
   await page.reload();
-  await expect.poll(async () => (await doc(page))?.tracks[0]?.clips.length).toBe(1);
+  await expect.poll(async () => (await doc(page))?.tracks[0]?.clips.length, { timeout: 15_000 }).toBe(1);
   await expect(page.locator('.asset-item')).toHaveCount(1);
   // The OPFS-backed image re-attaches (no unloaded-asset warning).
   await expect(page.locator('.asset-warn')).toHaveCount(0);
@@ -60,7 +60,7 @@ test('projects are isolated: create, switch, delete via the switcher UI', async 
   await page.locator('.project-current').click();
   await page.getByRole('button', { name: '+ New Project' }).click();
   await expect(page.locator('.project-current')).toContainText('E2E Project');
-  await expect.poll(async () => (await doc(page))?.tracks.length).toBe(0);
+  await expect.poll(async () => (await doc(page))?.tracks.length, { timeout: 15_000 }).toBe(0);
 
   // Its edits stay its own.
   await page.evaluate(() => (window as any).velocut.apply({ type: 'addTrack', kind: 'text', name: 'B-only' }));
@@ -70,7 +70,7 @@ test('projects are isolated: create, switch, delete via the switcher UI', async 
   await page.getByRole('button', { name: /My Project/ }).click();
   await expect(page.locator('.project-current')).toContainText('My Project');
   await expect
-    .poll(async () => (await doc(page))?.tracks.map((t: { name: string }) => t.name))
+    .poll(async () => (await doc(page))?.tracks.map((t: { name: string }) => t.name), { timeout: 15_000 })
     .toEqual(['Fingerprint']);
 
   // Delete the second project (confirm dialog); it disappears from the list.
