@@ -7,6 +7,7 @@
 // vocabulary always reflects the shipped manifest — no prompt edits when
 // assets are added.
 
+import { MANNEQUIN_JOINTS, POSE_PRESETS } from './mannequin.ts';
 import type { SceneAssetManifest } from './types.ts';
 
 export function scenePromptDoc(manifest: SceneAssetManifest): string {
@@ -17,12 +18,17 @@ export function scenePromptDoc(manifest: SceneAssetManifest): string {
       .map(([name, m]) => name + (m.speedMps ? `(${m.speedMps}m/s)` : '') + (m.loop === false ? '(once)' : ''))
       .join(', ');
     const slots = Object.keys(c.bones ?? {});
+    const isMannequin = c.file.startsWith('builtin:mannequin');
     lines.push(
-      `• ${id}${c.heightM ? ` — height ${c.heightM}m` : ''}: ${clips}` +
+      `• ${id}${c.heightM ? ` — height ${c.heightM}m` : ''}: ${isMannequin ? 'POSEABLE (pose field, no clips)' : clips}` +
         (slots.length ? ` | attach slots: ${slots.join(', ')}` : '') +
         (c.morphs?.length ? ` | expressions: ${c.morphs.join(', ')}` : ''),
     );
   }
+  lines.push(
+    `Mannequin pose presets: ${Object.keys(POSE_PRESETS).join(', ')}. ` +
+      `Joints (for pose overrides, degrees [pitch, yaw, roll]): ${MANNEQUIN_JOINTS.join(', ')}.`,
+  );
   lines.push('Environments: ' + Object.keys(manifest.environments).join(', '));
   lines.push('Lighting: ' + Object.keys(manifest.lighting).join(', '));
   lines.push('Props: ' + Object.keys(manifest.props).join(', '));

@@ -50,6 +50,17 @@ export interface SceneCharacter {
    *  manifest's per-model `morphs`) → weight 0..1, constant or keyframed.
    *  A model with mouth morphs gets talking the same way. */
   morphs?: Record<string, Animatable>;
+  /** Poseable figures (char/mannequin): a preset name, or a preset plus
+   *  per-joint Euler overrides in degrees [pitch, yaw, roll] — each axis
+   *  constant or keyframed, so a pose can move. */
+  pose?: string | CharacterPose;
+  /** Body color for built-in figures (CSS hex). */
+  color?: string;
+}
+
+export interface CharacterPose {
+  preset?: string;
+  joints?: Record<string, [Animatable, Animatable, Animatable]>;
 }
 
 export interface SceneProp {
@@ -202,6 +213,20 @@ export function validateSceneSpec(spec: unknown): string | null {
           if (!isAnimatable(w)) return `character '${c.id}': morph '${name}' weight must be animatable`;
         }
       }
+      if (c.pose != null && typeof c.pose !== 'string') {
+        const p = c.pose;
+        if (typeof p !== 'object') return `character '${c.id}': pose must be a preset name or { preset?, joints? }`;
+        if (p.preset != null && typeof p.preset !== 'string') return `character '${c.id}': pose.preset must be a string`;
+        if (p.joints != null) {
+          if (typeof p.joints !== 'object' || Array.isArray(p.joints)) return `character '${c.id}': pose.joints must be { joint: [x,y,z] }`;
+          for (const [joint, v] of Object.entries(p.joints)) {
+            if (!Array.isArray(v) || v.length !== 3 || !v.every(isAnimatable)) {
+              return `character '${c.id}': pose.joints.${joint} must be [pitch, yaw, roll] (degrees, animatable)`;
+            }
+          }
+        }
+      }
+      if (c.color != null && typeof c.color !== 'string') return `character '${c.id}': color must be a CSS color string`;
       if (c.actions != null) {
         if (!Array.isArray(c.actions) || c.actions.length > 50) return `character '${c.id}': actions must be an array of at most 50`;
         for (const a of c.actions) {

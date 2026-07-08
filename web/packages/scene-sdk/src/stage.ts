@@ -13,6 +13,7 @@ import { sampleAnimatable } from '@velocut/render-sdk';
 import type * as THREE from 'three';
 import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { resolveActions, type ClipMeta } from './actions.ts';
+import { buildMannequin, MANNEQUIN_JOINTS, POSE_PRESETS, type MannequinJoint } from './mannequin.ts';
 import type { SceneAssetManifest, SceneSpec, Scale3, Vec3A } from './types.ts';
 
 /** Apply a uniform or per-axis scale (missing axes stay 1). */
@@ -67,6 +68,8 @@ export interface StageCharacter {
   head: THREE.Object3D | null;
   /** Meshes with morph targets — driven by character.morphs. */
   morphMeshes: THREE.Mesh[];
+  /** Set for the built-in poseable figure: joint name → its rotation group. */
+  mannequinJoints?: Map<MannequinJoint, THREE.Group>;
   spec: NonNullable<SceneSpec['characters']>[number];
 }
 
@@ -146,6 +149,24 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
   for (const c of spec.characters ?? []) {
     const entry = manifest.characters[c.model];
     if (!entry) throw new Error(`unknown character model '${c.model}'`);
+
+    // Built-in poseable figure: generated geometry, no GLTF, joints as groups.
+    if (entry.file.startsWith('builtin:')) {
+      const m = buildMannequin(three, c.color);
+      scene.add(m.root);
+      characters.push({
+        root: m.root,
+        mixer: new three.AnimationMixer(m.root), // inert (no clips)
+        actions: new Map(),
+        clips: {},
+        heightM: entry.heightM ?? m.heightM,
+        head: m.joints.get('head') ?? null,
+        morphMeshes: [],
+        mannequinJoints: m.joints,
+        spec: c,
+      });
+      continue;
+    }
     const url = `${assetBase}/${entry.file}`;
     let g = gltfCache.get(url);
     if (!g) {
@@ -276,6 +297,28 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
       c.root.position.set(x, y, z);
       c.root.rotation.y = (sampleAnimatable(c.spec.rotationY, t, 0) * Math.PI) / 180;
       if (c.spec.scale != null) applyScale(c.root, c.spec.scale);
+
+      // Poseable figure: every joint fully re-set from preset + overrides —
+      // unset override axes fall back to the preset (sampleAnimatable's
+      // fallback), so partial overrides compose naturally.
+      if (c.mannequinJoints) {
+        const poseSpec = c.spec.pose;
+        const presetName = typeof poseSpec === 'string' ? poseSpec : poseSpec?.preset;
+        const base = (presetName ? POSE_PRESETS[presetName] : undefined) ?? POSE_PRESETS.standing;
+        const overrides = typeof poseSpec === 'object' ? poseSpec.joints : undefined;
+        const D = Math.PI / 180;
+        for (const j of MANNEQUIN_JOINTS) {
+          const grp = c.mannequinJoints.get(j)!;
+          const b = base[j] ?? [0, 0, 0];
+          const o = overrides?.[j];
+          grp.rotation.set(
+            sampleAnimatable(o?.[0], t, b[0]) * D,
+            sampleAnimatable(o?.[1], t, b[1]) * D,
+            sampleAnimatable(o?.[2], t, b[2]) * D,
+          );
+        }
+        continue;
+      }
 
       // Deterministic pose: explicitly set every action's enabled/weight/time
       // for THIS t, then update(0) to write the blended pose to the bones.

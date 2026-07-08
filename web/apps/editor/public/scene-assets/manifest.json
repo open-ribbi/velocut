@@ -1,6 +1,14 @@
 {
   "version": 1,
   "characters": {
+    "char/mannequin": {
+      "file": "builtin:mannequin",
+      "label": "Mannequin (poseable figure)",
+      "license": "generated",
+      "heightM": 1.7,
+      "bones": { "handR": "handR", "handL": "handL", "head": "head" },
+      "clips": {}
+    },
     "char/fox": {
       "file": "characters/fox.glb",
       "label": "Fox",

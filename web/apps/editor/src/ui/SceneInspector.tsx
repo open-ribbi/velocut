@@ -13,6 +13,7 @@ import type { Animatable } from '@velocut/render-sdk';
 import {
   loadSceneManifest,
   validateSceneSpec,
+  POSE_PRESETS,
   type SceneAssetManifest,
   type SceneSpec,
 } from '@velocut/scene-sdk';
@@ -231,6 +232,43 @@ export function SceneInspector({ store, asset }: { store: Store; asset: Asset })
                   onChange={(v) => run((d) => (d.characters![ci].rotationY = v))}
                 />
               </div>
+              {manifest?.characters[c.model]?.file.startsWith('builtin:mannequin') && (
+                <>
+                  <div className="prop-row">
+                    <span className="prop-label">Pose</span>
+                    <select
+                      value={typeof c.pose === 'string' ? c.pose : (c.pose?.preset ?? 'standing')}
+                      onChange={(e) =>
+                        run((d) => {
+                          const cur = d.characters![ci].pose;
+                          // Keep joint overrides (edit them in the JSON tab).
+                          if (cur && typeof cur === 'object' && cur.joints) cur.preset = e.target.value;
+                          else d.characters![ci].pose = e.target.value;
+                        })
+                      }
+                    >
+                      {Object.keys(POSE_PRESETS).map((p) => (
+                        <option key={p} value={p}>
+                          {p}
+                        </option>
+                      ))}
+                    </select>
+                    {typeof c.pose === 'object' && c.pose?.joints && (
+                      <span className="kf-chip" title="Per-joint overrides — edit via the JSON tab">
+                        ◆ joints
+                      </span>
+                    )}
+                  </div>
+                  <div className="prop-row">
+                    <span className="prop-label">Color</span>
+                    <input
+                      type="color"
+                      value={c.color ?? '#4f8ef7'}
+                      onChange={(e) => run((d) => (d.characters![ci].color = e.target.value))}
+                    />
+                  </div>
+                </>
+              )}
               <div className="prop-row">
                 <span className="prop-label">Gaze</span>
                 <select

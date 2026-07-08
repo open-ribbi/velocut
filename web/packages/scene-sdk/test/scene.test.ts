@@ -20,6 +20,12 @@ test('validateSceneSpec: accepts a minimal spec and a full spec', () => {
       lighting: 'night',
       characters: [
         {
+          id: 'figure',
+          model: 'char/mannequin',
+          pose: { preset: 'bow', joints: { torso: [[{ t: 0, v: 0 }, { t: 1, v: 45 }], 0, 0] } },
+          color: '#4f8ef7',
+        },
+        {
           id: 'hero',
           model: 'char/robot',
           position: { x: [{ t: 0, v: -3 }, { t: 3, v: 0 }], z: 0 },
@@ -68,6 +74,9 @@ test('validateSceneSpec: rejection table', () => {
     [{ ...base, props: [{ model: 'prop/extrude', points: [[0, 0], [1, 0]] }] }, /extrude needs points/],
     [{ ...base, props: [{ model: 'prop/extrude', points: [[0, 0], [1, 0], [0.5, 1]], depth: -1 }] }, /depth/],
     [{ ...base, props: [{ model: 'prop/cube', points: [[0, 0], [1, 0], [0.5, 1]] }] }, /does not take points/],
+    [{ ...base, characters: [{ id: 'a', model: 'char/mannequin', pose: 42 }] }, /pose/],
+    [{ ...base, characters: [{ id: 'a', model: 'char/mannequin', pose: { joints: { torso: [1, 2] } } }] }, /pose.joints.torso/],
+    [{ ...base, characters: [{ id: 'a', model: 'char/mannequin', color: 7 }] }, /color/],
     [{ ...base, camera: { roll: 'tilted' } }, /roll/],
     [{ ...base, camera: { shake: { amplitude: 'lots' } } }, /shake/],
     [{ ...base, shots: [] }, /shots/],
