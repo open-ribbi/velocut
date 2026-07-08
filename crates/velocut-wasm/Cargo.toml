@@ -3,6 +3,7 @@ name = "velocut-wasm"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
+repository = "https://github.com/open-ribbi/velocut"
 description = "wasm-bindgen bindings for velocut-core. Build: wasm-pack build --target web --out-dir ../../web/apps/editor/public/wasm"
 
 [lib]

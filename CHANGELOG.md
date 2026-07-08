@@ -7,40 +7,56 @@ are published.
 
 ## [Unreleased]
 
-Work toward the first public release. See [README](README.md) for current
-capabilities. Highlights since the initial import:
+## [0.1.0] — 2026-07-08
+
+First public release.
 
 ### Added
-- Persisted-document **format versioning**: a `formatVersion` anchor + migration
-  chain (`@velocut/protocol` `migrate.ts`) stamped into the collab and history
-  stores. Old data migrates up; data from a *newer* build is refused rather than
-  silently corrupted. Establishes the anchor so future schema changes register a
-  migration instead of breaking old projects.
-- Declarative `motionClip`: motion graphics are now a serializable JSON spec
-  (keyframed layers) rendered by a fixed interpreter — persisted across reload,
-  and safe to author from the sandboxed script tool.
-- GitHub Actions CI: Rust + TS golden-vector tests, `tsc`, and a WASM compile
-  smoke test on every PR.
-- English README (with a `简体中文` version), per-package READMEs, a `justfile`
-  task runner, issue/PR templates, and this changelog.
+- The editor itself: an AI-native, local-first, browser video editor — a
+  canonical Rust engine (→ WASM) mirrored by a TypeScript reference engine,
+  kept in lock-step by shared golden vectors; WebGPU compositing + WebCodecs
+  decode/export; an LLM agent editing through the same JSON command protocol
+  as the UI; branching edit history; local-first persistence (OPFS +
+  IndexedDB) with multi-tab CRDT sync.
+- **Multi-project management**: a toolbar project switcher; every persistence
+  surface (document, history, media, caches, motion specs) is isolated per
+  project, and pre-existing data is adopted as the default project with zero
+  data moves.
+- **LLM provider settings**: any Anthropic-protocol-compatible relay/gateway
+  via a configurable base URL, `x-api-key` or `Authorization: Bearer` auth,
+  custom model ids, and a one-round-trip connection test.
+- **Volume keyframes**: fade-in/out and ducking, authorable from the inspector
+  and pinned by a golden vector.
+- Persisted-document **format versioning**: a `formatVersion` anchor +
+  migration chain stamped into the collab and history stores. Old data
+  migrates up; data from a *newer* build is refused rather than silently
+  corrupted.
+- Declarative `motionClip`: motion graphics as a serializable JSON spec
+  rendered by a fixed interpreter — persisted across reload, and safe to
+  author from the sandboxed script tool.
+- **Protocol hardening**: boundary-rejection golden vectors, cross-kind
+  `moveClip` rejection (previously unenforced in both engines), a unified
+  `hasAudio` default on the document-load path, integer-microsecond
+  validation at the dispatch boundary, and `PROTOCOL_VERSION`.
+- **Test suite**: unit tests for the agent tool-use loop (injected transport)
+  and the effect/motion-spec registries; a Playwright E2E smoke suite; CI
+  gates every PR on four jobs (Rust fmt+clippy+vectors, TS vectors+unit+tsc,
+  WASM compile, E2E).
+- Governance & docs: English-only source and docs (README keeps a `简体中文`
+  variant), editor/agent screenshots, per-package usage examples,
+  CODE_OF_CONDUCT, dependabot, issue/PR templates, a `justfile`, and this
+  changelog.
 
 ### Changed
-- `velocut_script` now runs in a null-origin sandboxed iframe with a
+- `velocut_script` runs in a null-origin sandboxed iframe with a
   `connect-src 'none'` CSP and network-global hardening — the agent's scripts
-  can no longer read the API key or reach the network (see SECURITY.md).
-- Package dependencies are now declared honestly: each package lists its own
+  cannot read the API key or reach the network (see SECURITY.md).
+- Package dependencies are declared honestly: each package lists its own
   runtime deps and the editor declares all internal packages.
 
 ### Fixed
+- Switching projects could lose the last edits of the outgoing project: saves
+  are debounced, and the navigation raced the write. App-controlled reloads
+  now await a deterministic persistence flush (found by the E2E suite).
 - `exactFrame` returned a resident VideoFrame that export/observe would close,
   freezing the preview permanently; it now returns a clone.
-- Moved an internal red-team note out of the repo and hardened `.gitignore`;
-  fixed a broken code fence in ARCHITECTURE.md.
-
-## [0.1.0] — initial import
-
-- AI-native, local-first, browser video editor: canonical Rust engine (→ WASM)
-  mirrored by a TypeScript reference engine, kept in lock-step by shared golden
-  vectors; WebGPU compositing + WebCodecs decode/export; an LLM agent editing
-  through the same JSON command protocol as the UI; branching edit history;
-  local-first persistence (OPFS + IndexedDB) with multi-tab CRDT sync.

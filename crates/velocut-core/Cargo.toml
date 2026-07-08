@@ -3,6 +3,7 @@ name = "velocut-core"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 description = "Velocut editing core: timeline model, command protocol, keyframe evaluation, frame graph"
 
 [dependencies]
@@ -10,4 +11,4 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 [dev-dependencies]
-# golden vector 测试直接读 protocol/vectors/*.json
+# The golden-vector test reads protocol/vectors/*.json directly.

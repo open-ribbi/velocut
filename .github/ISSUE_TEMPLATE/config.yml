@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: Security issue
-    url: https://github.com/willbean/velocut/blob/main/SECURITY.md
+    url: https://github.com/open-ribbi/velocut/blob/main/SECURITY.md
     about: Please read SECURITY.md first for how to report vulnerabilities.
   - name: Questions & ideas
-    url: https://github.com/willbean/velocut/discussions
+    url: https://github.com/open-ribbi/velocut/discussions
     about: For open-ended questions or design discussion, use Discussions.

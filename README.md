@@ -3,7 +3,7 @@
 
 # Velocut
 
-[![CI](https://github.com/willbean/velocut/actions/workflows/ci.yml/badge.svg)](.github/workflows/ci.yml)
+[![CI](https://github.com/open-ribbi/velocut/actions/workflows/ci.yml/badge.svg)](.github/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Node](https://img.shields.io/badge/node-%E2%89%A522.6-brightgreen)
 
@@ -45,7 +45,7 @@ cd web && npm run dev   # badge switches to "engine: Rust/WASM"
 
 ## Agent quick start
 
-Velocut's first "user" is the AI agent. Click the **⌘ Agent** bubble (bottom-right), paste your own Anthropic API key (`sk-ant-...`), and edit in natural language — *"cut out the silent parts", "add a title at the start"*.
+Velocut's first "user" is the AI agent. Click the **⌘ Agent** bubble (bottom-right), configure a provider in the settings panel (your own Anthropic API key works as-is), and edit in natural language — *"cut out the silent parts", "add a title at the start"*.
 
 ![The agent reads the project and lands a styled closing title card in one atomic batch — through the exact same command protocol the UI uses](docs/media/agent.png)
 
@@ -69,10 +69,11 @@ Note: these proxies exist only under `npm run dev`; after a static `vite build`,
 
 ```bash
 cargo test                # the Rust engine runs protocol/vectors/*.json
-cd web && npm test        # the TS engine runs the same vectors
+cd web && npm test        # the TS engine runs the same vectors + unit tests
+cd web && npm run e2e     # Playwright smoke (boot / import / edit / persistence)
 ```
 
-Any change to engine behavior must land as a new vector, and both sides must pass to count as consistent — CI (`.github/workflows/ci.yml`) enforces this pair of tests + `tsc` + a WASM compile smoke test on every PR. See [CONTRIBUTING.md](CONTRIBUTING.md) for the flow.
+Any change to engine behavior must land as a new vector, and both sides must pass to count as consistent. Beyond the vectors, the suite covers the agent tool-use loop (via an injected transport), the effect/motion-spec registries, and two end-to-end Chromium journeys. CI (`.github/workflows/ci.yml`) gates every PR on four jobs: Rust (fmt + clippy + vectors), TS (vectors + unit tests + tsc), a WASM compile smoke test, and the E2E suite. See [CONTRIBUTING.md](CONTRIBUTING.md) for the flow.
 
 ## Repository layout
 
@@ -96,11 +97,12 @@ web/
 1. ✅ Multi-track editing: split / drag / snap / speed / trim / track reorder, with a **branching** edit history (go back and edit to fork a new branch; human vs. AI actions are color-attributed).
 2. ✅ Keyframe animation (linear / hold / bezier) + an effect registry (color grade, etc.) + transitions.
 3. ✅ Text layers & caption styling (rasterized → composited through the same WebGPU pipeline as video).
-4. ✅ Audio: mixed playback, TTS narration (local / MiniMax), Whisper auto-captions.
+4. ✅ Audio: mixed playback, volume keyframes (fade-in/out, ducking), TTS narration (local / MiniMax), Whisper auto-captions.
 5. ✅ Agent perception: frame-grab observation / shot-boundary detection / loudness & silence analysis, surfaced as images and sparklines in chat.
 6. ✅ Declarative motion graphics (`motionClip`): keyframed layers described by a JSON spec — persisted, and safe to author from the sandboxed script tool.
 7. ✅ Export: WebCodecs encode + mp4 mux (streaming, no whole-clip memory bloat); background low-res proxy transcode for smooth preview.
 8. ✅ Local-first: media in OPFS, document + history in IndexedDB, real-time multi-tab sync.
+9. ✅ Multi-project management: a toolbar project switcher with fully isolated per-project storage (document, history, media, caches).
 
 Keys: Space = play / S = split / Delete = delete / Cmd+Z = undo / Ctrl+wheel = zoom timeline / drag a clip edge to trim / right-click a track head or clip for a menu.
 

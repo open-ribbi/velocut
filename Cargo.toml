@@ -1,14 +1,15 @@
 [workspace]
 resolver = "2"
 members = ["crates/velocut-core"]
-# velocut-wasm 不在默认成员里:沙箱无 wasm32 std,本地构建时用
-# `wasm-pack build crates/velocut-wasm` 单独编译。
+# velocut-wasm is not a default member: environments without the wasm32 std
+# can't build it; compile it separately with `wasm-pack build crates/velocut-wasm`.
 exclude = ["crates/velocut-wasm"]
 
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
+repository = "https://github.com/open-ribbi/velocut"
 
 [profile.release]
 opt-level = 3
