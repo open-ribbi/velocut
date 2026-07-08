@@ -17,6 +17,7 @@ import {
   type SceneSpec,
 } from '@velocut/scene-sdk';
 import type { Store } from '../state/store';
+import { DirectorPanel } from './DirectorPanel';
 
 /** Deep-clone + mutate + dispatch: one edit = one setAssetSpec node. */
 function useSpecEditor(store: Store, asset: Asset) {
@@ -95,6 +96,7 @@ export function SceneInspector({ store, asset }: { store: Store; asset: Asset })
   const [manifest, setManifest] = useState<SceneAssetManifest | null>(null);
   const [jsonDraft, setJsonDraft] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [director, setDirector] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -140,6 +142,10 @@ export function SceneInspector({ store, asset }: { store: Store; asset: Asset })
         </span>
       </div>
       {error && <div className="scene-error">{error}</div>}
+      <button className="fx-add director-open" onClick={() => setDirector(true)}>
+        🎬 Open Director (stage view)
+      </button>
+      {director && <DirectorPanel store={store} asset={asset} onClose={() => setDirector(false)} />}
 
       {tab === 'json' ? (
         <>

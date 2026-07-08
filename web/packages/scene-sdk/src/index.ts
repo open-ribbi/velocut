@@ -19,10 +19,14 @@ export {
 } from './types.ts';
 export { resolveActions, type ActivePose, type ClipMeta } from './actions.ts';
 export { scenePromptDoc } from './prompt.ts';
+export { compileSceneSpec, applySpecCamera, type CompiledScene } from './compile.ts';
 export {
-  compileSceneSpec,
+  buildStage,
   loadSceneManifest,
   resetSceneManifestCache,
+  sampleVec3,
   DEFAULT_ASSET_BASE,
-  type CompiledScene,
-} from './compile.ts';
+  type Stage,
+  type StageCharacter,
+  type StageProp,
+} from './stage.ts';
