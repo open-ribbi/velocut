@@ -14,8 +14,10 @@ import type { VDocument } from './types.ts';
 
 /** The document format the current build reads and writes. Bump when a change to
  *  the persisted Track/Asset/Clip/Document shape isn't backward-compatible, and
- *  register a migration below. */
-export const CURRENT_FORMAT_VERSION = 1;
+ *  register a migration below.
+ *  v2: Asset.spec — procedural specs (motion/scene) live in the document. Older
+ *  builds would silently DROP specs from a v2 doc, so they must refuse it. */
+export const CURRENT_FORMAT_VERSION = 2;
 
 /** Persisted data written before versioning existed has no formatVersion field;
  *  it is, by definition, the first shape. This baseline is FIXED at 1 forever
@@ -27,11 +29,16 @@ const BASELINE_VERSION = 1;
  *  replace the input; it must return the upgraded document. */
 type Migration = (doc: VDocument) => VDocument;
 
-/** Migrations keyed by the version they upgrade FROM. Empty today. Example for a
- *  future v1→v2 (e.g. a new required Track field):
- *    [1]: (doc) => { for (const t of doc.tracks) (t as any).newField ??= 0; return doc; },
- */
-const MIGRATIONS: Record<number, Migration> = {};
+/** Migrations keyed by the version they upgrade FROM. */
+const MIGRATIONS: Record<number, Migration> = {
+  // v1 → v2: Asset.spec is new and OPTIONAL, so the document shape itself needs
+  // no rewriting — a v1 doc is a valid v2 doc with no specs. The bump exists so
+  // v2 docs (which may carry specs) are refused by v1 builds instead of losing
+  // spec data silently. The one-time fold of legacy motion specs (IndexedDB
+  // `motion:<project>:<assetId>` → Asset.spec) is an APP-level migration: it
+  // needs kv access, which this pure chain doesn't have (see editor services).
+  [1]: (doc) => doc,
+};
 
 export type MigrateResult =
   | { ok: true; doc: VDocument; migratedFrom: number | null }

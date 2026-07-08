@@ -81,6 +81,19 @@ fn run_vector(path: &PathBuf) {
             if let Some(w) = want.get("hasAudio") {
                 assert_eq!(&asset["hasAudio"], w, "[{}] {} hasAudio", name, id);
             }
+            // spec: string = exact match; null = must be ABSENT (indexing a
+            // missing key yields Value::Null, so one comparison covers both).
+            if let Some(w) = want.get("spec") {
+                assert_eq!(&asset["spec"], w, "[{}] {} spec", name, id);
+                if w.is_null() {
+                    assert!(
+                        asset.get("spec").is_none(),
+                        "[{}] {} spec must be omitted from JSON, not null",
+                        name,
+                        id
+                    );
+                }
+            }
         }
     }
 

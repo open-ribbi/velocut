@@ -34,6 +34,9 @@ pub enum EditCommand {
         /// Optional caller-chosen id (must be unique); else engine mints one.
         #[serde(default)]
         id: Option<String>,
+        /// Optional procedural spec (JSON text) — see Asset::spec.
+        #[serde(default)]
+        spec: Option<String>,
     },
     #[serde(rename_all = "camelCase")]
     AddTrack {
@@ -147,6 +150,16 @@ pub enum EditCommand {
     #[serde(rename_all = "camelCase")]
     SetTrackLocked { track_id: String, locked: bool },
 
+    /// Replace (or clear, with spec: null) a procedural asset's JSON spec.
+    /// The spec is opaque; the engine enforces only the storage invariants
+    /// (valid JSON, size cap) so history snapshots stay bounded.
+    #[serde(rename_all = "camelCase")]
+    SetAssetSpec {
+        asset_id: String,
+        #[serde(default)]
+        spec: Option<String>,
+    },
+
     /// Atomic composite: applied all-or-nothing, single undo step.
     #[serde(rename_all = "camelCase")]
     Batch { commands: Vec<EditCommand> },
@@ -169,6 +182,10 @@ pub enum TrimEdge {
 pub enum Event {
     #[serde(rename_all = "camelCase")]
     AssetAdded {
+        asset_id: String,
+    },
+    #[serde(rename_all = "camelCase")]
+    AssetUpdated {
         asset_id: String,
     },
     #[serde(rename_all = "camelCase")]
@@ -231,6 +248,27 @@ impl CmdError {
 
 pub type CmdResult = Result<Vec<Event>, CmdError>;
 
+/// Cap on a procedural spec (UTF-8 bytes) — mirror of the TS engine's
+/// MAX_SPEC_BYTES; both are pinned by the asset-spec golden vector.
+const MAX_SPEC_BYTES: usize = 262_144;
+
+/// Specs are opaque to the engine EXCEPT for two storage-level invariants it
+/// enforces authoritatively: the payload is JSON text, and it fits the cap
+/// (history nodes snapshot whole documents, so unbounded specs would bloat
+/// every layer that versions them).
+fn check_spec(spec: &str) -> Result<(), CmdError> {
+    if spec.len() > MAX_SPEC_BYTES {
+        return Err(CmdError::invalid(format!(
+            "spec exceeds {} bytes",
+            MAX_SPEC_BYTES
+        )));
+    }
+    if serde_json::from_str::<serde_json::Value>(spec).is_err() {
+        return Err(CmdError::invalid("spec is not valid JSON"));
+    }
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // Application logic
 // ---------------------------------------------------------------------------
@@ -247,7 +285,11 @@ pub fn apply(doc: &mut Document, cmd: &EditCommand) -> CmdResult {
             height,
             has_audio,
             id,
+            spec,
         } => {
+            if let Some(s) = spec {
+                check_spec(s)?;
+            }
             let asset_id = match id {
                 Some(explicit) => {
                     if doc.find_asset(explicit).is_some() {
@@ -269,6 +311,7 @@ pub fn apply(doc: &mut Document, cmd: &EditCommand) -> CmdResult {
                 width: *width,
                 height: *height,
                 has_audio: has_audio.unwrap_or(*kind != AssetKind::Image),
+                spec: spec.clone(),
             });
             Ok(vec![Event::AssetAdded { asset_id }])
         }
@@ -793,6 +836,21 @@ pub fn apply(doc: &mut Document, cmd: &EditCommand) -> CmdResult {
             t.locked = *locked;
             Ok(vec![Event::TrackUpdated {
                 track_id: track_id.clone(),
+            }])
+        }
+
+        SetAssetSpec { asset_id, spec } => {
+            if let Some(s) = spec {
+                check_spec(s)?;
+            }
+            let asset = doc
+                .assets
+                .iter_mut()
+                .find(|a| a.id == *asset_id)
+                .ok_or_else(|| CmdError::not_found("asset", asset_id))?;
+            asset.spec = spec.clone();
+            Ok(vec![Event::AssetUpdated {
+                asset_id: asset_id.clone(),
             }])
         }
 

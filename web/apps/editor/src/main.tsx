@@ -12,7 +12,7 @@ import { captionAsset } from './services/caption';
 import { observeForAgent, type ObserveInput } from './services/observe';
 import { synthesizeNarration } from './services/tts';
 import { runAgentScript } from './services/script';
-import { createMotionClip, restoreMotionClip, type MotionClipOptions } from './services/motion';
+import { createMotionClip, syncMotionAsset, migrateLegacyMotionSpecs, type MotionClipOptions } from './services/motion';
 import { searchWeb } from './services/search';
 import { Store } from './state/store';
 import { HistoryTree } from './state/history';
@@ -78,12 +78,15 @@ function makeHistorySaver(key: string): { save: (tree: HistoryTree) => void; flu
 /** Re-attach OPFS-backed media after a reload or a remote peer's import. */
 async function restoreMedia(store: Store, media: MediaLibrary, mediaDir: string) {
   for (const a of store.getState().doc.assets) {
-    if (media.hasAsset(a.id)) continue;
-    // Procedural motion assets restore from their persisted declarative spec.
+    // Procedural motion assets render from their in-document spec. Synced on
+    // EVERY document change (not just when unattached): undo/redo, a history
+    // jump or a remote peer can replace the spec under an attached asset, and
+    // the compiled renderer must follow. No-op when the spec is unchanged.
     if (a.src.startsWith('motion://')) {
-      if (!(await restoreMotionClip(store, media, a.id))) console.warn('[velocut] motion restore failed:', a.id);
+      if (!(await syncMotionAsset(store, media, a))) console.warn('[velocut] motion restore failed:', a.id);
       continue;
     }
+    if (media.hasAsset(a.id)) continue;
     if (!a.src.startsWith('opfs://')) continue;
     // Imported audio re-attaches from its OPFS PCM cache — no re-decode.
     if (a.kind === 'audio' && (await media.restoreAudio(a.id))) continue;
@@ -182,6 +185,9 @@ async function bootstrap() {
     await collab.flushNow();
     await historySaver.flush();
   });
+  // One-time fold of pre-v2 motion specs (IndexedDB kv) into Asset.spec, so
+  // spec edits participate in undo/history/sync like any other document state.
+  await migrateLegacyMotionSpecs(store);
   await restoreMedia(store, media, storage.mediaDir);
   void container.resolve(TOKENS.Fonts).restore();
   // Remote peers may import assets — re-attach their OPFS media lazily.

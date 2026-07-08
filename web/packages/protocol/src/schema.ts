@@ -14,8 +14,15 @@ import { z } from 'zod';
 
 /** Command-protocol version. Bump only on a breaking change to the command
  *  set or error contract; consumers can compare against it to detect a
- *  mismatched peer. (Persisted-document versioning is separate: migrate.ts.) */
-export const PROTOCOL_VERSION = 1;
+ *  mismatched peer. (Persisted-document versioning is separate: migrate.ts.)
+ *  v2: Asset.spec + setAssetSpec (procedural specs live in the document). */
+export const PROTOCOL_VERSION = 2;
+
+/** Size cap for a procedural spec (UTF-8 bytes). Generous for KB-scale
+ *  motion/scene JSON, small enough to keep history snapshots bounded. The
+ *  ENGINES enforce this authoritatively (vector-pinned); this mirror exists
+ *  so dispatch can reject early with a friendly message. */
+export const MAX_SPEC_BYTES = 262_144;
 
 // ------------------------------------------------------------- value types
 
@@ -105,6 +112,21 @@ export type Transition = z.infer<typeof Transition>;
 // discriminated union type-checks). Human summaries live in SUMMARIES, beside
 // the schemas — adding a command means editing only this file.
 
+/** A procedural spec payload: JSON text within the size cap. The engines
+ *  re-check both properties (theirs is the vector-pinned truth); validating
+ *  here too gives the agent a precise dispatch-time error. */
+const SpecField = z.string().superRefine((s, ctx) => {
+  if (new TextEncoder().encode(s).length > MAX_SPEC_BYTES) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: `spec exceeds ${MAX_SPEC_BYTES} bytes` });
+    return;
+  }
+  try {
+    JSON.parse(s);
+  } catch {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'spec is not valid JSON' });
+  }
+});
+
 const cAddAsset = z.object({
   type: z.literal('addAsset'),
   kind: AssetKind,
@@ -115,6 +137,7 @@ const cAddAsset = z.object({
   height: z.number().int().optional(),
   hasAudio: z.boolean().nullish(),
   id: z.string().nullish(),
+  spec: SpecField.nullish(),
 });
 const cAddTrack = z.object({
   type: z.literal('addTrack'),
@@ -189,6 +212,11 @@ const cSetEffectParams = z.object({
 });
 const cSetTrackMuted = z.object({ type: z.literal('setTrackMuted'), trackId: z.string(), muted: z.boolean() });
 const cSetTrackLocked = z.object({ type: z.literal('setTrackLocked'), trackId: z.string(), locked: z.boolean() });
+const cSetAssetSpec = z.object({
+  type: z.literal('setAssetSpec'),
+  assetId: z.string(),
+  spec: SpecField.nullable(),
+});
 
 /** All non-batch commands as a discriminated union (zod). */
 const NonBatchSchema = z.discriminatedUnion('type', [
@@ -214,12 +242,13 @@ const NonBatchSchema = z.discriminatedUnion('type', [
   cSetEffectParams,
   cSetTrackMuted,
   cSetTrackLocked,
+  cSetAssetSpec,
 ]);
 type NonBatch = z.infer<typeof NonBatchSchema>;
 
 /** type → one-line summary for the agent prompt's command table. */
 const SUMMARIES: Record<string, string> = {
-  addAsset: 'kind:video|audio|image, src, name, durationUs?, width?, height?, hasAudio? — register an asset',
+  addAsset: 'kind:video|audio|image, src, name, durationUs?, width?, height?, hasAudio?, spec? — register an asset (spec = procedural JSON payload)',
   addTrack: 'kind:video|audio|text, name?, index? — create a track',
   removeTrack: 'trackId — remove a track (including its clips)',
   moveTrack: 'trackId, toIndex — reorder the track to position toIndex (0 = top of the render order)',
@@ -241,6 +270,8 @@ const SUMMARIES: Record<string, string> = {
   setEffectParams: 'clipId, effectId, params — update effect params',
   setTrackMuted: 'trackId, muted — mute/unmute a track',
   setTrackLocked: 'trackId, locked — lock/unlock a track',
+  setAssetSpec:
+    'assetId, spec:string|null — replace (or clear) a procedural asset\'s JSON spec; each call is one undoable history step',
 };
 
 /** A command — value types inferred from zod; batch is the recursive wrapper. */

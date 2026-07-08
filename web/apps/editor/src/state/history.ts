@@ -291,6 +291,8 @@ export function describeCommand(cmd: Command): string {
       return cmd.muted ? 'Mute track' : 'Unmute track';
     case 'setTrackLocked':
       return cmd.locked ? 'Lock track' : 'Unlock track';
+    case 'setAssetSpec':
+      return cmd.spec == null ? 'Clear graphics spec' : 'Edit graphics spec';
     case 'batch': {
       const inner = cmd.commands;
       if (inner.length === 1) return describeCommand(inner[0]);

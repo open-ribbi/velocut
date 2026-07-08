@@ -1,0 +1,35 @@
+{
+  "name": "asset specs: opaque in-document storage — load path, replace/clear via setAssetSpec, invalid-JSON rejection, undo/redo",
+  "steps": [
+    {"load": {
+      "id": "doc_1",
+      "name": "t",
+      "width": 1280,
+      "height": 720,
+      "fpsNum": 30,
+      "fpsDen": 1,
+      "nextId": 0,
+      "assets": [
+        {"id": "a_motion", "kind": "image", "src": "motion://a_motion", "name": "title", "durationUs": 2000000, "hasAudio": false, "spec": "{\"version\":1,\"durationUs\":2000000,\"layers\":[]}"},
+        {"id": "a_plain", "kind": "image", "src": "mem://plain", "name": "img", "hasAudio": false}
+      ],
+      "tracks": []
+    }},
+    {"apply": {"type": "addAsset", "kind": "image", "src": "scene://asset_0", "name": "scene", "durationUs": 3000000, "spec": "{\"version\":1,\"camera\":{}}"}},
+    {"applyErr": {"cmd": {"type": "addAsset", "kind": "image", "src": "motion://bad", "name": "bad", "spec": "{broken"}, "code": "invalidArg"}},
+    {"applyErr": {"cmd": {"type": "setAssetSpec", "assetId": "nope", "spec": "{}"}, "code": "notFound"}},
+    {"applyErr": {"cmd": {"type": "setAssetSpec", "assetId": "a_motion", "spec": "not json"}, "code": "invalidArg"}},
+    {"apply": {"type": "setAssetSpec", "assetId": "a_motion", "spec": "{\"version\":1,\"durationUs\":2000000,\"layers\":[{\"type\":\"rect\",\"w\":10,\"h\":10}]}"}},
+    {"undo": true},
+    {"redo": true},
+    {"apply": {"type": "setAssetSpec", "assetId": "a_plain", "spec": "{\"tmp\":true}"}},
+    {"apply": {"type": "setAssetSpec", "assetId": "a_plain", "spec": null}}
+  ],
+  "expect": {
+    "assets": [
+      {"id": "a_motion", "spec": "{\"version\":1,\"durationUs\":2000000,\"layers\":[{\"type\":\"rect\",\"w\":10,\"h\":10}]}"},
+      {"id": "a_plain", "spec": null},
+      {"id": "asset_0", "spec": "{\"version\":1,\"camera\":{}}"}
+    ]
+  }
+}

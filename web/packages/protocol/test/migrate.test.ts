@@ -15,10 +15,19 @@ const doc = (): VDocument => ({
   nextId: 1,
 });
 
-test('missing version is treated as the v1 baseline and loads as-is', () => {
+test('missing version is treated as the v1 baseline and migrates up', () => {
   const r = migrateDocument(doc(), undefined);
   assert.equal(r.ok, true);
-  if (r.ok) assert.equal(r.migratedFrom, null); // no migration when already current
+  if (r.ok) assert.equal(r.migratedFrom, 1); // pre-versioning data = v1 → chained to current
+});
+
+test('v1 documents migrate to v2 unchanged (Asset.spec is additive)', () => {
+  const r = migrateDocument(doc(), 1);
+  assert.equal(r.ok, true);
+  if (r.ok) {
+    assert.equal(r.migratedFrom, 1);
+    assert.deepEqual(r.doc, doc());
+  }
 });
 
 test('explicit current version loads with no migration', () => {

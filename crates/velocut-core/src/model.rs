@@ -127,6 +127,13 @@ pub struct Asset {
     /// field required makes any other deserialization path loud instead of
     /// silently diverging.
     pub has_audio: bool,
+    /// Procedural-asset payload (JSON text), present only on procedural assets
+    /// (src `motion://` / `scene://`). OPAQUE to the engine: it stores and
+    /// versions it — undo/history/sync ride the document snapshots — while the
+    /// render layer interprets it. Omitted from JSON when absent so both
+    /// engines serialize identically.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spec: Option<String>,
 }
 
 // ---------------------------------------------------------------------------

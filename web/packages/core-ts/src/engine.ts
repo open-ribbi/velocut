@@ -45,6 +45,25 @@ const fail = (e: CmdError): never => {
   throw new CommandError(e);
 };
 
+/** Cap on a procedural spec (UTF-8 bytes) — mirror of the Rust engine's
+ *  MAX_SPEC_BYTES; both are pinned by the asset-spec golden vector. */
+const MAX_SPEC_BYTES = 262_144;
+
+/** Specs are opaque to the engine EXCEPT for two storage-level invariants it
+ *  enforces authoritatively: the payload is JSON text, and it fits the cap
+ *  (history nodes snapshot whole documents, so unbounded specs would bloat
+ *  every layer that versions them). Throws CommandError on violation. */
+function checkSpec(spec: string): void {
+  if (new TextEncoder().encode(spec).length > MAX_SPEC_BYTES) {
+    fail(err('invalidArg', `spec exceeds ${MAX_SPEC_BYTES} bytes`));
+  }
+  try {
+    JSON.parse(spec);
+  } catch {
+    fail(err('invalidArg', 'spec is not valid JSON'));
+  }
+}
+
 const clipEnd = (c: Clip): TimeUs => c.startUs + c.durationUs;
 const sourceTimeAt = (c: Clip, timelineUs: TimeUs): TimeUs => {
   const local = Math.max(0, timelineUs - c.startUs);
@@ -102,6 +121,10 @@ function applyCommand(doc: VDocument, cmd: Command): EngineEvent[] {
         height: cmd.height ?? 0,
         hasAudio: cmd.hasAudio ?? cmd.kind !== 'image',
       };
+      if (cmd.spec != null) {
+        checkSpec(cmd.spec);
+        asset.spec = cmd.spec;
+      }
       doc.assets.push(asset);
       return [{ kind: 'assetAdded', assetId }];
     }
@@ -450,6 +473,19 @@ function applyCommand(doc: VDocument, cmd: Command): EngineEvent[] {
       if (!t) fail(notFound('track', cmd.trackId));
       t!.locked = cmd.locked;
       return [{ kind: 'trackUpdated', trackId: cmd.trackId }];
+    }
+
+    case 'setAssetSpec': {
+      const asset = doc.assets.find((a) => a.id === cmd.assetId);
+      if (!asset) fail(notFound('asset', cmd.assetId));
+      if (cmd.spec == null) {
+        // Absent, not null: both engines serialize a spec-less asset identically.
+        delete asset!.spec;
+      } else {
+        checkSpec(cmd.spec);
+        asset!.spec = cmd.spec;
+      }
+      return [{ kind: 'assetUpdated', assetId: cmd.assetId }];
     }
 
     case 'batch': {

@@ -9,12 +9,13 @@ One sentence: **the document is JSON, edits are JSON commands, and the render in
 
 ## Conventions
 
-- **Protocol version: 1** (`PROTOCOL_VERSION`, exported from `@velocut/protocol`). Incremented only on breaking changes to the command set or the error contract; persisted documents carry a separate, independent `formatVersion` (see `migrate.ts`)
+- **Protocol version: 2** (`PROTOCOL_VERSION`, exported from `@velocut/protocol`). Incremented only on breaking changes to the command set or the error contract; persisted documents carry a separate, independent `formatVersion` (see `migrate.ts`). v2 added `Asset.spec` + `setAssetSpec` (document formatVersion 2)
 - All times are **integer microseconds** (`TimeUs`), 1 second = 1_000_000; boundary validation (zod) rejects fractions — both engines address time as integers, and fractions would produce different rounding results
 - All JSON fields are camelCase
 - ids are minted by the engine (`clip_N` / `track_N` / `asset_N`); new ids are returned in the command's `events`
 - Clips on the same video/text track **must not overlap** (touching end-to-start is allowed)
 - When `asset.hasAudio` is omitted it defaults to `kind != image` — the same rule on the command path and the document-load path (pinned by vector 08)
+- **Procedural assets** (motion graphics, 3D scenes) carry their declarative payload in `asset.spec` — a JSON **string** the engines store but never interpret (the render layer owns its meaning; `asset.src`'s scheme — `motion://`, `scene://` — routes it to an interpreter). Living in the document means spec edits participate in undo/redo, the branching history and multi-tab sync like any other edit. The engines enforce only the storage invariants: the payload parses as JSON and fits 256 KB (UTF-8), else `invalidArg` (pinned by vector 10). When absent the field is omitted, never `null`
 
 ## Envelope (returned by every command)
 
@@ -31,7 +32,7 @@ Error codes: `notFound` | `overlap` | `invalidArg` | `locked` | `parse` | `outOf
 
 | type | key fields | description |
 |---|---|---|
-| `addAsset` | kind, src, name, durationUs?, width?, height?, id? | Register asset metadata |
+| `addAsset` | kind, src, name, durationUs?, width?, height?, id?, spec? | Register asset metadata (spec = procedural JSON payload) |
 | `addTrack` | kind: video\|audio\|text, name?, index? | Create a track |
 | `removeTrack` | trackId | Remove a track (including its clips) |
 | `addClip` | trackId, assetId, startUs, durationUs?, sourceInUs? | Put an asset on a track |
@@ -48,6 +49,7 @@ Error codes: `notFound` | `overlap` | `invalidArg` | `locked` | `parse` | `outOf
 | `removeKeyframe` | clipId, property, timeUs | |
 | `addEffect` / `setEffectParams` / `removeEffect` | clipId, effect/effectId, params | Effects are data; the registry lives in the frontend |
 | `setTrackMuted` / `setTrackLocked` | trackId, muted/locked | A locked track rejects all edits |
+| `setAssetSpec` | assetId, spec: string\|null | Replace (or clear, with null) a procedural asset's JSON spec; one undoable step |
 | `batch` | commands[] | **Atomic**: if any command fails, everything rolls back (including the id counter) |
 
 Keyframe `easing`: `{"kind":"linear"}` | `{"kind":"hold"}` | `{"kind":"bezier","x1":…,"y1":…,"x2":…,"y2":…}` (CSS cubic-bezier semantics).

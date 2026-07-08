@@ -24,7 +24,8 @@ interface Vector {
   name: string;
   steps: Step[];
   expect: {
-    assets?: Array<{ id: string; hasAudio?: boolean }>;
+    /** spec: string = exact match; null = must be ABSENT from the asset. */
+    assets?: Array<{ id: string; hasAudio?: boolean; spec?: string | null }>;
     clips?: Array<{
       id: string;
       trackId?: string;
@@ -95,6 +96,10 @@ for (const file of files) {
       assert.ok(asset, `asset ${want.id} not found`);
       if (want.hasAudio !== undefined)
         assert.equal(asset!.hasAudio, want.hasAudio, `${want.id} hasAudio`);
+      if (want.spec !== undefined) {
+        if (want.spec === null) assert.ok(asset!.spec == null, `${want.id} spec should be absent`);
+        else assert.equal(asset!.spec, want.spec, `${want.id} spec`);
+      }
     }
 
     for (const want of vec.expect.clips ?? []) {

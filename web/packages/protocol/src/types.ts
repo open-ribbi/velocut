@@ -33,6 +33,12 @@ export interface Asset {
   width: number;
   height: number;
   hasAudio: boolean;
+  /** Procedural-asset payload (JSON text), present only on procedural assets
+   *  (src `motion://` / `scene://`). OPAQUE to the engines: they store and
+   *  version it — undo, the history board and multi-tab sync ride the document
+   *  snapshots — while the render layer interprets it. Absent (never null)
+   *  when there is no spec, so both engines serialize identically. */
+  spec?: string;
 }
 
 export interface Clip {
@@ -76,6 +82,7 @@ export interface VDocument {
 
 export type EngineEvent =
   | { kind: 'assetAdded'; assetId: string }
+  | { kind: 'assetUpdated'; assetId: string }
   | { kind: 'trackAdded'; trackId: string }
   | { kind: 'trackRemoved'; trackId: string }
   | { kind: 'trackUpdated'; trackId: string }

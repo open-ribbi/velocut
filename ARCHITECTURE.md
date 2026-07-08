@@ -67,6 +67,9 @@ Floating-point seconds accumulate error across trim/split/speed-change chains an
 **6. Effects are data, not code branches.**
 The document stores only `{effect, params}`; the frontend registry provides the schema (Inspector auto-generates controls) and uniform packing. Adding an effect = one registry entry + shader math; the protocol and core stay untouched.
 
+**7. Procedural assets: the spec lives in the document, opaque to the engines.**
+Motion-graphics clips (and 3D scenes) are declarative JSON specs rendered by a fixed interpreter. The spec is stored on the asset itself (`Asset.spec`, edited via `setAssetSpec`) rather than in a side store, because every history layer in Velocut — engine undo, the branching history board, Yjs sync — snapshots whole documents: in-document specs get undo/redo, branch checkout, attribution and multi-tab sync with zero extra machinery. The engines treat the spec as an opaque string and enforce only storage invariants (valid JSON, 256 KB cap — vector 10); its MEANING belongs to the render layer, routed by the asset's `src` scheme (`motion://`, `scene://`). One observer re-compiles the interpreter whenever an asset's spec differs from what is attached — so an edit, an undo, a history jump and a remote peer's change are all the same code path.
+
 **7. DI container assembles services.**
 Engine (wasm/ts runtime detection), MediaLibrary, Renderer, Playback, and Store are all registered/resolved through the container; testing and replacement (e.g. swapping in a WebGL2 renderer) touch only the assembly point.
 
