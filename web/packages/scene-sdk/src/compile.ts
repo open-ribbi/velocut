@@ -87,7 +87,9 @@ export function compileSceneSpec(
   const spec = expandShots(rawSpec);
   const width = Math.round(spec.width ?? defaults.width);
   const height = Math.round(spec.height ?? defaults.height);
-  const fps = spec.fps ?? 30;
+  // Inherit the document's frame rate (24fps projects must not get a 30fps
+  // grid — timeline sampling would judder), clamped defensively.
+  const fps = Math.min(120, Math.max(1, spec.fps ?? defaults.fps ?? 30));
   const frameDurUs = Math.round(1e6 / fps);
   const frameCount = Math.max(1, Math.ceil(spec.durationUs / frameDurUs));
   const assetBase = defaults.assetBase ?? DEFAULT_ASSET_BASE;
@@ -121,7 +123,13 @@ export function compileSceneSpec(
   }
 
   function dispose(): void {
+    // forceContextLoss frees the GL context NOW (browsers cap live contexts
+    // at ~8-16; waiting for GC turns spec-edit iteration into "oldest context
+    // will be lost" black frames). GPU copies die with the context; shared
+    // CPU-side assets (cached GLTF geometry/materials) stay untouched for
+    // other live stages.
     renderer?.dispose();
+    renderer?.forceContextLoss();
     renderer = null;
     stage = null;
     camera = null;

@@ -13,7 +13,7 @@ import { observeForAgent, type ObserveInput } from './services/observe';
 import { synthesizeNarration } from './services/tts';
 import { runAgentScript } from './services/script';
 import { createMotionClip, syncMotionAsset, migrateLegacyMotionSpecs, type MotionClipOptions } from './services/motion';
-import { createSceneClip, syncSceneAsset, type SceneClipOptions } from './services/scene';
+import { createSceneClip, pruneSceneRenderers, syncSceneAsset, type SceneClipOptions } from './services/scene';
 import { loadSceneManifest, scenePromptDoc } from '@velocut/scene-sdk';
 import { searchWeb } from './services/search';
 import { Store } from './state/store';
@@ -114,6 +114,9 @@ async function restoreMedia(store: Store, media: MediaLibrary, mediaDir: string)
       console.warn('[velocut] media restore failed:', a.src, e);
     }
   }
+  // Renderers whose asset left the document (undo, delete, remote removal)
+  // must free their WebGL context — contexts are a hard browser-capped pool.
+  pruneSceneRenderers(store);
 }
 
 async function bootstrap() {
@@ -197,12 +200,26 @@ async function bootstrap() {
   await restoreMedia(store, media, storage.mediaDir);
   void container.resolve(TOKENS.Fonts).restore();
   // Remote peers may import assets — re-attach their OPFS media lazily.
+  // A change landing while a restore is in flight (scene compiles take real
+  // time) must schedule ONE trailing re-run, not be dropped — otherwise the
+  // attached renderer silently stays compiled from a stale spec.
   let restoring = false;
-  store.subscribe(() => {
-    if (restoring) return;
+  let restorePending = false;
+  const scheduleRestore = () => {
+    if (restoring) {
+      restorePending = true;
+      return;
+    }
     restoring = true;
-    void restoreMedia(store, media, storage.mediaDir).finally(() => (restoring = false));
-  });
+    void restoreMedia(store, media, storage.mediaDir).finally(() => {
+      restoring = false;
+      if (restorePending) {
+        restorePending = false;
+        scheduleRestore();
+      }
+    });
+  };
+  store.subscribe(scheduleRestore);
 
   // Agent API — the same dispatch path the UI uses. An external agent (or
   // you, in DevTools) can edit the project with plain JSON commands:

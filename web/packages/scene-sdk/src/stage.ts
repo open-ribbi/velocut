@@ -66,6 +66,10 @@ export interface StageCharacter {
   heightM: number;
   /** Head bone (name matches /head/i), if the rig has one — gaze target. */
   head: THREE.Object3D | null;
+  /** Head bind-pose rotation: restored every frame before the mixer runs, so
+   *  gaze's premultiplied yaw never accumulates when no clip drives the head
+   *  (poseAt must stay a pure function of t). */
+  headRest: THREE.Quaternion | null;
   /** Meshes with morph targets — driven by character.morphs. */
   morphMeshes: THREE.Mesh[];
   /** Set for the built-in poseable figure: joint name → its rotation group. */
@@ -104,14 +108,20 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
   const scene = new three.Scene();
 
   // ------------------------------------------------- environment presets
+  // Unknown names fail the build (not a silent default): the same typo-must-
+  // be-loud rule as clips and models — the agent can only fix what it sees.
   const env = spec.environment ?? 'env/stage';
+  if (!['env/stage', 'env/grid', 'env/void'].includes(env)) {
+    throw new Error(`unknown environment '${env}' (available: env/stage, env/grid, env/void)`);
+  }
   const lighting = spec.lighting ?? 'day';
   const palettes: Record<string, { bg: number; ground: number; ambient: number; ambientI: number; key: number; keyI: number }> = {
     day: { bg: 0xbfd4e6, ground: 0x9aa48f, ambient: 0xffffff, ambientI: 0.7, key: 0xfff2d9, keyI: 2.4 },
     night: { bg: 0x0b1020, ground: 0x1d2433, ambient: 0x334466, ambientI: 0.5, key: 0x9db8ff, keyI: 1.4 },
     indoor: { bg: 0x2b2723, ground: 0x54483c, ambient: 0xfff1e0, ambientI: 0.9, key: 0xffe8c4, keyI: 1.6 },
   };
-  const pal = palettes[lighting] ?? palettes.day;
+  const pal = palettes[lighting];
+  if (!pal) throw new Error(`unknown lighting '${lighting}' (available: ${Object.keys(palettes).join(', ')})`);
   scene.background = new three.Color(pal.bg);
 
   if (env !== 'env/void') {
@@ -152,6 +162,9 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
 
     // Built-in poseable figure: generated geometry, no GLTF, joints as groups.
     if (entry.file.startsWith('builtin:')) {
+      if (c.actions?.length) {
+        throw new Error(`character '${c.id}': '${c.model}' has no animation clips — use the pose field (keyframable) instead of actions`);
+      }
       const m = buildMannequin(three, c.color);
       scene.add(m.root);
       characters.push({
@@ -161,6 +174,7 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
         clips: {},
         heightM: entry.heightM ?? m.heightM,
         head: m.joints.get('head') ?? null,
+        headRest: null, // pose fully re-sets every joint each frame
         morphMeshes: [],
         mannequinJoints: m.joints,
         spec: c,
@@ -200,7 +214,27 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
       actions.set(clip.name, mixer.clipAction(clip));
       clips[clip.name] = { duration: clip.duration, loop: entry.clips[clip.name].loop ?? true };
     }
-    characters.push({ root, mixer, actions, clips, heightM: entry.heightM ?? 1.7, head, morphMeshes, spec: c });
+    if (c.pose != null) {
+      throw new Error(`character '${c.id}': '${c.model}' is not poseable — pose only works on builtin figures (char/mannequin); use actions`);
+    }
+    // A typo'd clip name must fail the build, not freeze in bind pose: the
+    // agent's most likely mistake, and the manifest knows the whole answer.
+    for (const a of c.actions ?? []) {
+      if (!clips[a.clip]) {
+        throw new Error(`character '${c.id}': unknown clip '${a.clip}' (available: ${Object.keys(clips).join(', ') || 'none'})`);
+      }
+    }
+    characters.push({
+      root,
+      mixer,
+      actions,
+      clips,
+      heightM: entry.heightM ?? 1.7,
+      head,
+      headRest: head ? (head as THREE.Object3D).quaternion.clone() : null,
+      morphMeshes,
+      spec: c,
+    });
   }
 
   // ----------------------------------------------------------------- props
@@ -230,7 +264,12 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
       geo = new three.ExtrudeGeometry(shape, { depth: p.depth ?? 0.1, bevelEnabled: false });
       // Center the extrusion on its local origin so rotationY spins in place.
       geo.translate(0, 0, -(p.depth ?? 0.1) / 2);
-    } else geo = new three.BoxGeometry(1, 1, 1); // prop/cube + fallback
+    } else if (p.model === 'prop/cube') geo = new three.BoxGeometry(1, 1, 1);
+    else {
+      throw new Error(
+        `unknown prop model '${p.model}' (available: prop/cube, prop/sphere, prop/pillar, prop/cone, prop/torus, prop/hemisphere, prop/lathe, prop/extrude)`,
+      );
+    }
     const mesh: THREE.Mesh = new three.Mesh(geo, mat);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
@@ -306,6 +345,9 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
         const presetName = typeof poseSpec === 'string' ? poseSpec : poseSpec?.preset;
         const base = (presetName ? POSE_PRESETS[presetName] : undefined) ?? POSE_PRESETS.standing;
         const overrides = typeof poseSpec === 'object' ? poseSpec.joints : undefined;
+        // Grounding offset baked into the preset (sitting drops to seat
+        // height) — spec position.y stays a clean user-intent offset.
+        c.root.position.y = y + (base.rootY ?? 0);
         const D = Math.PI / 180;
         for (const j of MANNEQUIN_JOINTS) {
           const grp = c.mannequinJoints.get(j)!;
@@ -319,6 +361,12 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
         }
         continue;
       }
+
+      // Reset the head to its bind pose BEFORE the mixer: if no clip drives
+      // the head bone this frame, last frame's gaze rotation must not persist
+      // (it would accumulate — a spinning head, and scrub-order-dependent
+      // output). The mixer simply overwrites this when a clip does drive it.
+      if (c.head && c.headRest) c.head.quaternion.copy(c.headRest);
 
       // Deterministic pose: explicitly set every action's enabled/weight/time
       // for THIS t, then update(0) to write the blended pose to the bones.

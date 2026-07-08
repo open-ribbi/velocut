@@ -44,6 +44,11 @@ async function compileFor(store: Store, spec: SceneSpec): Promise<CompiledScene>
 }
 
 function attach(media: MediaLibrary, assetId: string, compiled: CompiledScene): void {
+  // Every attached scene holds a live WebGL context (browsers cap those at
+  // ~8-16) — replacing a renderer without disposing the old one turns spec
+  // iteration into "oldest context will be lost" black frames.
+  attachedCompiled.get(assetId)?.dispose();
+  attachedCompiled.set(assetId, compiled);
   // The motion-source seam is shape-generic (render(index) → VideoFrame);
   // scenes ride it unchanged.
   media.attachMotion(assetId, compiled.render, {
@@ -123,6 +128,22 @@ export async function createSceneClip(store: Store, media: MediaLibrary, opts: S
 /** assetId → spec text the attached renderer was compiled from (motion.ts
  *  pattern: recompile whenever the in-document spec differs). */
 const attachedSpecs = new Map<string, string>();
+
+/** assetId → the live compiled renderer, so replacement/removal can free its
+ *  WebGL context instead of stranding it until GC. */
+const attachedCompiled = new Map<string, CompiledScene>();
+
+/** Free renderers whose asset left the document (undo of creation, deletion,
+ *  a remote peer's removal). Called after every media restore sweep. */
+export function pruneSceneRenderers(store: Store): void {
+  const live = new Set(store.getState().doc.assets.map((a) => a.id));
+  for (const [id, compiled] of attachedCompiled) {
+    if (live.has(id)) continue;
+    compiled.dispose();
+    attachedCompiled.delete(id);
+    attachedSpecs.delete(id);
+  }
+}
 
 /** Ensure a scene asset's attached renderer matches its in-document spec. */
 export async function syncSceneAsset(store: Store, media: MediaLibrary, asset: Asset): Promise<boolean> {
