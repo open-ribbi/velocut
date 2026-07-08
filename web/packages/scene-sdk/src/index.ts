@@ -18,6 +18,7 @@ export {
   type ManifestClip,
 } from './types.ts';
 export { resolveActions, type ActivePose, type ClipMeta } from './actions.ts';
+export { scenePromptDoc } from './prompt.ts';
 export {
   compileSceneSpec,
   loadSceneManifest,

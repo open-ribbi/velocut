@@ -14,6 +14,7 @@ import { synthesizeNarration } from './services/tts';
 import { runAgentScript } from './services/script';
 import { createMotionClip, syncMotionAsset, migrateLegacyMotionSpecs, type MotionClipOptions } from './services/motion';
 import { createSceneClip, syncSceneAsset, type SceneClipOptions } from './services/scene';
+import { loadSceneManifest, scenePromptDoc } from '@velocut/scene-sdk';
 import { searchWeb } from './services/search';
 import { Store } from './state/store';
 import { HistoryTree } from './state/history';
@@ -248,6 +249,11 @@ async function bootstrap() {
           document: () => store.getState().doc,
           seek: (t: number) => store.seek(t),
           motionClip: (o) => createMotionClip(store, media, o as MotionClipOptions),
+          sceneClip: (o) => createSceneClip(store, media, o as SceneClipOptions),
+          sceneAssets: async () => {
+            const manifest = await loadSceneManifest();
+            return { doc: scenePromptDoc(manifest), manifest };
+          },
         },
         code,
       ),

@@ -15,6 +15,8 @@ import { observeForAgent } from '../services/observe';
 import { synthesizeNarration } from '../services/tts';
 import { runAgentScript } from '../services/script';
 import { createMotionClip, type MotionClipOptions } from '../services/motion';
+import { createSceneClip, type SceneClipOptions } from '../services/scene';
+import { loadSceneManifest, scenePromptDoc } from '@velocut/scene-sdk';
 import { searchWeb } from '../services/search';
 import {
   loadLlmConfig,
@@ -246,6 +248,11 @@ export function AgentConsole({
                 document: () => store.getState().doc,
                 seek: (t) => store.seek(t),
                 motionClip: (o) => createMotionClip(store, media, o as MotionClipOptions),
+                sceneClip: (o) => createSceneClip(store, media, o as SceneClipOptions),
+                sceneAssets: async () => {
+                  const manifest = await loadSceneManifest();
+                  return { doc: scenePromptDoc(manifest), manifest };
+                },
               },
               code,
             ),

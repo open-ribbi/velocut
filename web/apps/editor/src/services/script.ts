@@ -47,12 +47,18 @@ export interface ScriptApi {
    *  trackId?, name?}). The spec is pure JSON (layers with keyframed transforms), so
    *  it crosses the sandbox boundary as data and nothing is eval'd on the host. */
   motionClip(opts: unknown): Promise<unknown>;
+  /** Create a declarative 3D scene clip ({spec, atUs?, trackId?, name?}) — the
+   *  Scene Director surface. Same pure-JSON contract as motionClip. */
+  sceneClip(opts: unknown): Promise<unknown>;
+  /** Discover the 3D asset registry (character models + their animation clips,
+   *  environments, lighting, props) — the grounded vocabulary for sceneClip. */
+  sceneAssets(): Promise<unknown>;
 }
 
 /** RPC method names the sandbox may call. motionClip is included: it now takes a
  *  declarative JSON spec (no functions), so it structured-clones cleanly and the
  *  host renders it with a fixed interpreter — no eval. */
-const RPC_METHODS = ['apply', 'tts', 'observe', 'evaluate', 'document', 'seek', 'motionClip'] as const;
+const RPC_METHODS = ['apply', 'tts', 'observe', 'evaluate', 'document', 'seek', 'motionClip', 'sceneClip', 'sceneAssets'] as const;
 
 const SCRIPT_TIMEOUT_MS = 60_000; // wall-clock cap: kills runaway loops / stuck awaits
 
