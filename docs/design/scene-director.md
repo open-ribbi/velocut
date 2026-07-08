@@ -14,8 +14,14 @@ them actions, direct the camera, and get an animated shot on the timeline —
 what director-console products expose as a stage view with blocking, shots and
 camera moves. In Velocut the **agent is the director**: "a character walks
 into the living room, sits down, the camera pushes in from the doorway" should
-compile to a deterministic, editable clip. A stage-manipulation UI comes
-later; the spec is the product, the UI is a viewer/refiner over it.
+compile to a deterministic, editable clip.
+
+**Agent-first, human-adjustable** is a core requirement, not a later phase:
+everything the agent authors must be manually editable in the UI, and both
+paths edit the *same spec through the same host API* — the SceneSpec analog of
+the existing rule that the agent and the UI speak one command protocol. The
+MVP ships with a structured spec editor (inspector forms); the 3D stage view
+is a richer editing surface layered on the same seam later.
 
 ## Non-goals (MVP)
 
@@ -24,8 +30,9 @@ later; the spec is the product, the UI is a viewer/refiner over it.
 - No external generation services (text-to-3D, motion synthesis). The asset
   registry is designed so these can slot in later, but local-first ships first.
 - No character import (VRM/GLB) in the MVP; registry-listed built-ins only.
-- No stage-editing UI beyond selecting/trimming the clip; the agent (and
-  `window.velocut.sceneClip` for humans) is the only author at first.
+- No 3D stage view (orbit camera, drag gizmos) in the MVP — but manual
+  editing itself is IN scope from day one, via the structured inspector
+  (see UI section). Only the *viewport manipulation* surface is deferred.
 
 ## Prior art in this repo: the motionClip seam
 
@@ -174,24 +181,45 @@ and one worked example (character walks to a chair and sits; camera pushes in;
 one cut to a close-up). Editing an existing scene = `sceneClip` with the
 `assetId` to replace — same replace-don't-mutate convention as motion.
 
-### UI (phased)
+### UI (phased) — manual adjustment is MVP scope
 
-- **MVP**: none beyond the timeline clip itself (select, move, trim — all free
-  from the existing clip machinery). Inspector shows "Edit via agent" and the
-  raw spec (read-only JSON view).
-- **Phase 2 — Director panel**: stage view (orbit camera over the compiled
-  scene), drag characters/props (writes position keyframes back to the spec),
-  shot list, scrub-linked preview. Human refinement of agent output through
-  the same spec — the UI/agent symmetry Velocut already has for commands.
+Both surfaces below are *editors over the spec*: every change revalidates,
+persists, recompiles and refreshes the preview through the exact host path the
+agent uses (`sceneClip` with the existing `assetId`). There is no UI-only
+state; anything a human adjusts, the agent sees on its next turn, and vice
+versa.
+
+- **MVP — Scene inspector (structured editor)**: selecting a scene clip opens
+  a form view of the spec in the existing inspector:
+  - per-character: model picker (registry), position/rotationY keyframe rows,
+    action list (clip picker + start/end/loop/fade fields);
+  - camera: fov/position/lookAt keyframe rows, "track character" toggle;
+  - environment & lighting pickers;
+  - a raw-JSON tab (edit + validate) as the escape hatch for anything the
+    forms don't surface yet.
+  Cheap to build (forms, no 3D viewport), and it guarantees the
+  human-adjustable requirement from the first release.
+- **Phase 3 — Director panel (stage view)**: orbit camera over the compiled
+  scene, drag characters/props with gizmos (writes position keyframes back to
+  the spec), camera handles, shot list, scrub-linked preview. A richer input
+  device for the same fields the inspector edits.
+
+**Undo/redo**: MVP inherits the motionClip convention — spec replacement is
+keyed to the assetId, so clip-level operations (add/move/trim/delete) are
+undoable through the normal history, but a spec *content* edit replaces the
+stored spec outside the command history. The clean fix (shared with motion) is
+immutable specs: an edit mints a new assetId + swaps the clip's asset through
+a protocol command, making every adjustment undoable for free. Proposed as a
+fast-follow once the inspector exists; noted in Open questions.
 
 ## Implementation plan
 
 | Phase | Deliverable | Size |
 |---|---|---|
 | P0 | Pipeline spike: `scene-sdk` with hard-coded cube + camera keyframes rendering through `attachProceduralSource` to timeline + export | S |
-| P1 | SceneSpec v1: schema, validator, compiler (characters + actions + camera), asset manifest + CC0 pack vendoring, `sceneClip` host API + restore path | L |
+| P1 | SceneSpec v1: schema, validator, compiler (characters + actions + camera), asset manifest + CC0 pack vendoring, `sceneClip` host API + restore path, **scene inspector (structured manual editing)** | L |
 | P2 | Agent enablement: sandbox RPC, `scenePromptDoc`, docstring + example, real-LLM verification via the claude-plus proxy flow | M |
-| P3 | Director panel (stage view, drag-to-blocking, shot list) | L |
+| P3 | Director panel (stage view, drag-to-blocking, shot list); immutable-spec undo fast-follow | L |
 | P4+ | Dialogue/TTS + lip-sync, GLB/VRM import, root motion, external generation sources | — |
 
 Each phase lands green (unit + E2E) before the next starts. P0 proves the two
@@ -229,3 +257,6 @@ compositor; export determinism) before any schema work.
    own? Proposal: own track, name `Scenes`.
 3. Environment scale conventions (meters) need one worked reference scene to
    calibrate agent spatial reasoning; pick the living-room env as canonical.
+4. Immutable specs for undoable content edits: does the asset swap reuse an
+   existing protocol command or need a new one (`setClipAsset`)? A new command
+   touches both engines + a golden vector — size it when the inspector lands.
