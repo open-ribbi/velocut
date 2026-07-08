@@ -140,7 +140,13 @@ function easeFn(name?: string): (p: number) => number {
 
 /** Sample an animatable property at time `t` (seconds). Constants pass through;
  *  keyframe tracks hold flat before the first / after the last key and ease
- *  between adjacent keys. */
+ *  between adjacent keys. Exported (as the shared Animatable sampler) so the
+ *  3D scene compiler (@velocut/scene-sdk) evaluates the SAME keyframe grammar
+ *  — one vocabulary for agents to learn. */
+export function sampleAnimatable(a: Animatable | undefined, t: number, fallback: number): number {
+  return sample(a, t, fallback);
+}
+
 function sample(a: Animatable | undefined, t: number, fallback: number): number {
   if (a == null) return fallback;
   if (typeof a === 'number') return a;

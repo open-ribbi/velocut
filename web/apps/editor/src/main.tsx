@@ -13,6 +13,7 @@ import { observeForAgent, type ObserveInput } from './services/observe';
 import { synthesizeNarration } from './services/tts';
 import { runAgentScript } from './services/script';
 import { createMotionClip, syncMotionAsset, migrateLegacyMotionSpecs, type MotionClipOptions } from './services/motion';
+import { createSceneClip, syncSceneAsset, type SceneClipOptions } from './services/scene';
 import { searchWeb } from './services/search';
 import { Store } from './state/store';
 import { HistoryTree } from './state/history';
@@ -84,6 +85,10 @@ async function restoreMedia(store: Store, media: MediaLibrary, mediaDir: string)
     // the compiled renderer must follow. No-op when the spec is unchanged.
     if (a.src.startsWith('motion://')) {
       if (!(await syncMotionAsset(store, media, a))) console.warn('[velocut] motion restore failed:', a.id);
+      continue;
+    }
+    if (a.src.startsWith('scene://')) {
+      if (!(await syncSceneAsset(store, media, a))) console.warn('[velocut] scene restore failed:', a.id);
       continue;
     }
     if (media.hasAsset(a.id)) continue;
@@ -216,6 +221,8 @@ async function bootstrap() {
     // Procedural motion-graphics clip from a declarative spec — same surface the
     // agent's velocut.motionClip reaches (persisted, so it survives reload).
     motionClip: (o: MotionClipOptions) => createMotionClip(store, media, o),
+    // Declarative 3D scene clip (Scene Director) — same seam as motionClip.
+    sceneClip: (o: SceneClipOptions) => createSceneClip(store, media, o),
     // Web research (grounded search) — same surface the agent's velocut_search reaches.
     search: (query: string) => searchWeb(query),
     // Run an editing program in one call (the velocut_script host surface) — same

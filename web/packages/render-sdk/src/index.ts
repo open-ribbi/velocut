@@ -51,6 +51,7 @@ export {
 export {
   compileMotionSpec,
   validateMotionSpec,
+  sampleAnimatable,
   type MotionSpec,
   type MotionLayer,
   type MotionKeyframe,

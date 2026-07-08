@@ -1,0 +1,14 @@
+{
+  "name": "@velocut/scene-sdk",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": {
+    "three": "^0.185.1"
+  },
+  "devDependencies": {
+    "@types/three": "^0.185.0"
+  }
+}
