@@ -7,6 +7,33 @@ are published.
 
 ## [Unreleased]
 
+### Added
+- **Scene Director**: agent-driven 3D character & scene animation
+  (`@velocut/scene-sdk`). Declarative SceneSpec v1 (characters with preset
+  action sequences + cross-fades, keyframed positions/camera, environments,
+  lighting, props) rendered deterministically through the existing
+  compositor/export pipeline; CC0 starter assets (three.js RobotExpressive)
+  with a license-vetted manifest; a structured scene inspector (form +
+  raw-JSON escape hatch); a Director panel (orbit stage view, spec-camera
+  frustum, drag-to-block writing back to the spec, camera-key list, scrub);
+  and agent surfaces `velocut.sceneClip` / `velocut.sceneAssets` in the
+  script sandbox, verified with a real LLM turn.
+- Text selection quality: selection/edit boxes hug the font line box (not
+  the padded raster frame), and in-place editing gains double-click word
+  selection (`Intl.Segmenter`, CJK-aware) and triple-click select-all.
+
+### Changed
+- **Procedural specs live in the document** (`Asset.spec`, new
+  `setAssetSpec` command; PROTOCOL_VERSION 2, document formatVersion 2 with
+  automatic migration of stored motion specs). Spec edits — agent or UI —
+  are now single attributed history nodes: undo/redo, branch checkout and
+  multi-tab sync all carry them, and editing a spec recompiles the preview
+  through one observer path.
+
+### Fixed
+- Re-attaching a procedural (motion/scene) source no longer leaks the old
+  resident preview VideoFrame.
+
 ## [0.1.0] — 2026-07-08
 
 First public release.
