@@ -13,6 +13,7 @@ import type { Animatable } from '@velocut/render-sdk';
 import {
   loadSceneManifest,
   validateSceneSpec,
+  MANNEQUIN_DEFAULT_COLOR,
   POSE_PRESETS,
   type SceneAssetManifest,
   type SceneSpec,
@@ -263,7 +264,7 @@ export function SceneInspector({ store, asset }: { store: Store; asset: Asset })
                     <span className="prop-label">Color</span>
                     <input
                       type="color"
-                      value={c.color ?? '#4f8ef7'}
+                      value={c.color ?? MANNEQUIN_DEFAULT_COLOR}
                       onChange={(e) => run((d) => (d.characters![ci].color = e.target.value))}
                     />
                   </div>

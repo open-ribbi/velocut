@@ -6,6 +6,7 @@
 // names) so agents learn ONE animation vocabulary.
 
 import type { Animatable } from '@velocut/render-sdk';
+import { MANNEQUIN_JOINTS, POSE_PRESETS, type MannequinJoint } from './mannequin.ts';
 
 /** Per-axis animatable 3D value (world units = meters, Y up). */
 export interface Vec3A {
@@ -159,9 +160,13 @@ export interface SceneAssetManifest {
 
 // ---------------------------------------------------------------- validation
 
+// Finite-only: NaN/Infinity survive the sandbox's structured clone but turn
+// into `null` under JSON.stringify — the document would store a spec that can
+// never validate again (renders now, black after reload). Reject at the door.
+const fin = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n);
+
 const isAnimatable = (v: unknown): boolean =>
-  typeof v === 'number' ||
-  (Array.isArray(v) && v.every((k) => k && typeof k.t === 'number' && typeof k.v === 'number'));
+  fin(v) || (Array.isArray(v) && v.length > 0 && v.every((k) => k && fin(k.t) && fin(k.v)));
 
 const isScale3 = (v: unknown): boolean => {
   if (typeof v === 'number') return Number.isFinite(v);
@@ -190,7 +195,10 @@ export function validateSceneSpec(spec: unknown): string | null {
   const s = spec as SceneSpec | null;
   if (!s || typeof s !== 'object') return 'spec must be an object';
   if (s.version !== 1) return 'spec.version must be 1';
-  if (!(typeof s.durationUs === 'number' && s.durationUs > 0)) return 'spec.durationUs must be > 0';
+  if (!(fin(s.durationUs) && s.durationUs > 0)) return 'spec.durationUs must be > 0';
+  if (s.fps != null && !(fin(s.fps) && s.fps >= 1 && s.fps <= 120)) return 'spec.fps must be 1..120';
+  if (s.width != null && !(fin(s.width) && s.width >= 16 && s.width <= 8192)) return 'spec.width must be 16..8192';
+  if (s.height != null && !(fin(s.height) && s.height >= 16 && s.height <= 8192)) return 'spec.height must be 16..8192';
   if (s.characters != null) {
     if (!Array.isArray(s.characters) || s.characters.length > 8) return 'spec.characters must be an array of at most 8';
     const seen = new Set<string>();
@@ -213,15 +221,31 @@ export function validateSceneSpec(spec: unknown): string | null {
           if (!isAnimatable(w)) return `character '${c.id}': morph '${name}' weight must be animatable`;
         }
       }
-      if (c.pose != null && typeof c.pose !== 'string') {
-        const p = c.pose;
-        if (typeof p !== 'object') return `character '${c.id}': pose must be a preset name or { preset?, joints? }`;
-        if (p.preset != null && typeof p.preset !== 'string') return `character '${c.id}': pose.preset must be a string`;
-        if (p.joints != null) {
-          if (typeof p.joints !== 'object' || Array.isArray(p.joints)) return `character '${c.id}': pose.joints must be { joint: [x,y,z] }`;
-          for (const [joint, v] of Object.entries(p.joints)) {
-            if (!Array.isArray(v) || v.length !== 3 || !v.every(isAnimatable)) {
-              return `character '${c.id}': pose.joints.${joint} must be [pitch, yaw, roll] (degrees, animatable)`;
+      if (c.pose != null) {
+        // Typo'd preset/joint names must fail here, not silently fall back —
+        // an agent's misspelled pose would otherwise validate and do nothing.
+        const badPreset = (name: string): string | null =>
+          POSE_PRESETS[name] ? null : `character '${c.id}': unknown pose preset '${name}' (presets: ${Object.keys(POSE_PRESETS).join(', ')})`;
+        if (typeof c.pose === 'string') {
+          const e = badPreset(c.pose);
+          if (e) return e;
+        } else {
+          const p = c.pose;
+          if (typeof p !== 'object') return `character '${c.id}': pose must be a preset name or { preset?, joints? }`;
+          if (p.preset != null) {
+            if (typeof p.preset !== 'string') return `character '${c.id}': pose.preset must be a string`;
+            const e = badPreset(p.preset);
+            if (e) return e;
+          }
+          if (p.joints != null) {
+            if (typeof p.joints !== 'object' || Array.isArray(p.joints)) return `character '${c.id}': pose.joints must be { joint: [x,y,z] }`;
+            for (const [joint, v] of Object.entries(p.joints)) {
+              if (!MANNEQUIN_JOINTS.includes(joint as MannequinJoint)) {
+                return `character '${c.id}': unknown joint '${joint}' (joints: ${MANNEQUIN_JOINTS.join(', ')})`;
+              }
+              if (!Array.isArray(v) || v.length !== 3 || !v.every(isAnimatable)) {
+                return `character '${c.id}': pose.joints.${joint} must be [pitch, yaw, roll] (degrees, animatable)`;
+              }
             }
           }
         }
@@ -231,7 +255,8 @@ export function validateSceneSpec(spec: unknown): string | null {
         if (!Array.isArray(c.actions) || c.actions.length > 50) return `character '${c.id}': actions must be an array of at most 50`;
         for (const a of c.actions) {
           if (!a || typeof a.clip !== 'string') return `character '${c.id}': every action needs a clip name`;
-          if (typeof a.start !== 'number' || a.start < 0) return `character '${c.id}': action.start must be a number >= 0`;
+          if (!fin(a.start) || a.start < 0) return `character '${c.id}': action.start must be a number >= 0`;
+          if (a.fade != null && (!fin(a.fade) || a.fade < 0)) return `character '${c.id}': action.fade must be a number >= 0`;
         }
       }
     }
@@ -301,7 +326,7 @@ export function validateSceneSpec(spec: unknown): string | null {
     let charTarget: string | null = null;
     for (let i = 0; i < s.shots.length; i++) {
       const shot = s.shots[i];
-      if (!shot || typeof shot.start !== 'number' || shot.start < 0) return `shots[${i}].start must be a number >= 0`;
+      if (!shot || !fin(shot.start) || shot.start < 0) return `shots[${i}].start must be a number >= 0`;
       if (i === 0 && shot.start !== 0) return 'shots[0].start must be 0';
       if (shot.start <= prev && i > 0) return 'shots must be sorted by ascending start';
       prev = shot.start;

@@ -20,7 +20,7 @@ export {
   type ManifestClip,
 } from './types.ts';
 export { resolveActions, type ActivePose, type ClipMeta } from './actions.ts';
-export { POSE_PRESETS, MANNEQUIN_JOINTS, type MannequinJoint } from './mannequin.ts';
+export { POSE_PRESETS, MANNEQUIN_JOINTS, MANNEQUIN_DEFAULT_COLOR, type MannequinJoint } from './mannequin.ts';
 export { expandShots, CUT_EASE } from './shots.ts';
 export { scenePromptDoc } from './prompt.ts';
 export { compileSceneSpec, applySpecCamera, specCameraPosition, type CompiledScene } from './compile.ts';
