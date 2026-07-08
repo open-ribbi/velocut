@@ -13,7 +13,13 @@ import { sampleAnimatable } from '@velocut/render-sdk';
 import type * as THREE from 'three';
 import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { resolveActions, type ClipMeta } from './actions.ts';
-import type { SceneAssetManifest, SceneSpec, Vec3A } from './types.ts';
+import type { SceneAssetManifest, SceneSpec, Scale3, Vec3A } from './types.ts';
+
+/** Apply a uniform or per-axis scale (missing axes stay 1). */
+function applyScale(root: THREE.Object3D, scale: Scale3): void {
+  if (typeof scale === 'number') root.scale.setScalar(scale);
+  else root.scale.set(scale.x ?? 1, scale.y ?? 1, scale.z ?? 1);
+}
 
 export const DEFAULT_ASSET_BASE = '/scene-assets';
 
@@ -176,7 +182,7 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
       const [x, y, z] = sampleVec3(c.spec.position, t, 0, 0, 0);
       c.root.position.set(x, y, z);
       c.root.rotation.y = (sampleAnimatable(c.spec.rotationY, t, 0) * Math.PI) / 180;
-      if (c.spec.scale != null) c.root.scale.setScalar(c.spec.scale);
+      if (c.spec.scale != null) applyScale(c.root, c.spec.scale);
 
       // Deterministic pose: explicitly set every action's enabled/weight/time
       // for THIS t, then update(0) to write the blended pose to the bones.
@@ -198,7 +204,7 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
       const [x, y, z] = sampleVec3(p.spec.position, t, 0, 0.5, 0);
       p.root.position.set(x, y, z);
       p.root.rotation.y = (sampleAnimatable(p.spec.rotationY, t, 0) * Math.PI) / 180;
-      if (p.spec.scale != null) p.root.scale.setScalar(p.spec.scale);
+      if (p.spec.scale != null) applyScale(p.root, p.spec.scale);
     }
   }
 

@@ -29,7 +29,11 @@ test('validateSceneSpec: accepts a minimal spec and a full spec', () => {
           ],
         },
       ],
-      props: [{ model: 'prop/cube', position: { x: 2 }, color: '#ff0000' }],
+      props: [
+        { model: 'prop/cube', position: { x: 2 }, color: '#ff0000' },
+        { model: 'prop/pillar', position: { x: 1 }, scale: { x: 0.2, y: 3, z: 0.2 } },
+        { model: 'prop/sphere', scale: 1.5 },
+      ],
       camera: { fov: 35, position: { x: 5, y: 2, z: 7 }, lookAt: { character: 'hero' } },
     }),
     null,
@@ -48,6 +52,9 @@ test('validateSceneSpec: rejection table', () => {
     [{ ...base, characters: [{ id: 'a', model: 'char/x', position: { x: 'left' } }] }, /position/],
     [{ ...base, camera: { lookAt: { charcter: 'typo' } } }, /lookAt/],
     [{ ...base, props: [{ position: {} }] }, /model/],
+    [{ ...base, props: [{ model: 'prop/cube', scale: 'big' }] }, /scale/],
+    [{ ...base, props: [{ model: 'prop/cube', scale: { x: 1, w: 2 } }] }, /scale/],
+    [{ ...base, characters: [{ id: 'a', model: 'char/x', scale: { y: NaN } }] }, /scale/],
   ];
   for (const [spec, re] of bad) {
     const err = validateSceneSpec(spec);

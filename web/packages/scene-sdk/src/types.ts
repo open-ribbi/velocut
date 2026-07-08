@@ -29,6 +29,10 @@ export interface SceneAction {
   fade?: number;
 }
 
+/** Uniform (number) or per-axis scale — a pillar stretched into a lamp post
+ *  is `{x:0.2, y:3, z:0.2}`. */
+export type Scale3 = number | { x?: number; y?: number; z?: number };
+
 export interface SceneCharacter {
   /** Spec-local id, referenced by camera lookAt. */
   id: string;
@@ -37,7 +41,7 @@ export interface SceneCharacter {
   position?: Vec3A;
   /** Yaw, degrees (0 = facing +Z, toward the default camera). */
   rotationY?: Animatable;
-  scale?: number;
+  scale?: Scale3;
   actions?: SceneAction[];
 }
 
@@ -47,7 +51,7 @@ export interface SceneProp {
   model: string;
   position?: Vec3A;
   rotationY?: Animatable;
-  scale?: number;
+  scale?: Scale3;
   /** CSS hex color for built-in props. */
   color?: string;
 }
@@ -97,6 +101,17 @@ const isAnimatable = (v: unknown): boolean =>
   typeof v === 'number' ||
   (Array.isArray(v) && v.every((k) => k && typeof k.t === 'number' && typeof k.v === 'number'));
 
+const isScale3 = (v: unknown): boolean => {
+  if (typeof v === 'number') return Number.isFinite(v);
+  if (v == null || typeof v !== 'object') return false;
+  // Same no-unknown-keys rule as Vec3A: a malformed scale must fail loudly,
+  // not render as a NaN matrix (invisible object) — found by a real agent
+  // authoring {x,y,z} scales.
+  if (!Object.keys(v).every((k) => k === 'x' || k === 'y' || k === 'z')) return false;
+  const o = v as { x?: unknown; y?: unknown; z?: unknown };
+  return [o.x, o.y, o.z].every((a) => a === undefined || (typeof a === 'number' && Number.isFinite(a)));
+};
+
 const isVec3A = (v: unknown): boolean => {
   if (v == null || typeof v !== 'object') return false;
   // No unknown keys: a typo like {charcter: …} must not pass as an
@@ -124,6 +139,7 @@ export function validateSceneSpec(spec: unknown): string | null {
       if (typeof c.model !== 'string') return `character '${c.id}': model must be a registry id string`;
       if (c.position != null && !isVec3A(c.position)) return `character '${c.id}': invalid position`;
       if (c.rotationY != null && !isAnimatable(c.rotationY)) return `character '${c.id}': invalid rotationY`;
+      if (c.scale != null && !isScale3(c.scale)) return `character '${c.id}': scale must be a number or {x?,y?,z?}`;
       if (c.actions != null) {
         if (!Array.isArray(c.actions) || c.actions.length > 50) return `character '${c.id}': actions must be an array of at most 50`;
         for (const a of c.actions) {
@@ -138,6 +154,7 @@ export function validateSceneSpec(spec: unknown): string | null {
     for (const p of s.props) {
       if (!p || typeof p.model !== 'string') return 'every prop needs a model id';
       if (p.position != null && !isVec3A(p.position)) return 'prop: invalid position';
+      if (p.scale != null && !isScale3(p.scale)) return 'prop: scale must be a number or {x?,y?,z?}';
     }
   }
   if (s.camera != null) {
