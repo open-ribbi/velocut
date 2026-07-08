@@ -51,6 +51,23 @@ function snap1(value: number, targets: { v: number; guide: number }[]): { v: num
   return { v: value, guide: null };
 }
 
+/** Word segmentation for double-click selection — locale-aware so CJK text
+ *  selects a word, not a whole glyph run. */
+const WORD_SEGMENTER = new Intl.Segmenter(undefined, { granularity: 'word' });
+
+/** The word range containing caret index `idx` (leaning left at a word's end
+ *  or on whitespace, like native double-click). */
+function wordRangeAt(text: string, idx: number): { start: number; end: number } {
+  if (!text.length) return { start: 0, end: 0 };
+  const at = idx < text.length && !/\s/.test(text[idx]) ? idx : Math.max(0, idx - 1);
+  for (const s of WORD_SEGMENTER.segment(text)) {
+    if (at >= s.index && at < s.index + s.segment.length) {
+      return { start: s.index, end: s.index + s.segment.length };
+    }
+  }
+  return { start: idx, end: idx };
+}
+
 /** Global char index → (line, col), with lines joined by '\n'. */
 function locate(lines: TextLayout['lines'], idx: number): { line: number; col: number } {
   let acc = 0;
@@ -82,6 +99,9 @@ export function PreviewPanel({
   const [error, setError] = useState<string | null>(null);
   const gesture = useRef<Gesture | null>(null);
   const editDrag = useRef<{ anchor: number } | null>(null);
+  /** Manual multi-click counter — pointerdown.detail is always 0 per the
+   *  Pointer Events spec, so double/triple clicks are counted by hand. */
+  const clickTrain = useRef({ t: 0, x: 0, y: 0, count: 0 });
   const composing = useRef(false);
   const [ghost, setGhost] = useState<Partial<Transform> | null>(null);
   const [guides, setGuides] = useState<{ x: number | null; y: number | null }>({ x: null, y: null });
@@ -248,8 +268,11 @@ export function PreviewPanel({
 
   const onPointerDown = (e: React.PointerEvent) => {
     const p = toDoc(e);
+    const s = screenPt(e);
+    const prev = clickTrain.current;
+    const clicks = e.timeStamp - prev.t < 500 && Math.hypot(s.x - prev.x, s.y - prev.y) < 6 ? prev.count + 1 : 1;
+    clickTrain.current = { t: e.timeStamp, x: s.x, y: s.y, count: clicks };
     if (editing && editGeom) {
-      const s = screenPt(e);
       const inside =
         s.x >= editGeom.boxLeft &&
         s.x <= editGeom.boxLeft + editGeom.w &&
@@ -260,11 +283,21 @@ export function PreviewPanel({
         return;
       }
       // Keep focus on the sink (don't let the click blur it), then place the
-      // caret from our own layout.
+      // caret from our own layout. Multi-clicks follow native text-editing
+      // convention: double-click selects the word, triple-click selects all.
       e.preventDefault();
       const idx = caretIndexAt(s.x, s.y);
-      editDrag.current = { anchor: idx };
-      setSelRange(idx, idx);
+      if (clicks >= 3) {
+        editDrag.current = null;
+        setSelRange(0, value.length);
+      } else if (clicks === 2) {
+        const r = wordRangeAt(value, idx);
+        editDrag.current = null;
+        setSelRange(r.start, r.end);
+      } else {
+        editDrag.current = { anchor: idx };
+        setSelRange(idx, idx);
+      }
       sinkRef.current?.focus();
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
       return;
