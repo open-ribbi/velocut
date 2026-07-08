@@ -335,6 +335,30 @@ export function SceneInspector({ store, asset }: { store: Store; asset: Asset })
                 value={p.color ?? '#8fa3bf'}
                 onChange={(e) => run((d) => (d.props![pi].color = e.target.value))}
               />
+              <select
+                title="Attach to a character bone (hand-held / worn)"
+                value={p.attachTo ? `${p.attachTo.character}:${p.attachTo.bone ?? 'handR'}` : ''}
+                onChange={(e) =>
+                  run((d) => {
+                    const v = e.target.value;
+                    if (!v) delete d.props![pi].attachTo;
+                    else {
+                      const [character, bone] = v.split(':');
+                      d.props![pi].attachTo = { character, bone };
+                      d.props![pi].position = { x: 0, y: 0, z: 0 };
+                    }
+                  })
+                }
+              >
+                <option value="">World</option>
+                {(spec.characters ?? []).flatMap((c) =>
+                  Object.keys(manifest?.characters[c.model]?.bones ?? {}).map((slot) => (
+                    <option key={`${c.id}:${slot}`} value={`${c.id}:${slot}`}>
+                      {c.id} · {slot}
+                    </option>
+                  )),
+                )}
+              </select>
               <button className="kf-btn" title="Remove prop" onClick={() => run((d) => d.props!.splice(pi, 1))}>
                 ×
               </button>

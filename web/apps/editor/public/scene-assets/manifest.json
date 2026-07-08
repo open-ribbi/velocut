@@ -7,6 +7,7 @@
       "license": "CC0-1.0 model (PixelMannen); CC-BY 4.0 rig/animation (@AsoboStudio, @scurest)",
       "heightM": 0.6,
       "baseScale": 0.01,
+      "bones": { "head": "b_Head_05" },
       "clips": {
         "Survey": { "loop": true },
         "Walk": { "loop": true, "speedMps": 1.0 },
@@ -19,6 +20,7 @@
       "license": "CC0-1.0 (Tomás Laulhé / three.js examples)",
       "heightM": 1.6,
       "baseScale": 0.33,
+      "bones": { "handR": "Palm2R", "handL": "Palm2L", "head": "Head" },
       "clips": {
         "Idle": { "loop": true },
         "Walking": { "loop": true, "speedMps": 1.4 },

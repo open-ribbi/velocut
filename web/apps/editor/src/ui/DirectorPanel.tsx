@@ -154,7 +154,8 @@ export function DirectorPanel({ store, asset, onClose }: { store: Store; asset: 
         pick(ev);
         const targets: Array<{ kind: 'character' | 'prop'; index: number; root: import('three').Object3D }> = [
           ...stage.characters.map((c, i) => ({ kind: 'character' as const, index: i, root: c.root })),
-          ...stage.props.map((p, i) => ({ kind: 'prop' as const, index: i, root: p.root })),
+          // Bone-attached props ride their character — not ground-draggable.
+          ...stage.props.map((p, i) => ({ kind: 'prop' as const, index: i, root: p.root, attached: p.attachComp != null })).filter((p) => !p.attached),
         ];
         for (const cand of targets) {
           if (ray.intersectObject(cand.root, true).length > 0) {

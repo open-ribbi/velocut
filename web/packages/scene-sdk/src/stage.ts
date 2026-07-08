@@ -71,6 +71,9 @@ export interface StageCharacter {
 export interface StageProp {
   root: THREE.Object3D;
   spec: NonNullable<SceneSpec['props']>[number];
+  /** Set when parented to a character bone: meters→bone-local unit factor
+   *  (compensates baseScale and any rig-inherited scale). */
+  attachComp?: number;
 }
 
 export interface Stage {
@@ -186,6 +189,29 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
     else mesh = new three.Mesh(new three.BoxGeometry(1, 1, 1), mat); // prop/cube + fallback
     mesh.castShadow = true;
     mesh.receiveShadow = true;
+
+    if (p.attachTo) {
+      // Parent to a character's bone (semantic slot → rig bone name from the
+      // manifest). The bone subtree inherits baseScale, so spec-side meters
+      // are converted with a compensation factor measured off the bind pose.
+      const target = characters.find((c) => c.spec.id === p.attachTo!.character);
+      if (!target) throw new Error(`prop attachTo: unknown character '${p.attachTo.character}'`);
+      const model = (spec.characters ?? []).find((c) => c.id === p.attachTo!.character)!.model;
+      const slots = manifest.characters[model]?.bones ?? {};
+      const slot = p.attachTo.bone ?? 'handR';
+      const boneName = slots[slot];
+      if (!boneName) {
+        throw new Error(`prop attachTo: '${model}' has no bone slot '${slot}' (available: ${Object.keys(slots).join(', ') || 'none'})`);
+      }
+      const bone = target.root.getObjectByName(boneName);
+      if (!bone) throw new Error(`prop attachTo: bone '${boneName}' not found in '${model}'`);
+      target.root.updateWorldMatrix(true, true);
+      const ws = bone.getWorldScale(new three.Vector3());
+      const comp = 1 / (ws.x || 1);
+      bone.add(mesh);
+      props.push({ root: mesh, spec: p, attachComp: comp });
+      continue;
+    }
     scene.add(mesh);
     props.push({ root: mesh, spec: p });
   }
@@ -259,6 +285,17 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
       }
     }
     for (const p of props) {
+      if (p.attachComp != null) {
+        // Bone-local: spec meters → bone units via the compensation factor;
+        // default offset 0 (the bone origin), default scale 1 m compensated.
+        const k = p.attachComp;
+        const [x, y, z] = sampleVec3(p.spec.position, t, 0, 0, 0);
+        p.root.position.set(x * k, y * k, z * k);
+        p.root.rotation.y = (sampleAnimatable(p.spec.rotationY, t, 0) * Math.PI) / 180;
+        applyScale(p.root, p.spec.scale ?? 1);
+        p.root.scale.multiplyScalar(k);
+        continue;
+      }
       const [x, y, z] = sampleVec3(p.spec.position, t, 0, 0.5, 0);
       p.root.position.set(x, y, z);
       p.root.rotation.y = (sampleAnimatable(p.spec.rotationY, t, 0) * Math.PI) / 180;

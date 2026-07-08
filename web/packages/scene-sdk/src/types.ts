@@ -57,6 +57,10 @@ export interface SceneProp {
   scale?: Scale3;
   /** CSS hex color for built-in props. */
   color?: string;
+  /** Parent this prop to a character's bone slot (see the manifest's per-model
+   *  `bones`, e.g. handR/handL/head). While attached, position/rotationY/scale
+   *  are LOCAL to the bone (meters) — a hand-held item rides the animation. */
+  attachTo?: { character: string; bone?: string };
 }
 
 export interface SceneCamera {
@@ -118,6 +122,9 @@ export interface SceneAssetManifest {
       /** Normalizes the model's native units to meters (e.g. 0.01 for a
        *  centimeter-authored GLB) — applied under the user-facing transform. */
       baseScale?: number;
+      /** Semantic bone slots (handR/handL/head/…) → actual rig bone names,
+       *  the vocabulary prop attachTo speaks. */
+      bones?: Record<string, string>;
       clips: Record<string, ManifestClip>;
     }
   >;
@@ -189,6 +196,16 @@ export function validateSceneSpec(spec: unknown): string | null {
       if (!p || typeof p.model !== 'string') return 'every prop needs a model id';
       if (p.position != null && !isVec3A(p.position)) return 'prop: invalid position';
       if (p.scale != null && !isScale3(p.scale)) return 'prop: scale must be a number or {x?,y?,z?}';
+      if (p.attachTo != null) {
+        const a = p.attachTo;
+        if (typeof a !== 'object' || typeof a.character !== 'string' || !a.character) {
+          return 'prop.attachTo must be { character: id, bone? }';
+        }
+        if (a.bone != null && typeof a.bone !== 'string') return 'prop.attachTo.bone must be a slot name string';
+        if (!(s.characters ?? []).some((c) => c.id === a.character)) {
+          return `prop.attachTo: no character with id '${a.character}'`;
+        }
+      }
     }
   }
   const checkCamera = (cam: SceneCamera, where: string): string | null => {

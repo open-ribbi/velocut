@@ -16,7 +16,11 @@ export function scenePromptDoc(manifest: SceneAssetManifest): string {
     const clips = Object.entries(c.clips)
       .map(([name, m]) => name + (m.speedMps ? `(${m.speedMps}m/s)` : '') + (m.loop === false ? '(once)' : ''))
       .join(', ');
-    lines.push(`• ${id}${c.heightM ? ` — height ${c.heightM}m` : ''}: ${clips}`);
+    const slots = Object.keys(c.bones ?? {});
+    lines.push(
+      `• ${id}${c.heightM ? ` — height ${c.heightM}m` : ''}: ${clips}` +
+        (slots.length ? ` | attach slots: ${slots.join(', ')}` : ''),
+    );
   }
   lines.push('Environments: ' + Object.keys(manifest.environments).join(', '));
   lines.push('Lighting: ' + Object.keys(manifest.lighting).join(', '));
