@@ -16,7 +16,7 @@
 // correct under letterboxing / DPR.
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { PreviewRenderer, Playback, MediaLibrary, TextLayout } from '@velocut/render-sdk';
+import type { PreviewRenderer, Playback, MediaLibrary, InkRect, TextLayout } from '@velocut/render-sdk';
 import type { Store, UiState } from '../state/store';
 import type { TextPayload, Transform } from '@velocut/protocol';
 
@@ -36,6 +36,10 @@ interface LayerBox {
   rotation: number;
   transform: Transform;
   text: TextPayload | null;
+  /** Visible bounds within the raster frame (source px) — text layers only.
+   *  The DRAWN selection box hugs this; hit-testing and all shared geometry
+   *  stay on the padded frame (w/h). */
+  ink: InkRect | null;
 }
 
 type Gesture =
@@ -156,6 +160,7 @@ export function PreviewPanel({
         rotation: t.rotation,
         transform: t,
         text: layer.text,
+        ink: layer.text ? renderer.textInkRect(layer.text) : null,
       });
     }
     return out;
@@ -200,7 +205,16 @@ export function PreviewPanel({
     const h = layout.frameH * sy;
     const boxLeft = (docW / 2 + t.x) * k - w / 2;
     const boxTop = (docH / 2 + t.y) * k - h / 2;
-    return { layout, sx, sy, boxLeft, boxTop, w, h };
+    // The drawn edit-box hugs the visible ink; boxLeft/boxTop (the padded
+    // frame) stay the anchor for caret math and the commit-on-outside check.
+    const inkSrc = renderer.textInkRect({ ...editing.text, content: value });
+    const ink = {
+      left: boxLeft + inkSrc.left * sx,
+      top: boxTop + inkSrc.top * sy,
+      width: inkSrc.width * sx,
+      height: inkSrc.height * sy,
+    };
+    return { layout, sx, sy, boxLeft, boxTop, w, h, ink };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editing, value, selected?.transform, k, docW, docH]);
 
@@ -437,13 +451,21 @@ export function PreviewPanel({
 
   // -------------------------------------------------------------- render
 
+  // Where to DRAW the selection box. For text layers it hugs the visible ink,
+  // not the padded raster frame — display only; hit-testing keeps the frame.
+  // Rotation must still pivot on the frame center (the layer's true origin),
+  // hence the explicit transformOrigin.
   const screenBox = (b: LayerBox) => {
     const g = ghost && gesture.current?.clipId === b.clipId ? { ...b.transform, ...ghost } : b.transform;
     const w = (b.w / b.transform.scaleX) * g.scaleX;
     const h = (b.h / b.transform.scaleY) * g.scaleY;
     const cx = docW / 2 + g.x;
     const cy = docH / 2 + g.y;
-    return { left: (cx - w / 2) * k, top: (cy - h / 2) * k, width: w * k, height: h * k };
+    const left = (cx - w / 2 + (b.ink?.left ?? 0) * g.scaleX) * k;
+    const top = (cy - h / 2 + (b.ink?.top ?? 0) * g.scaleY) * k;
+    const width = (b.ink ? b.ink.width * g.scaleX : w) * k;
+    const height = (b.ink ? b.ink.height * g.scaleY : h) * k;
+    return { left, top, width, height, transformOrigin: `${cx * k - left}px ${cy * k - top}px` };
   };
 
   // Caret + selection rectangles (overlay coords), from the shared layout.
@@ -522,10 +544,7 @@ export function PreviewPanel({
 
               {editing && editGeom && (
                 <>
-                  <div
-                    className="edit-box"
-                    style={{ left: editGeom.boxLeft, top: editGeom.boxTop, width: editGeom.w, height: editGeom.h }}
-                  />
+                  <div className="edit-box" style={editGeom.ink} />
                   {selRects.map((r, i) => (
                     <div key={i} className="edit-selection" style={r} />
                   ))}

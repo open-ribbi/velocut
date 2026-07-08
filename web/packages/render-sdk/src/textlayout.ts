@@ -37,7 +37,11 @@ export interface TextLayout {
 /** The narrow 2D-context surface layout needs — satisfied by both
  *  CanvasRenderingContext2D (main thread) and OffscreenCanvasRenderingContext2D
  *  (worker), without coupling to either concrete type. */
-export type Measure2D = { font: string; measureText(text: string): TextMetrics };
+export type Measure2D = {
+  font: string;
+  textBaseline: CanvasTextBaseline;
+  measureText(text: string): TextMetrics;
+};
 
 /** CSS font string honouring italic/bold — the single spec used by both the
  *  layout measurer and the rasterizer so caret metrics can't drift. */
@@ -91,4 +95,76 @@ export function computeTextLayout(text: TextPayload, ctx: Measure2D): TextLayout
     return { text: line, width: widths[i], left, top: pad + i * lineHeight, caretXs };
   });
   return { fontSize, lineHeight, frameW, frameH, lines };
+}
+
+/** Tight rectangle around what a text payload actually SHOWS, in frame px
+ *  (origin = the raster frame's top-left). */
+export interface InkRect {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * Visible (ink) bounds of a text payload within its raster frame: glyph ink
+ * from actualBoundingBox metrics, widened by the centered stroke, the shadow
+ * (directional: blur all around, the offset only where it falls), and the
+ * background pills — the same extents the rasterizer paints.
+ *
+ * This is DISPLAY chrome only. The frame (frameW/frameH) remains the shared
+ * geometry for rasterizing, hit-testing and caret math; this rect exists so
+ * selection boxes can hug what the user sees instead of the padded frame.
+ */
+export function computeInkRect(text: TextPayload, ctx: Measure2D, layout?: TextLayout): InkRect {
+  const l = layout ?? computeTextLayout(text, ctx);
+  const fontSize = l.fontSize;
+  ctx.font = fontSpecOf(text);
+  // Measure against baseline 'top' — the anchor the rasterizer draws with —
+  // so ascent/descent are offsets from line.top, not from an alphabetic line.
+  const prevBaseline = ctx.textBaseline;
+  ctx.textBaseline = 'top';
+  const strokeW = text.strokeColor ? Math.max(0, text.strokeWidth ?? 0) : 0;
+  let left = Infinity;
+  let top = Infinity;
+  let right = -Infinity;
+  let bottom = -Infinity;
+  for (const line of l.lines) {
+    if (!line.text.trim()) continue; // whitespace leaves no ink
+    const m = ctx.measureText(line.text);
+    // Stroke is drawn centered with lineWidth = 2×strokeWidth → strokeWidth beyond the ink.
+    left = Math.min(left, line.left - m.actualBoundingBoxLeft - strokeW);
+    right = Math.max(right, line.left + m.actualBoundingBoxRight + strokeW);
+    top = Math.min(top, line.top - m.actualBoundingBoxAscent - strokeW);
+    bottom = Math.max(bottom, line.top + m.actualBoundingBoxDescent + strokeW);
+  }
+  ctx.textBaseline = prevBaseline;
+  if (text.shadowColor && left < right) {
+    const blur = text.shadowBlur ?? 0;
+    const ox = text.shadowX ?? 0;
+    const oy = text.shadowY ?? 0;
+    left = Math.min(left, left + ox - blur);
+    right = Math.max(right, right + ox + blur);
+    top = Math.min(top, top + oy - blur);
+    bottom = Math.max(bottom, bottom + oy + blur);
+  }
+  if (text.backgroundColor) {
+    // Same pill geometry the rasterizer fills (Renderer.textFrame).
+    const padX = fontSize * 0.3;
+    const padY = fontSize * 0.08;
+    const pillH = l.lineHeight - fontSize * 0.05 + 2 * padY;
+    for (const line of l.lines) {
+      left = Math.min(left, line.left - padX);
+      right = Math.max(right, line.left + line.width + padX);
+      top = Math.min(top, line.top - padY);
+      bottom = Math.max(bottom, line.top - padY + pillH);
+    }
+  }
+  // Nothing visible (empty / all-whitespace, no background): fall back to the frame.
+  if (!(left < right && top < bottom)) return { left: 0, top: 0, width: l.frameW, height: l.frameH };
+  left = Math.max(0, left);
+  top = Math.max(0, top);
+  right = Math.min(l.frameW, right);
+  bottom = Math.min(l.frameH, bottom);
+  return { left, top, width: right - left, height: bottom - top };
 }

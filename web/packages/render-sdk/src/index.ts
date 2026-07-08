@@ -6,7 +6,7 @@
 // driven by protocol FrameGraphs — the SDK has no knowledge of timeline
 // semantics, documents, or commands.
 
-export { Renderer, type TextLayout, type TextLine } from './renderer.ts';
+export { Renderer, type InkRect, type TextLayout, type TextLine } from './renderer.ts';
 export { RendererClient, type PreviewRenderer } from './renderer-client.ts';
 export { MediaLibrary, RemoteVideoSource, type ProbedMedia } from './media.ts';
 export { Playback, type TransportStore } from './playback.ts';

@@ -15,7 +15,7 @@
 
 import type { FrameGraph, TextPayload, Transform } from '@velocut/protocol';
 import type { MediaLibrary } from './media.ts';
-import { computeTextLayout, type TextLayout } from './textlayout.ts';
+import { computeInkRect, computeTextLayout, type InkRect, type TextLayout } from './textlayout.ts';
 import type { AssetSize, ClientToRender, RenderToClient } from './render.worker.ts';
 
 /** The preview renderer surface — implemented by both the worker-backed
@@ -31,6 +31,7 @@ export interface PreviewRenderer {
   registerFont(family: string, data: ArrayBuffer): Promise<void>;
   textLayout(text: TextPayload): TextLayout;
   measureText(text: TextPayload): { width: number; height: number };
+  textInkRect(text: TextPayload): InkRect;
   setOverride(clipId: string, transform: Partial<Transform> | null): void;
   setTextOverride(clipId: string, text: TextPayload | null): void;
   resize(width: number, height: number): void;
@@ -154,6 +155,13 @@ export class RendererClient implements PreviewRenderer {
   measureText(text: TextPayload): { width: number; height: number } {
     const l = this.textLayout(text);
     return { width: l.frameW, height: l.frameH };
+  }
+
+  /** Visible (ink) bounds within the raster frame — selection chrome only;
+   *  hit-testing and caret math stay on the padded frame. */
+  textInkRect(text: TextPayload): InkRect {
+    this.measureCtx ??= document.createElement('canvas').getContext('2d')!;
+    return computeInkRect(text, this.measureCtx);
   }
 
   /** Register a custom font on BOTH threads: the main thread so the editor's

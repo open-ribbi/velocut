@@ -14,12 +14,12 @@
 import type { FrameGraph, Layer, TextPayload } from '@velocut/protocol';
 import type { MediaLibrary } from './media.ts';
 import { resolveColorAdjust, resolvePassEffects, transitionWgsl, TRANSITIONS, type PassEffect } from './effects.ts';
-import { computeTextLayout, fontSpecOf, type TextLayout } from './textlayout.ts';
+import { computeInkRect, computeTextLayout, fontSpecOf, type InkRect, type TextLayout } from './textlayout.ts';
 
 // Re-exported so consumers (and the SDK barrel) keep importing these from the
 // renderer even though the layout math now lives in ./textlayout (shared with
 // the main-thread editor across the worker boundary).
-export type { TextLayout, TextLine } from './textlayout.ts';
+export type { InkRect, TextLayout, TextLine } from './textlayout.ts';
 
 /** The active FontFaceSet — document.fonts on the main thread (the export
  *  Renderer), or the worker global's fonts when the Renderer runs inside the
@@ -546,6 +546,13 @@ ${body}
   measureText(text: TextPayload): { width: number; height: number } {
     const l = this.textLayout(text);
     return { width: l.frameW, height: l.frameH };
+  }
+
+  /** Visible (ink) bounds within the raster frame — selection chrome only;
+   *  hit-testing and caret math stay on the padded frame. */
+  textInkRect(text: TextPayload): InkRect {
+    this.measureCtx ??= new OffscreenCanvas(1, 1).getContext('2d')!;
+    return computeInkRect(text, this.measureCtx);
   }
 
   private textFrame(text: TextPayload): TextCacheEntry {
