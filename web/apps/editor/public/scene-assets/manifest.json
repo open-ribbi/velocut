@@ -52,6 +52,11 @@
   "props": {
     "prop/cube": { "label": "Cube", "builtin": true, "license": "generated" },
     "prop/sphere": { "label": "Sphere", "builtin": true, "license": "generated" },
-    "prop/pillar": { "label": "Pillar", "builtin": true, "license": "generated" }
+    "prop/pillar": { "label": "Pillar", "builtin": true, "license": "generated" },
+    "prop/cone": { "label": "Cone", "builtin": true, "license": "generated" },
+    "prop/torus": { "label": "Torus (flat ring)", "builtin": true, "license": "generated" },
+    "prop/hemisphere": { "label": "Hemisphere (dome)", "builtin": true, "license": "generated" },
+    "prop/lathe": { "label": "Lathe (revolved profile)", "builtin": true, "license": "generated" },
+    "prop/extrude": { "label": "Extrude (flat outline)", "builtin": true, "license": "generated" }
   }
 }

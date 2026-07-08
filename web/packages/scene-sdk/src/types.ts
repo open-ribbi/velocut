@@ -65,6 +65,13 @@ export interface SceneProp {
    *  `bones`, e.g. handR/handL/head). While attached, position/rotationY/scale
    *  are LOCAL to the bone (meters) — a hand-held item rides the animation. */
   attachTo?: { character: string; bone?: string };
+  /** Parametric geometry input, meters. For 'prop/lathe': a [radius, y]
+   *  profile from bottom to top, revolved around the Y axis (vases, cups,
+   *  bottles, lampshades). For 'prop/extrude': a closed [x, y] polygon
+   *  outline extruded along Z by `depth` (arrows, stars, signs). */
+  points?: [number, number][];
+  /** Extrusion thickness for 'prop/extrude', meters (default 0.1). */
+  depth?: number;
 }
 
 export interface SceneCamera {
@@ -219,6 +226,23 @@ export function validateSceneSpec(spec: unknown): string | null {
         if (!(s.characters ?? []).some((c) => c.id === a.character)) {
           return `prop.attachTo: no character with id '${a.character}'`;
         }
+      }
+      const isPointList = (v: unknown): v is [number, number][] =>
+        Array.isArray(v) &&
+        v.length <= 64 &&
+        v.every((pt) => Array.isArray(pt) && pt.length === 2 && pt.every((n) => typeof n === 'number' && Number.isFinite(n)));
+      if (p.model === 'prop/lathe') {
+        if (!isPointList(p.points) || p.points.length < 2) return 'prop/lathe needs points: [[radius, y], …] (2..64, meters)';
+        if (p.points.some(([r]) => r < 0)) return 'prop/lathe: radii must be >= 0';
+      }
+      if (p.model === 'prop/extrude') {
+        if (!isPointList(p.points) || p.points.length < 3) return 'prop/extrude needs points: [[x, y], …] (3..64, a closed outline)';
+        if (p.depth != null && !(typeof p.depth === 'number' && Number.isFinite(p.depth) && p.depth > 0)) {
+          return 'prop/extrude: depth must be a positive number (meters)';
+        }
+      }
+      if (p.points != null && p.model !== 'prop/lathe' && p.model !== 'prop/extrude') {
+        return `prop '${p.model}' does not take points (only prop/lathe and prop/extrude do)`;
       }
     }
   }

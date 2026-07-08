@@ -187,10 +187,30 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
   for (const p of spec.props ?? []) {
     const color = new three.Color(p.color ?? '#8fa3bf');
     const mat = new three.MeshStandardMaterial({ color, roughness: 0.6 });
-    let mesh: THREE.Mesh;
-    if (p.model === 'prop/sphere') mesh = new three.Mesh(new three.SphereGeometry(0.5, 32, 16), mat);
-    else if (p.model === 'prop/pillar') mesh = new three.Mesh(new three.CylinderGeometry(0.3, 0.3, 2, 24), mat);
-    else mesh = new three.Mesh(new three.BoxGeometry(1, 1, 1), mat); // prop/cube + fallback
+    let geo: THREE.BufferGeometry;
+    if (p.model === 'prop/sphere') geo = new three.SphereGeometry(0.5, 32, 16);
+    else if (p.model === 'prop/pillar') geo = new three.CylinderGeometry(0.3, 0.3, 2, 24);
+    else if (p.model === 'prop/cone') geo = new three.ConeGeometry(0.5, 1, 24);
+    else if (p.model === 'prop/torus') {
+      geo = new three.TorusGeometry(0.4, 0.12, 12, 32);
+      geo.rotateX(-Math.PI / 2); // lie flat (a ring on the ground), like the other primitives
+    } else if (p.model === 'prop/hemisphere') {
+      geo = new three.SphereGeometry(0.5, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2);
+    } else if (p.model === 'prop/lathe' && p.points) {
+      // Revolve a [radius, y] profile around Y — vases, cups, lampshades.
+      geo = new three.LatheGeometry(p.points.map(([r, y]) => new three.Vector2(Math.max(0, r), y)), 32);
+      mat.side = three.DoubleSide; // open profiles expose the inside wall
+    } else if (p.model === 'prop/extrude' && p.points) {
+      // Extrude a closed [x, y] outline along Z — arrows, stars, signs.
+      const shape = new three.Shape();
+      shape.moveTo(p.points[0][0], p.points[0][1]);
+      for (let i = 1; i < p.points.length; i++) shape.lineTo(p.points[i][0], p.points[i][1]);
+      shape.closePath();
+      geo = new three.ExtrudeGeometry(shape, { depth: p.depth ?? 0.1, bevelEnabled: false });
+      // Center the extrusion on its local origin so rotationY spins in place.
+      geo.translate(0, 0, -(p.depth ?? 0.1) / 2);
+    } else geo = new three.BoxGeometry(1, 1, 1); // prop/cube + fallback
+    const mesh: THREE.Mesh = new three.Mesh(geo, mat);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
 
