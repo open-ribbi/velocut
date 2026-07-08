@@ -352,8 +352,11 @@ export function DirectorPanel({ store, asset, onClose }: { store: Store; asset: 
       cancelAnimationFrame(raf);
       cleanup?.();
       attachRef.current = null;
+      // NO forceContextLoss here: this effect re-runs on every spec commit
+      // and reuses the SAME canvas — a lost context stays lost on that
+      // canvas, blanking every rebuild. One on-screen canvas = one context
+      // total; the browser reclaims it when the panel unmounts.
       renderer?.dispose();
-      renderer?.forceContextLoss(); // free the GL context now, not at GC time
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [specText, asset.id]);
