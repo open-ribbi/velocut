@@ -38,9 +38,10 @@ test('boots with an engine, imports media, edits, and survives a reload', async 
   await expect.poll(async () => (await doc(page))?.tracks[0].clips.length).toBe(1);
 
   // Local-first: the document AND the media come back after a reload. Persist
-  // is debounced (300ms); the pagehide flush is best-effort only (an async IDB
-  // write during teardown isn't guaranteed), so let the debounce land first.
-  await page.waitForTimeout(600);
+  // is debounced and a browser-level reload can interrupt the write (the
+  // pagehide flush is best-effort only), so land it deterministically first —
+  // the same flushNow() an app-controlled navigation awaits.
+  await page.evaluate(() => (window as any).velocut.collab.flushNow());
   await page.reload();
   await expect.poll(async () => (await doc(page))?.tracks[0]?.clips.length, { timeout: 15_000 }).toBe(1);
   await expect(page.locator('.asset-item')).toHaveCount(1);
