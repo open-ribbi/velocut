@@ -47,6 +47,11 @@ gltf.scene.traverse(o => o.isBone && console.log(o.name)); // bones
 
 ## Where to find good sources
 
+- [KayKit](https://github.com/KayKit-Game-Assets) — CC0 GLBs on GitHub with
+  DOZENS of separate named clips per character (the vendored Knight is from
+  the [Adventurers pack](https://github.com/KayKit-Game-Assets/KayKit-Character-Pack-Adventures-1.0),
+  which also has Barbarian/Mage/Rogue/RogueHooded on the same rig — same
+  manifest shape, same clip names).
 - [Quaternius](https://quaternius.com) — large CC0 packs incl. the Universal
   Animation Library (hundreds of humanoid clips) and animated characters.
   Downloads are manual (no stable direct links), which is why they aren't
