@@ -477,8 +477,8 @@ export function PreviewPanel({
     if (!ln) return null;
     return {
       left: boxLeft + (ln.left + ln.caretXs[col]) * sx,
-      top: boxTop + ln.top * sy,
-      height: layout.fontSize * sy,
+      top: boxTop + (ln.top - layout.ascent) * sy,
+      height: (layout.ascent + layout.descent) * sy,
     };
   }, [editGeom, sel]);
 
@@ -496,11 +496,13 @@ export function PreviewPanel({
       if (e > s) {
         const x0 = ln.left + ln.caretXs[s];
         const x1 = ln.left + ln.caretXs[e];
+        // The font line box — the same vertical extents as the drawn edit-box,
+        // so the highlight can't poke out of it.
         out.push({
           left: boxLeft + x0 * sx,
-          top: boxTop + ln.top * sy,
+          top: boxTop + (ln.top - layout.ascent) * sy,
           width: (x1 - x0) * sx,
-          height: layout.lineHeight * sy,
+          height: (layout.ascent + layout.descent) * sy,
         });
       }
       acc += len + 1;

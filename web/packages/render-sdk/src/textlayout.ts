@@ -31,6 +31,12 @@ export interface TextLayout {
   lineHeight: number;
   frameW: number;
   frameH: number;
+  /** Font line-box extents relative to each line's top anchor (the rasterizer
+   *  draws with textBaseline 'top'): a line's visible box spans
+   *  [top - ascent, top + descent]. Selection/caret chrome and the ink rect
+   *  share these so highlights can't poke out of the drawn box. */
+  ascent: number;
+  descent: number;
   lines: TextLine[];
 }
 
@@ -75,6 +81,13 @@ export function computeTextLayout(text: TextPayload, ctx: Measure2D): TextLayout
   const fontSize = text.fontSize ?? 64;
   ctx.font = fontSpecOf(text);
   const lineHeight = fontSize * 1.25;
+  // Font metrics are text-independent; one probe against the raster's anchor.
+  const prevBaseline = ctx.textBaseline;
+  ctx.textBaseline = 'top';
+  const fm = ctx.measureText('Mg');
+  const ascent = fm.fontBoundingBoxAscent;
+  const descent = fm.fontBoundingBoxDescent;
+  ctx.textBaseline = prevBaseline;
   const align = (text.align as CanvasTextAlign) ?? 'left';
   const raw = text.content.split('\n');
   const widths = raw.map((l) => ctx.measureText(l).width);
@@ -94,7 +107,7 @@ export function computeTextLayout(text: TextPayload, ctx: Measure2D): TextLayout
           : pad;
     return { text: line, width: widths[i], left, top: pad + i * lineHeight, caretXs };
   });
-  return { fontSize, lineHeight, frameW, frameH, lines };
+  return { fontSize, lineHeight, frameW, frameH, ascent, descent, lines };
 }
 
 /** Tight rectangle around what a text payload actually SHOWS, in frame px
@@ -124,7 +137,7 @@ export function computeInkRect(text: TextPayload, ctx: Measure2D, layout?: TextL
   const fontSize = l.fontSize;
   ctx.font = fontSpecOf(text);
   // Measure against baseline 'top' — the anchor the rasterizer draws with —
-  // so ascent/descent are offsets from line.top, not from an alphabetic line.
+  // so ink offsets are relative to line.top, not an alphabetic line.
   const prevBaseline = ctx.textBaseline;
   ctx.textBaseline = 'top';
   const strokeW = text.strokeColor ? Math.max(0, text.strokeWidth ?? 0) : 0;
@@ -138,8 +151,9 @@ export function computeInkRect(text: TextPayload, ctx: Measure2D, layout?: TextL
     // Stroke is drawn centered with lineWidth = 2×strokeWidth → strokeWidth beyond the edge.
     left = Math.min(left, line.left - Math.max(m.actualBoundingBoxLeft, 0) - strokeW);
     right = Math.max(right, line.left + Math.max(line.width, m.actualBoundingBoxRight) + strokeW);
-    top = Math.min(top, line.top - m.fontBoundingBoxAscent - strokeW);
-    bottom = Math.max(bottom, line.top + m.fontBoundingBoxDescent + strokeW);
+    // The font line box — the same extents selection/caret chrome draws with.
+    top = Math.min(top, line.top - l.ascent - strokeW);
+    bottom = Math.max(bottom, line.top + l.descent + strokeW);
   }
   ctx.textBaseline = prevBaseline;
   if (text.shadowColor && left < right) {
@@ -165,9 +179,8 @@ export function computeInkRect(text: TextPayload, ctx: Measure2D, layout?: TextL
   }
   // Nothing visible (empty / all-whitespace, no background): fall back to the frame.
   if (!(left < right && top < bottom)) return { left: 0, top: 0, width: l.frameW, height: l.frameH };
-  left = Math.max(0, left);
-  top = Math.max(0, top);
-  right = Math.min(l.frameW, right);
-  bottom = Math.min(l.frameH, bottom);
+  // NOT clamped to the frame: a font's bounding box may overhang TEXT_PAD by a
+  // few px, and the selection/caret chrome shares these exact extents — clamping
+  // one but not the other would let highlights poke out of the box.
   return { left, top, width: right - left, height: bottom - top };
 }
