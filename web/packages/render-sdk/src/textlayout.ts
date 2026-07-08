@@ -107,8 +107,11 @@ export interface InkRect {
 }
 
 /**
- * Visible (ink) bounds of a text payload within its raster frame: glyph ink
- * from actualBoundingBox metrics, widened by the centered stroke, the shadow
+ * Visible bounds of a text payload within its raster frame. Vertically each
+ * line contributes the FONT's line box (fontBoundingBox ascent→descent — what
+ * a browser text selection highlights), not the glyph ink, so the box doesn't
+ * hug "ace" tighter than "Éy". Horizontally it's the advance width unioned
+ * with any ink overhang (italics). Widened by the centered stroke, the shadow
  * (directional: blur all around, the offset only where it falls), and the
  * background pills — the same extents the rasterizer paints.
  *
@@ -130,13 +133,13 @@ export function computeInkRect(text: TextPayload, ctx: Measure2D, layout?: TextL
   let right = -Infinity;
   let bottom = -Infinity;
   for (const line of l.lines) {
-    if (!line.text.trim()) continue; // whitespace leaves no ink
+    if (!line.text.trim()) continue; // a blank line shows nothing to bound
     const m = ctx.measureText(line.text);
-    // Stroke is drawn centered with lineWidth = 2×strokeWidth → strokeWidth beyond the ink.
-    left = Math.min(left, line.left - m.actualBoundingBoxLeft - strokeW);
-    right = Math.max(right, line.left + m.actualBoundingBoxRight + strokeW);
-    top = Math.min(top, line.top - m.actualBoundingBoxAscent - strokeW);
-    bottom = Math.max(bottom, line.top + m.actualBoundingBoxDescent + strokeW);
+    // Stroke is drawn centered with lineWidth = 2×strokeWidth → strokeWidth beyond the edge.
+    left = Math.min(left, line.left - Math.max(m.actualBoundingBoxLeft, 0) - strokeW);
+    right = Math.max(right, line.left + Math.max(line.width, m.actualBoundingBoxRight) + strokeW);
+    top = Math.min(top, line.top - m.fontBoundingBoxAscent - strokeW);
+    bottom = Math.max(bottom, line.top + m.fontBoundingBoxDescent + strokeW);
   }
   ctx.textBaseline = prevBaseline;
   if (text.shadowColor && left < right) {
