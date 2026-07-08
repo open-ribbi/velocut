@@ -448,3 +448,10 @@ html, body, #root {
 .director-hint { margin-top: 10px; line-height: 1.5; }
 .director-scrub { margin: 10px 14px 14px; }
 .director-open { margin-bottom: 8px; }
+.director-toolbar { display: flex; gap: 6px; }
+.director-tool { font-size: 12px; padding: 4px 10px; border-radius: 6px; background: #1a1d23; color: #cfd6e2; border: 1px solid transparent; }
+.director-tool:hover { background: #232a36; }
+.director-tool.active { background: #2b3242; color: #fff; border-color: #3d4a86; }
+.director-selcard { border: 1px solid #2a3140; border-radius: 8px; padding: 8px; margin-bottom: 10px; background: #14181f; }
+.director-selcard .group-title { display: flex; justify-content: space-between; align-items: center; margin-top: 0; }
+.director-selcard input[type='number'] { width: 70px; }
