@@ -43,6 +43,9 @@ export interface SceneCharacter {
   rotationY?: Animatable;
   scale?: Scale3;
   actions?: SceneAction[];
+  /** Head aim: look at the shot camera or another character (yaw-clamped so
+   *  the head never spins). Great for dialogue staging and to-camera beats. */
+  gaze?: 'camera' | { character: string };
 }
 
 export interface SceneProp {
@@ -62,6 +65,20 @@ export interface SceneCamera {
   position?: Vec3A;
   /** A point, or a character to track (its chest height, follows movement). */
   lookAt?: Vec3A | { character: string };
+  /** Dutch angle, degrees (rotation around the view axis). */
+  roll?: Animatable;
+  /** Deterministic handheld wobble (a fixed multi-sine of t — reproducible on
+   *  every render). amplitude in meters, rotAmplitude in degrees, frequency Hz. */
+  shake?: { amplitude?: number; rotAmplitude?: number; frequency?: number };
+}
+
+/** One shot in a cut sequence — sugar that compiles to step-eased camera
+ *  keyframes (a hard cut at each shot's start). Keyframed values inside a
+ *  shot's camera are RELATIVE to the shot start (seconds). */
+export interface SceneShot {
+  /** Seconds from scene start; shots must be sorted and start at 0. */
+  start: number;
+  camera: SceneCamera;
 }
 
 export interface SceneSpec {
@@ -76,6 +93,8 @@ export interface SceneSpec {
   characters?: SceneCharacter[];
   props?: SceneProp[];
   camera?: SceneCamera;
+  /** Multi-shot cut list — overrides `camera` when present (see SceneShot). */
+  shots?: SceneShot[];
 }
 
 // ------------------------------------------------------------ asset manifest
@@ -89,7 +108,19 @@ export interface ManifestClip {
 
 export interface SceneAssetManifest {
   version: 1;
-  characters: Record<string, { file: string; label?: string; license: string; heightM?: number; clips: Record<string, ManifestClip> }>;
+  characters: Record<
+    string,
+    {
+      file: string;
+      label?: string;
+      license: string;
+      heightM?: number;
+      /** Normalizes the model's native units to meters (e.g. 0.01 for a
+       *  centimeter-authored GLB) — applied under the user-facing transform. */
+      baseScale?: number;
+      clips: Record<string, ManifestClip>;
+    }
+  >;
   environments: Record<string, { label?: string; builtin?: boolean; license: string }>;
   lighting: Record<string, { label?: string }>;
   props: Record<string, { label?: string; builtin?: boolean; license: string }>;
@@ -140,6 +171,9 @@ export function validateSceneSpec(spec: unknown): string | null {
       if (c.position != null && !isVec3A(c.position)) return `character '${c.id}': invalid position`;
       if (c.rotationY != null && !isAnimatable(c.rotationY)) return `character '${c.id}': invalid rotationY`;
       if (c.scale != null && !isScale3(c.scale)) return `character '${c.id}': scale must be a number or {x?,y?,z?}`;
+      if (c.gaze != null && c.gaze !== 'camera' && typeof (c.gaze as { character?: unknown }).character !== 'string') {
+        return `character '${c.id}': gaze must be 'camera' or { character: id }`;
+      }
       if (c.actions != null) {
         if (!Array.isArray(c.actions) || c.actions.length > 50) return `character '${c.id}': actions must be an array of at most 50`;
         for (const a of c.actions) {
@@ -157,13 +191,55 @@ export function validateSceneSpec(spec: unknown): string | null {
       if (p.scale != null && !isScale3(p.scale)) return 'prop: scale must be a number or {x?,y?,z?}';
     }
   }
-  if (s.camera != null) {
-    const cam = s.camera;
-    if (typeof cam !== 'object') return 'spec.camera must be an object';
-    if (cam.fov != null && !isAnimatable(cam.fov)) return 'camera.fov must be animatable';
-    if (cam.position != null && !isVec3A(cam.position)) return 'camera.position must be a Vec3A';
+  const checkCamera = (cam: SceneCamera, where: string): string | null => {
+    if (typeof cam !== 'object' || cam == null) return `${where} must be an object`;
+    if (cam.fov != null && !isAnimatable(cam.fov)) return `${where}.fov must be animatable`;
+    if (cam.position != null && !isVec3A(cam.position)) return `${where}.position must be a Vec3A`;
+    if (cam.roll != null && !isAnimatable(cam.roll)) return `${where}.roll must be animatable`;
+    if (cam.shake != null) {
+      const sh = cam.shake;
+      if (typeof sh !== 'object') return `${where}.shake must be an object`;
+      for (const k of ['amplitude', 'rotAmplitude', 'frequency'] as const) {
+        if (sh[k] != null && !(typeof sh[k] === 'number' && Number.isFinite(sh[k]))) return `${where}.shake.${k} must be a number`;
+      }
+    }
     if (cam.lookAt != null && !isVec3A(cam.lookAt) && typeof (cam.lookAt as { character?: unknown }).character !== 'string') {
-      return 'camera.lookAt must be a Vec3A or { character: id }';
+      return `${where}.lookAt must be a Vec3A or { character: id }`;
+    }
+    return null;
+  };
+  if (s.camera != null) {
+    const err = checkCamera(s.camera, 'camera');
+    if (err) return err;
+  }
+  if (s.shots != null) {
+    if (!Array.isArray(s.shots) || s.shots.length === 0 || s.shots.length > 32) {
+      return 'spec.shots must be a non-empty array of at most 32';
+    }
+    let prev = -1;
+    let sawPoint = false;
+    let charTarget: string | null = null;
+    for (let i = 0; i < s.shots.length; i++) {
+      const shot = s.shots[i];
+      if (!shot || typeof shot.start !== 'number' || shot.start < 0) return `shots[${i}].start must be a number >= 0`;
+      if (i === 0 && shot.start !== 0) return 'shots[0].start must be 0';
+      if (shot.start <= prev && i > 0) return 'shots must be sorted by ascending start';
+      prev = shot.start;
+      const err = checkCamera(shot.camera, `shots[${i}].camera`);
+      if (err) return err;
+      const look = shot.camera?.lookAt;
+      if (look != null) {
+        if ('character' in (look as object)) {
+          const id = (look as { character: string }).character;
+          if (charTarget != null && charTarget !== id) return 'shots cannot track different characters (one target per cut list)';
+          charTarget = id;
+        } else {
+          sawPoint = true;
+        }
+      }
+    }
+    if (sawPoint && charTarget != null) {
+      return 'shots cannot mix point lookAt and character tracking (expansion needs one mode)';
     }
   }
   return null;

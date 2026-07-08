@@ -13,13 +13,16 @@ export {
   type SceneCharacter,
   type SceneProp,
   type SceneAction,
+  type SceneShot,
+  type Scale3,
   type Vec3A,
   type SceneAssetManifest,
   type ManifestClip,
 } from './types.ts';
 export { resolveActions, type ActivePose, type ClipMeta } from './actions.ts';
+export { expandShots, CUT_EASE } from './shots.ts';
 export { scenePromptDoc } from './prompt.ts';
-export { compileSceneSpec, applySpecCamera, type CompiledScene } from './compile.ts';
+export { compileSceneSpec, applySpecCamera, specCameraPosition, type CompiledScene } from './compile.ts';
 export {
   buildStage,
   loadSceneManifest,

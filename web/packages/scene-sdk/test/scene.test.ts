@@ -3,8 +3,9 @@
 // by the Playwright E2E path (real browser).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { validateSceneSpec } from '../src/types.ts';
+import { validateSceneSpec, type SceneSpec } from '../src/types.ts';
 import { resolveActions, type ClipMeta } from '../src/actions.ts';
+import { expandShots, CUT_EASE } from '../src/shots.ts';
 
 // ---------------------------------------------------------------- validation
 
@@ -55,6 +56,20 @@ test('validateSceneSpec: rejection table', () => {
     [{ ...base, props: [{ model: 'prop/cube', scale: 'big' }] }, /scale/],
     [{ ...base, props: [{ model: 'prop/cube', scale: { x: 1, w: 2 } }] }, /scale/],
     [{ ...base, characters: [{ id: 'a', model: 'char/x', scale: { y: NaN } }] }, /scale/],
+    [{ ...base, characters: [{ id: 'a', model: 'char/x', gaze: 'sideways' }] }, /gaze/],
+    [{ ...base, camera: { roll: 'tilted' } }, /roll/],
+    [{ ...base, camera: { shake: { amplitude: 'lots' } } }, /shake/],
+    [{ ...base, shots: [] }, /shots/],
+    [{ ...base, shots: [{ start: 1, camera: {} }] }, /shots\[0\].start must be 0/],
+    [{ ...base, shots: [{ start: 0, camera: {} }, { start: 2, camera: {} }, { start: 1, camera: {} }] }, /sorted/],
+    [
+      { ...base, shots: [{ start: 0, camera: { lookAt: { character: 'a' } } }, { start: 1, camera: { lookAt: { x: 0 } } }] },
+      /mix point lookAt and character/,
+    ],
+    [
+      { ...base, shots: [{ start: 0, camera: { lookAt: { character: 'a' } } }, { start: 1, camera: { lookAt: { character: 'b' } } }] },
+      /different characters/,
+    ],
   ];
   for (const [spec, re] of bad) {
     const err = validateSceneSpec(spec);
@@ -123,6 +138,48 @@ test('resolveActions: unknown clips are skipped, same-clip fade collapses', () =
   const p = resolveActions(seq, 2.5, CLIPS);
   assert.equal(p.length, 1);
   assert.equal(p[0].weight, 1);
+});
+
+// ------------------------------------------------------------ shot expansion
+
+test('expandShots: cuts hold the previous value then jump at the boundary', () => {
+  const spec: SceneSpec = {
+    version: 1,
+    durationUs: 6_000_000,
+    shots: [
+      { start: 0, camera: { position: { x: 6, y: 2, z: 8 }, fov: 40 } },
+      { start: 2.5, camera: { position: { x: [{ t: 0, v: -2 }, { t: 1.5, v: -1 }], y: 1.4, z: 3 }, fov: 30 } },
+    ],
+  };
+  const out = expandShots(spec);
+  assert.equal(out.shots, undefined);
+  const cam = out.camera!;
+  const px = cam.position!.x as Array<{ t: number; v: number; ease?: string }>;
+  // Shot 1 constant → one key at 0; shot 2's first key arrives as a cut at 2.5.
+  assert.deepEqual(px[0], { t: 0, v: 6, ease: undefined });
+  assert.equal(px[1].t, 2.5);
+  assert.equal(px[1].v, -2);
+  assert.equal(px[1].ease, CUT_EASE);
+  // In-shot keyframes shift to scene time and keep their own ease.
+  assert.equal(px[2].t, 4);
+  assert.equal(px[2].v, -1);
+  const fov = cam.fov as Array<{ t: number; v: number; ease?: string }>;
+  assert.deepEqual(fov.map((k) => [k.t, k.v, k.ease]), [[0, 40, undefined], [2.5, 30, CUT_EASE]]);
+});
+
+test('expandShots: character tracking survives expansion; no shots = passthrough', () => {
+  const spec: SceneSpec = {
+    version: 1,
+    durationUs: 4_000_000,
+    shots: [
+      { start: 0, camera: { position: { x: 5 }, lookAt: { character: 'hero' } } },
+      { start: 2, camera: { position: { x: -5 }, lookAt: { character: 'hero' } } },
+    ],
+  };
+  const out = expandShots(spec);
+  assert.deepEqual(out.camera!.lookAt, { character: 'hero' });
+  const plain: SceneSpec = { version: 1, durationUs: 1_000_000, camera: { position: { x: 1 } } };
+  assert.equal(expandShots(plain), plain);
 });
 
 test('resolveActions: determinism — same inputs, same output', () => {

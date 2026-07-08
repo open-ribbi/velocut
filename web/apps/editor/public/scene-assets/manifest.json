@@ -1,11 +1,24 @@
 {
   "version": 1,
   "characters": {
+    "char/fox": {
+      "file": "characters/fox.glb",
+      "label": "Fox",
+      "license": "CC0-1.0 model (PixelMannen); CC-BY 4.0 rig/animation (@AsoboStudio, @scurest)",
+      "heightM": 0.6,
+      "baseScale": 0.01,
+      "clips": {
+        "Survey": { "loop": true },
+        "Walk": { "loop": true, "speedMps": 1.0 },
+        "Run": { "loop": true, "speedMps": 3.2 }
+      }
+    },
     "char/robot": {
       "file": "characters/robot.glb",
       "label": "Robot",
       "license": "CC0-1.0 (Tomás Laulhé / three.js examples)",
       "heightM": 1.6,
+      "baseScale": 0.33,
       "clips": {
         "Idle": { "loop": true },
         "Walking": { "loop": true, "speedMps": 1.4 },

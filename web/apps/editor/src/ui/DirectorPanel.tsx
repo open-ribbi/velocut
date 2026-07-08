@@ -14,6 +14,8 @@ import type { Animatable } from '@velocut/render-sdk';
 import {
   applySpecCamera,
   buildStage,
+  expandShots,
+  specCameraPosition,
   validateSceneSpec,
   type SceneSpec,
   type Stage,
@@ -28,8 +30,10 @@ function shiftAxis(v: Animatable | undefined, base: number, delta: number): Anim
   return r((v ?? base) + delta);
 }
 
-/** All keyframe times (seconds) on the spec camera — the shot list. */
+/** Shot beats: explicit shot starts when a cut list exists, else all camera
+ *  keyframe times. */
 function cameraKeyTimes(spec: SceneSpec): number[] {
+  if (spec.shots?.length) return spec.shots.map((s) => s.start);
   const times = new Set<number>();
   const collect = (a: Animatable | undefined) => {
     if (Array.isArray(a)) for (const k of a) times.add(k.t);
@@ -89,7 +93,8 @@ export function DirectorPanel({ store, asset, onClose }: { store: Store; asset: 
     (async () => {
       let parsed: SceneSpec;
       try {
-        parsed = JSON.parse(specText) as SceneSpec;
+        // Expand the cut list so the frustum shows the real shot camera.
+        parsed = expandShots(JSON.parse(specText) as SceneSpec);
       } catch {
         setError('Spec is not valid JSON');
         return;
@@ -210,7 +215,7 @@ export function DirectorPanel({ store, asset, onClose }: { store: Store; asset: 
 
       const loop = () => {
         if (disposed || !stage || !renderer) return;
-        stage.poseAt(tRef.current);
+        stage.poseAt(tRef.current, { cameraPos: specCameraPosition(parsed, tRef.current) });
         // Ghost: while dragging, offset the grabbed object visually.
         if (drag) {
           const target = drag.kind === 'character' ? stage.characters[drag.index]?.root : stage.props[drag.index]?.root;

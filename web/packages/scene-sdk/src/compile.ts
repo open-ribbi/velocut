@@ -12,6 +12,7 @@
 import { sampleAnimatable } from '@velocut/render-sdk';
 import type * as THREE from 'three';
 import { buildStage, sampleVec3, DEFAULT_ASSET_BASE, type Stage } from './stage.ts';
+import { expandShots } from './shots.ts';
 import type { SceneSpec, Vec3A } from './types.ts';
 
 export interface CompiledScene {
@@ -27,12 +28,34 @@ export interface CompiledScene {
   dispose(): void;
 }
 
+/** Deterministic handheld wobble: a fixed multi-sine of t (distinct phases
+ *  per channel index) — reproducible on every render, no randomness. */
+function wobble(t: number, hz: number, channel: number): number {
+  const w = 2 * Math.PI * hz;
+  const p = channel * 1.7;
+  return Math.sin(w * t + 0.7 + p) * 0.62 + Math.sin(w * 2.17 * t + 3.1 + p) * 0.27 + Math.sin(w * 4.9 * t + 5.3 + p) * 0.11;
+}
+
+/** The shot camera's sampled position at t (also fed to gaze:'camera'). */
+export function specCameraPosition(spec: SceneSpec, t: number): [number, number, number] {
+  return sampleVec3(spec.camera?.position, t, 5, 2.4, 7);
+}
+
 /** Aim the camera per the spec at time t — shared with the Director panel's
- *  spec-camera preview so staging and rendering agree. */
+ *  spec-camera preview so staging and rendering agree. Expects a spec whose
+ *  shots are already expanded (see expandShots). */
 export function applySpecCamera(camera: THREE.PerspectiveCamera, spec: SceneSpec, stage: Stage, t: number): void {
   const cam = spec.camera;
   camera.fov = sampleAnimatable(cam?.fov, t, 40);
-  camera.position.set(...sampleVec3(cam?.position, t, 5, 2.4, 7));
+  const [px, py, pz] = specCameraPosition(spec, t);
+  const shake = cam?.shake;
+  const amp = shake?.amplitude ?? (shake ? 0.03 : 0);
+  const hz = shake?.frequency ?? 1.1;
+  camera.position.set(
+    px + amp * wobble(t, hz, 0),
+    py + amp * 0.6 * wobble(t, hz, 1),
+    pz + amp * wobble(t, hz, 2),
+  );
   const look = cam?.lookAt;
   if (look && 'character' in look && typeof look.character === 'string') {
     const pos = stage.characterPosition(look.character, t);
@@ -45,13 +68,23 @@ export function applySpecCamera(camera: THREE.PerspectiveCamera, spec: SceneSpec
   } else {
     camera.lookAt(...sampleVec3(look as Vec3A | undefined, t, 0, 1, 0));
   }
+  // After lookAt the local axes are the view axes: Z-roll = dutch angle,
+  // small X/Y rotations = handheld aim wobble.
+  const rollRad = (sampleAnimatable(cam?.roll, t, 0) * Math.PI) / 180;
+  if (rollRad) camera.rotateZ(rollRad);
+  const rotAmp = ((shake?.rotAmplitude ?? (shake ? 0.5 : 0)) * Math.PI) / 180;
+  if (rotAmp) {
+    camera.rotateX(rotAmp * wobble(t, hz, 3));
+    camera.rotateY(rotAmp * wobble(t, hz, 4));
+  }
   camera.updateProjectionMatrix();
 }
 
 export function compileSceneSpec(
-  spec: SceneSpec,
+  rawSpec: SceneSpec,
   defaults: { width: number; height: number; fps: number; assetBase?: string },
 ): CompiledScene {
+  const spec = expandShots(rawSpec);
   const width = Math.round(spec.width ?? defaults.width);
   const height = Math.round(spec.height ?? defaults.height);
   const fps = spec.fps ?? 30;
@@ -81,7 +114,7 @@ export function compileSceneSpec(
     if (!renderer || !stage || !camera || !canvas) throw new Error('CompiledScene.render() before load()');
     const clamped = Math.max(0, Math.min(frameCount - 1, index));
     const t = (clamped * frameDurUs) / 1e6;
-    stage.poseAt(t);
+    stage.poseAt(t, { cameraPos: specCameraPosition(spec, t) });
     applySpecCamera(camera, spec, stage, t);
     renderer.render(stage.scene, camera);
     return new VideoFrame(canvas, { timestamp: clamped * frameDurUs, duration: frameDurUs });

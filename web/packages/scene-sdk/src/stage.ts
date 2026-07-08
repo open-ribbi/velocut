@@ -63,6 +63,8 @@ export interface StageCharacter {
   actions: Map<string, THREE.AnimationAction>;
   clips: Record<string, ClipMeta>;
   heightM: number;
+  /** Head bone (name matches /head/i), if the rig has one — gaze target. */
+  head: THREE.Object3D | null;
   spec: NonNullable<SceneSpec['characters']>[number];
 }
 
@@ -76,8 +78,9 @@ export interface Stage {
   scene: THREE.Scene;
   characters: StageCharacter[];
   props: StageProp[];
-  /** Pose every character/prop for time t (seconds) — pure w.r.t. prior calls. */
-  poseAt(t: number): void;
+  /** Pose every character/prop for time t (seconds) — pure w.r.t. prior calls.
+   *  Pass the shot camera's position so `gaze: 'camera'` heads can aim at it. */
+  poseAt(t: number, opts?: { cameraPos?: [number, number, number] }): void;
   /** A character's sampled world position at t (camera tracking, dragging). */
   characterPosition(id: string, t: number): [number, number, number] | null;
 }
@@ -146,12 +149,22 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
       gltfCache.set(url, g);
     }
     const gltf = await g;
-    const root = SkeletonUtils.clone(gltf.scene);
-    root.traverse((o) => {
+    const inner = SkeletonUtils.clone(gltf.scene);
+    inner.traverse((o) => {
       o.castShadow = true;
     });
+    // Wrap in a group: baseScale normalizes the model's native units (e.g. the
+    // Fox is authored in centimeters) on the INNER node, so the user-facing
+    // scale/position on the outer root stays in meters.
+    if (entry.baseScale != null) inner.scale.setScalar(entry.baseScale);
+    const root = new three.Group();
+    root.add(inner);
     scene.add(root);
-    const mixer = new three.AnimationMixer(root);
+    let head: THREE.Object3D | null = null;
+    inner.traverse((o) => {
+      if (!head && /head/i.test(o.name)) head = o;
+    });
+    const mixer = new three.AnimationMixer(inner);
     const actions = new Map<string, THREE.AnimationAction>();
     const clips: Record<string, ClipMeta> = {};
     for (const clip of gltf.animations) {
@@ -159,7 +172,7 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
       actions.set(clip.name, mixer.clipAction(clip));
       clips[clip.name] = { duration: clip.duration, loop: entry.clips[clip.name].loop ?? true };
     }
-    characters.push({ root, mixer, actions, clips, heightM: entry.heightM ?? 1.7, spec: c });
+    characters.push({ root, mixer, actions, clips, heightM: entry.heightM ?? 1.7, head, spec: c });
   }
 
   // ----------------------------------------------------------------- props
@@ -177,7 +190,37 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
     props.push({ root: mesh, spec: p });
   }
 
-  function poseAt(t: number): void {
+  /** Max head turn away from the body's facing (radians ≈ ±70°). */
+  const GAZE_CLAMP = (70 * Math.PI) / 180;
+  const UP = new three.Vector3(0, 1, 0);
+  const tmpV = new three.Vector3();
+  const tmpQ = new three.Quaternion();
+  const tmpQ2 = new three.Quaternion();
+
+  /** Turn the head bone toward a world point: yaw-only (rotation around the
+   *  world Y axis, which is safe for ANY rig's bone axes — no head tilt), and
+   *  clamped relative to the body so the head never spins. Applied AFTER the
+   *  animation pose, still a pure function of (t, target). */
+  function aimHead(c: StageCharacter, t: number, target: THREE.Vector3): void {
+    if (!c.head) return;
+    c.root.updateWorldMatrix(true, true);
+    const headPos = c.head.getWorldPosition(tmpV.clone());
+    const dx = target.x - headPos.x;
+    const dz = target.z - headPos.z;
+    if (dx * dx + dz * dz < 1e-6) return;
+    const desiredYaw = Math.atan2(dx, dz);
+    const bodyYaw = (sampleAnimatable(c.spec.rotationY, t, 0) * Math.PI) / 180;
+    // Shortest signed difference, clamped to the neck's range.
+    let extra = desiredYaw - bodyYaw;
+    extra = Math.atan2(Math.sin(extra), Math.cos(extra));
+    extra = Math.max(-GAZE_CLAMP, Math.min(GAZE_CLAMP, extra));
+    // World-axis rotation applied to a bone: localQ' = pq⁻¹ · ΔQ · pq · localQ.
+    const pq = c.head.parent!.getWorldQuaternion(tmpQ);
+    const dq = tmpQ2.setFromAxisAngle(UP, extra);
+    c.head.quaternion.premultiply(pq.clone().invert().multiply(dq).multiply(pq));
+  }
+
+  function poseAt(t: number, opts?: { cameraPos?: [number, number, number] }): void {
     for (const c of characters) {
       const [x, y, z] = sampleVec3(c.spec.position, t, 0, 0, 0);
       c.root.position.set(x, y, z);
@@ -199,6 +242,21 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
         action.time = hit.time;
       }
       c.mixer.update(0);
+    }
+    // Gaze runs after every mixer wrote its pose, so a character can aim at
+    // another character's CURRENT-frame position.
+    for (const c of characters) {
+      const gaze = c.spec.gaze;
+      if (!gaze) continue;
+      if (gaze === 'camera') {
+        if (opts?.cameraPos) aimHead(c, t, tmpV.set(...opts.cameraPos));
+      } else {
+        const other = characters.find((o) => o.spec.id === gaze.character);
+        if (other && other !== c) {
+          const [ox, oy, oz] = sampleVec3(other.spec.position, t, 0, 0, 0);
+          aimHead(c, t, tmpV.set(ox, oy + other.heightM * 0.9, oz));
+        }
+      }
     }
     for (const p of props) {
       const [x, y, z] = sampleVec3(p.spec.position, t, 0, 0.5, 0);

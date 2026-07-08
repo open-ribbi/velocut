@@ -231,6 +231,30 @@ export function SceneInspector({ store, asset }: { store: Store; asset: Asset })
                   onChange={(v) => run((d) => (d.characters![ci].rotationY = v))}
                 />
               </div>
+              <div className="prop-row">
+                <span className="prop-label">Gaze</span>
+                <select
+                  value={c.gaze === 'camera' ? 'camera' : c.gaze ? `char:${c.gaze.character}` : ''}
+                  onChange={(e) =>
+                    run((d) => {
+                      const v = e.target.value;
+                      if (!v) delete d.characters![ci].gaze;
+                      else if (v === 'camera') d.characters![ci].gaze = 'camera';
+                      else d.characters![ci].gaze = { character: v.slice(5) };
+                    })
+                  }
+                >
+                  <option value="">None</option>
+                  <option value="camera">Camera</option>
+                  {(spec.characters ?? [])
+                    .filter((o) => o.id !== c.id)
+                    .map((o) => (
+                      <option key={o.id} value={`char:${o.id}`}>
+                        Look at {o.id}
+                      </option>
+                    ))}
+                </select>
+              </div>
               <div className="scene-actions">
                 {(c.actions ?? []).map((a, ai) => (
                   <div className="prop-row scene-action" key={ai}>
