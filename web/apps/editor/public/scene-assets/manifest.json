@@ -60,6 +60,48 @@
         "Unarmed_Melee_Attack_Kick": { "loop": false }
       }
     },
+    "char/casual": {
+      "file": "characters/casual.glb",
+      "label": "Casual man",
+      "license": "CC0-1.0 (Quaternius / Ultimate Modular Men, via Poly Pizza)",
+      "heightM": 1.82,
+      "bones": { "handR": "WristR", "handL": "WristL", "head": "Head" },
+      "clips": {
+        "Idle_Neutral": { "loop": true },
+        "Idle": { "loop": true },
+        "Walk": { "loop": true, "speedMps": 1.1 },
+        "Run": { "loop": true, "speedMps": 3.0 },
+        "Wave": { "loop": false },
+        "Interact": { "loop": false },
+        "Punch_Left": { "loop": false },
+        "Punch_Right": { "loop": false },
+        "Kick_Right": { "loop": false },
+        "HitRecieve": { "loop": false },
+        "Roll": { "loop": false },
+        "Death": { "loop": false }
+      }
+    },
+    "char/suit": {
+      "file": "characters/suit.glb",
+      "label": "Business man (suit)",
+      "license": "CC0-1.0 (Quaternius / Ultimate Modular Men, via Poly Pizza)",
+      "heightM": 1.82,
+      "bones": { "handR": "WristR", "handL": "WristL", "head": "Head" },
+      "clips": {
+        "Idle_Neutral": { "loop": true },
+        "Idle": { "loop": true },
+        "Walk": { "loop": true, "speedMps": 1.1 },
+        "Run": { "loop": true, "speedMps": 3.0 },
+        "Wave": { "loop": false },
+        "Interact": { "loop": false },
+        "Punch_Left": { "loop": false },
+        "Punch_Right": { "loop": false },
+        "Kick_Right": { "loop": false },
+        "HitRecieve": { "loop": false },
+        "Roll": { "loop": false },
+        "Death": { "loop": false }
+      }
+    },
     "char/robot": {
       "file": "characters/robot.glb",
       "label": "Robot",

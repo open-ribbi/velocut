@@ -52,10 +52,15 @@ gltf.scene.traverse(o => o.isBone && console.log(o.name)); // bones
   the [Adventurers pack](https://github.com/KayKit-Game-Assets/KayKit-Character-Pack-Adventures-1.0),
   which also has Barbarian/Mage/Rogue/RogueHooded on the same rig — same
   manifest shape, same clip names).
+- [Poly Pizza](https://poly.pizza) — hosts most Quaternius packs as direct
+  GLB downloads with the animations intact (the vendored Casual/Business
+  characters come from the [Ultimate Modular Men Pack](https://poly.pizza/bundle/Ultimate-Modular-Men-Pack-ZiH8muWqwQ);
+  nine siblings — Astronaut, SWAT, Worker, Punk, Farmer, King, Hoodie,
+  Beach, Adventurer — share the same rig and 24 clip names, so each is one
+  manifest entry away). Check the license shown per model; Quaternius is CC0.
 - [Quaternius](https://quaternius.com) — large CC0 packs incl. the Universal
-  Animation Library (hundreds of humanoid clips) and animated characters.
-  Downloads are manual (no stable direct links), which is why they aren't
-  vendored here — but they slot straight in.
+  Animation Library (hundreds of humanoid clips); site downloads are manual,
+  prefer the Poly Pizza mirrors above for direct links.
 - [Kenney](https://kenney.nl) — CC0; some packs need FBX→GLB conversion
   (Blender exports GLB with named actions).
 - three.js examples & Khronos glTF samples — individually licensed; check and

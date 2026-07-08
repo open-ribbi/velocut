@@ -200,7 +200,10 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
     const root = new three.Group();
     root.add(inner);
     scene.add(root);
-    let head: THREE.Object3D | null = null;
+    // Gaze target: the manifest's declared head bone wins — a /head/i traverse
+    // can hit a skinned head MESH first (rotating it does nothing), and rigs
+    // name things unpredictably. The regex stays as the fallback.
+    let head: THREE.Object3D | null = (entry.bones?.head && inner.getObjectByName(entry.bones.head)) || null;
     const morphMeshes: THREE.Mesh[] = [];
     inner.traverse((o) => {
       if (!head && /head/i.test(o.name)) head = o;
@@ -210,9 +213,13 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
     const actions = new Map<string, THREE.AnimationAction>();
     const clips: Record<string, ClipMeta> = {};
     for (const clip of gltf.animations) {
-      if (!entry.clips[clip.name]) continue; // only registry-listed clips
-      actions.set(clip.name, mixer.clipAction(clip));
-      clips[clip.name] = { duration: clip.duration, loop: entry.clips[clip.name].loop ?? true };
+      // Blender exports prefix clips with the armature ("CharacterArmature|
+      // Walk") — register under the bare name so the agent vocabulary stays
+      // clean and portable across rigs.
+      const name = clip.name.split('|').pop()!;
+      if (!entry.clips[name]) continue; // only registry-listed clips
+      actions.set(name, mixer.clipAction(clip));
+      clips[name] = { duration: clip.duration, loop: entry.clips[name].loop ?? true };
     }
     if (c.pose != null) {
       throw new Error(`character '${c.id}': '${c.model}' is not poseable — pose only works on builtin figures (char/mannequin); use actions`);
