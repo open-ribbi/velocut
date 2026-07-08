@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Draft for review |
+| Status | Implemented through P3 (M0 cbfb11b · P0 25e73b4 · P1 13b9aeb · P2 a2a5722 · P3 84c9e8d); hybrid rendering (below) is the committed next direction |
 | Date | 2026-07-08 |
 | Scope decision | MVP = scene + camera moves + preset character actions; assets = built-in CC0 starter library |
 
@@ -15,6 +15,16 @@ what director-console products expose as a stage view with blocking, shots and
 camera moves. In Velocut the **agent is the director**: "a character walks
 into the living room, sits down, the camera pushes in from the doorway" should
 compile to a deterministic, editable clip.
+
+The end-game is **hybrid rendering**: diffusion-video platforms (LibTV,
+TapNow — model aggregation over an infinite canvas) direct the *generator*
+through prompts and get cinematic pixels with probabilistic control; Velocut
+directs the *stage* and gets deterministic, editable control with modest
+pixels. The Scene Director's deterministic per-frame output is, by
+construction, ideal conditioning input for those generators — so the plan is
+to use staged clips as the controllable skeleton and generation as the
+optional skin (see "Hybrid rendering" below), rather than compete on raw
+image quality.
 
 **Agent-first, human-adjustable** is a core requirement, not a later phase:
 everything the agent authors must be manually editable in the UI, and both
@@ -332,7 +342,50 @@ the scene work then builds on a paved road instead of migrating twice.
 | P1 | SceneSpec v1: schema, validator, compiler (characters + actions + camera), asset manifest + CC0 pack vendoring, `sceneClip` host API + restore path, **scene inspector (structured manual editing)** | L |
 | P2 | Agent enablement: sandbox RPC, `scenePromptDoc`, docstring + example, real-LLM verification via the claude-plus proxy flow | M |
 | P3 | Director panel (stage view, drag-to-blocking, shot list) | L |
-| P4+ | Dialogue/TTS + lip-sync, GLB/VRM import, root motion, external generation sources | — |
+| P4 | **Hybrid rendering** (previz → video generation), see the dedicated section | L |
+| P5+ | Dialogue/TTS + lip-sync, GLB/VRM import, root motion, text-to-3D asset sources | — |
+
+## Hybrid rendering — previz → video generation
+
+The committed follow-up direction: a staged scene clip becomes the
+*conditioning skeleton* for a diffusion video generator, marrying our
+deterministic control with generative image quality.
+
+**Why our side needs zero pipeline changes.** A scene clip already produces
+exactly what conditioning needs: frame-exact renders (`CompiledScene.render`),
+a camera trajectory, character poses over time, and a bounded duration — and
+the existing exporter can emit any scene segment as a clean mp4/frames today.
+The generated result comes back as an ordinary imported asset. Everything new
+lives beside the pipeline, not inside it.
+
+**What actually gets built:**
+
+1. **Generation-provider registry** — the `TtsProvider` registry
+   (render-sdk/tts.ts) is the exact precedent: `VideoGenProvider { id, label,
+   modes: ['i2v','v2v','keyframes'], generate(inputs, opts) → asset bytes }`,
+   configured like the LLM relay settings (base URL + key in localStorage,
+   BYOK, connection test). Kling/Wan/Seedance-class APIs slot in as entries;
+   local ComfyUI too.
+2. **Conditioning export** — per provider mode: first/last frame stills
+   (i2v), the full previz segment (v2v / video-conditioning), or, for
+   control-net-style APIs, auxiliary passes (depth, lineart) — three.js can
+   render a depth pass from the same stage in a few lines when a provider
+   wants it.
+3. **Stylize surface** — inspector/Director gain "Generate styled render":
+   pick provider + style prompt → async job → result lands as a NEW asset
+   placed beside (or replacing) the scene clip, with the scene clip kept as
+   the editable source of truth. Regenerating = re-run from the same skeleton.
+   The agent gets the same verb (`velocut.stylizeScene({clipId, provider,
+   prompt})`) in the script sandbox.
+4. **Consistency dividend** — the pitch that makes this more than a feature:
+   multi-shot character/scene consistency is diffusion platforms' structural
+   weakness, and conditioning every shot on the SAME 3D stage anchors
+   identity, layout and camera geometry across shots for free.
+
+**Trust boundary note:** provider calls are host-side network egress with the
+user's key — they belong with the other host tools (tts/search), NEVER
+callable with attacker-controlled URLs from the script sandbox; the provider
+list is user-configured, the sandbox only names a registered provider id.
 
 Each phase lands green (unit + E2E) before the next starts. P0 proves the two
 risky integrations (WebGL2 `OffscreenCanvas` → `VideoFrame` → WebGPU
