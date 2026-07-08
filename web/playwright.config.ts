@@ -11,10 +11,14 @@ export default defineConfig({
   // Cold CI runners re-transform every module through the Vite dev server on
   // a reload; the app takes well over the 5s default to re-bootstrap.
   expect: { timeout: 15_000 },
+  // One retry on CI with a trace: a transient infra hiccup doesn't block the
+  // gate, and a real failure leaves a trace artifact to diagnose.
+  retries: process.env.CI ? 1 : 0,
   // Storage (IndexedDB/OPFS) is per browser context; tests that span reloads
   // keep their context, and each test file starts from a clean slate.
   use: {
     baseURL: 'http://localhost:5173',
+    trace: 'on-first-retry',
     launchOptions: {
       // Best-effort WebGPU on machines without a real GPU; harmless elsewhere.
       args: ['--enable-unsafe-webgpu', '--use-angle=swiftshader'],

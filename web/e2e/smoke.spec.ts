@@ -44,6 +44,9 @@ test('boots with an engine, imports media, edits, and survives a reload', async 
   await page.evaluate(() => (window as any).velocut.collab.flushNow());
   await page.reload();
   await expect.poll(async () => (await doc(page))?.tracks[0]?.clips.length, { timeout: 15_000 }).toBe(1);
+  // Data layer first (the restored document), then its UI projection —
+  // separating the two makes a CI failure point at the right layer.
+  await expect.poll(async () => (await doc(page))?.assets?.length, { timeout: 15_000 }).toBe(1);
   await expect(page.locator('.asset-item')).toHaveCount(1);
   // The OPFS-backed image re-attaches (no unloaded-asset warning).
   await expect(page.locator('.asset-warn')).toHaveCount(0);
