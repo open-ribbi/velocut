@@ -53,11 +53,13 @@ gltf.scene.traverse(o => o.isBone && console.log(o.name)); // bones
   which also has Barbarian/Mage/Rogue/RogueHooded on the same rig — same
   manifest shape, same clip names).
 - [Poly Pizza](https://poly.pizza) — hosts most Quaternius packs as direct
-  GLB downloads with the animations intact (the vendored Casual/Business
-  characters come from the [Ultimate Modular Men Pack](https://poly.pizza/bundle/Ultimate-Modular-Men-Pack-ZiH8muWqwQ);
-  nine siblings — Astronaut, SWAT, Worker, Punk, Farmer, King, Hoodie,
-  Beach, Adventurer — share the same rig and 24 clip names, so each is one
-  manifest entry away). Check the license shown per model; Quaternius is CC0.
+  GLB downloads with the animations intact (e.g. the
+  [Ultimate Modular Men Pack](https://poly.pizza/bundle/Ultimate-Modular-Men-Pack-ZiH8muWqwQ):
+  11 modern humans on one rig with 24 named clips — each is one manifest
+  entry away if styled characters are ever wanted). Check the license shown
+  per model; Quaternius is CC0. Note: for video-generation conditioning,
+  prefer the neutral mannequin — styled characters (faces, clothes) steer
+  the video model's reading of the frame.
 - [Quaternius](https://quaternius.com) — large CC0 packs incl. the Universal
   Animation Library (hundreds of humanoid clips); site downloads are manual,
   prefer the Poly Pizza mirrors above for direct links.
