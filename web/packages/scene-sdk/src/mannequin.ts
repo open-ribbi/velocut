@@ -1,24 +1,30 @@
-// mannequin.ts — the built-in poseable figure (an art mannequin), zero assets.
+// mannequin.ts — the built-in poseable figure (a body-kun style art doll),
+// zero assets.
 //
-// Purpose-built for the previz→video-generation path: a neutral humanoid
-// silhouette the agent (or a human, via presets + per-joint controls) POSES,
-// so a shot's blocking and body language condition the generator without any
-// styled model getting in the way. Unlike a pose-only tool, every joint angle
-// is an Animatable — a pose can be keyframed, so the mannequin also MOVES.
+// Purpose-built for the previz→video-generation path: a NEUTRAL articulated
+// silhouette the agent (or a human, via presets + per-joint controls) POSES.
+// Neutrality is the point — no face, no clothes, no character semantics that
+// would steer a video model's understanding of the conditioning frame; just
+// readable human blocking, the same figure LibTV-style consoles use. Unlike a
+// pose-only tool, every joint angle is an Animatable — a pose can be
+// keyframed, so the mannequin also MOVES.
 //
-// Built like a real wooden drawing mannequin: tapered rigid segments joined
-// by visible ball joints, so a bent elbow reads as an articulation instead of
-// a broken tube. Each segment hangs under a joint Group whose origin sits at
-// the anatomical pivot; joint rotation = Group rotation — no skinning, fully
-// deterministic, and gaze (head)/attachTo (hands) work through plain node
-// names. A small nose wedge marks the facing direction (readable blocking).
+// Built like an articulated figure: sculpted rigid segments (chest shell,
+// abdomen, hip block, guarded limbs, boots) joined by visible darker ball
+// joints, so every articulation reads at a glance. Each segment hangs under a
+// joint Group whose origin sits at the anatomical pivot; joint rotation =
+// Group rotation — no skinning, fully deterministic, and gaze (head) /
+// attachTo (hands) work through plain node names.
 
 import type * as THREE from 'three';
 
 /** Poseable joints. Euler degrees [x, y, z]: x = pitch (bend forward/back),
- *  y = yaw (twist), z = roll (spread sideways). */
+ *  y = yaw (twist), z = roll (spread sideways). The spine bends in three
+ *  places (torso = waist, chest = upper spine, neck) for natural curvature. */
 export const MANNEQUIN_JOINTS = [
   'torso',
+  'chest',
+  'neck',
   'head',
   'shoulderL',
   'shoulderR',
@@ -56,6 +62,7 @@ export const POSE_PRESETS: Record<string, PosePreset> = {
   },
   tpose: { shoulderL: [0, 0, 90], shoulderR: [0, 0, -90] },
   walking: {
+    chest: [4, 0, 0],
     shoulderL: [-25, 0, 5],
     shoulderR: [25, 0, -5],
     elbowL: [15, 0, 0],
@@ -70,7 +77,8 @@ export const POSE_PRESETS: Record<string, PosePreset> = {
     ankleR: [14, 0, 0],
   },
   running: {
-    torso: [14, 0, 0],
+    torso: [10, 0, 0],
+    chest: [8, 0, 0],
     shoulderL: [-45, 0, 5],
     shoulderR: [45, 0, -5],
     elbowL: [85, 0, 0],
@@ -86,6 +94,8 @@ export const POSE_PRESETS: Record<string, PosePreset> = {
   },
   sitting: {
     rootY: -0.42,
+    torso: [-4, 0, 0],
+    chest: [4, 0, 0],
     hipL: [-85, 0, 4],
     hipR: [-85, 0, -4],
     kneeL: [85, 0, 0],
@@ -101,7 +111,8 @@ export const POSE_PRESETS: Record<string, PosePreset> = {
   },
   squat: {
     rootY: -0.55,
-    torso: [25, 0, 0],
+    torso: [18, 0, 0],
+    chest: [10, 0, 0],
     hipL: [-110, 0, 9],
     hipR: [-110, 0, -9],
     kneeL: [125, 0, 0],
@@ -115,7 +126,8 @@ export const POSE_PRESETS: Record<string, PosePreset> = {
   },
   kneeling: {
     rootY: -0.46,
-    torso: [5, 0, 0],
+    torso: [3, 0, 0],
+    chest: [3, 0, 0],
     hipL: [-90, 0, 4],
     kneeL: [90, 0, 0],
     ankleL: [-4, 0, 0],
@@ -124,23 +136,28 @@ export const POSE_PRESETS: Record<string, PosePreset> = {
     ankleR: [42, 0, 0],
   },
   bow: {
-    torso: [45, 0, 0],
-    head: [20, 0, 0],
+    torso: [28, 0, 0],
+    chest: [16, 0, 0],
+    neck: [8, 0, 0],
+    head: [12, 0, 0],
     shoulderL: [13, 0, -7],
     shoulderR: [3, 0, -5],
     elbowL: [6, 0, 0],
     elbowR: [6, 0, 0],
   },
   thinking: {
-    torso: [5, 0, 0],
-    head: [10, 15, 8],
+    torso: [3, 0, 0],
+    chest: [3, 5, 0],
+    neck: [4, 8, 4],
+    head: [6, 8, 5],
     shoulderR: [-35, 0, -10],
     elbowR: [120, 0, 0],
     wristR: [28, 0, 0],
     shoulderL: [0, 0, 6],
   },
   fighting: {
-    torso: [10, 20, 0],
+    torso: [6, 14, 0],
+    chest: [5, 8, 0],
     shoulderL: [-30, 0, 20],
     shoulderR: [-40, 0, -15],
     elbowL: [95, 0, 0],
@@ -153,20 +170,24 @@ export const POSE_PRESETS: Record<string, PosePreset> = {
     kneeR: [10, 0, 0],
   },
   wave: {
+    chest: [0, 0, -3],
     shoulderR: [0, 0, -155],
     elbowR: [25, 0, 0],
     wristR: [0, 0, -12],
-    head: [0, -10, 5],
+    neck: [0, -6, 3],
+    head: [0, -6, 3],
     shoulderL: [0, 0, 6],
   },
   reaching: {
-    torso: [8, 0, 0],
+    torso: [5, 0, 0],
+    chest: [4, 0, 0],
     shoulderR: [-85, 0, 0],
     elbowR: [6, 0, 0],
     wristR: [-14, 0, 0],
     shoulderL: [0, 0, 6],
   },
   armscrossed: {
+    chest: [-3, 0, 0],
     shoulderL: [-35, 0, -25],
     shoulderR: [-35, 0, 25],
     elbowL: [115, 25, 0],
@@ -175,7 +196,8 @@ export const POSE_PRESETS: Record<string, PosePreset> = {
     wristR: [18, 0, 0],
   },
   phone: {
-    head: [22, 0, 0],
+    neck: [10, 0, 0],
+    head: [14, 0, 0],
     shoulderR: [-30, 0, -12],
     elbowR: [125, 0, 0],
     wristR: [32, 0, 0],
@@ -191,31 +213,32 @@ export interface Mannequin {
   heightM: number;
 }
 
-// Proportions (meters) for a ~1.7 m figure.
+// Proportions (meters) for a ~1.75 m figure.
 const H = {
-  pelvisY: 0.94, // pelvis center height
-  hipDrop: 0.05, // pelvis center → hip pivot
+  pelvisY: 0.95, // pelvis center height
+  hipDrop: 0.055, // pelvis center → hip pivot
   legUpper: 0.42, // hip → knee
   legLower: 0.4, // knee → ankle
-  torsoJoint: 0.05, // pelvis center → waist pivot
-  torsoLen: 0.47, // waist → neck base
-  headJoint: 0.48, // waist → head (neck) pivot
-  armUpper: 0.29, // shoulder → elbow
-  armLower: 0.25, // elbow → wrist
-  shoulderHalf: 0.19,
-  hipHalf: 0.095,
+  waist: 0.05, // pelvis center → waist pivot
+  chestUp: 0.17, // waist → chest pivot
+  neckUp: 0.26, // chest → neck pivot
+  headUp: 0.055, // neck → head pivot
+  armUpper: 0.28, // shoulder → elbow
+  armLower: 0.24, // elbow → wrist
+  shoulderHalf: 0.2,
+  hipHalf: 0.1,
 };
 
-export const MANNEQUIN_DEFAULT_COLOR = '#d8d3cb'; // warm light grey (wood/clay)
+export const MANNEQUIN_DEFAULT_COLOR = '#4a7de8'; // LibTV-style figure blue
 
-/** Build the segmented figure: tapered limbs + visible ball joints. */
+/** Build the articulated figure: sculpted segments + visible ball joints. */
 export function buildMannequin(three: typeof THREE, color: string | undefined): Mannequin {
   const bodyColor = new three.Color(color ?? MANNEQUIN_DEFAULT_COLOR);
-  const mat = new three.MeshStandardMaterial({ color: bodyColor, roughness: 0.5 });
-  // Joints a shade darker, so every articulation reads at a glance.
+  const mat = new three.MeshStandardMaterial({ color: bodyColor, roughness: 0.55 });
+  // Joints and trim a shade darker, so every articulation reads at a glance.
   const jointMat = new three.MeshStandardMaterial({
-    color: bodyColor.clone().multiplyScalar(0.62),
-    roughness: 0.35,
+    color: bodyColor.clone().multiplyScalar(0.55),
+    roughness: 0.4,
   });
   const joints = new Map<MannequinJoint, THREE.Group>();
 
@@ -230,6 +253,13 @@ export function buildMannequin(three: typeof THREE, color: string | undefined): 
     const g = new three.CylinderGeometry(rTop, rBottom, length, 20, 1);
     g.translate(0, -length / 2, 0);
     return mesh(g);
+  };
+  /** Muscle/guard bulge: a squashed sphere overlaid on a limb segment. */
+  const bulge = (r: number, sx: number, sy: number, sz: number, y: number): THREE.Mesh => {
+    const b = mesh(new three.SphereGeometry(r, 18, 14));
+    b.scale.set(sx, sy, sz);
+    b.position.y = y;
+    return b;
   };
   const ball = (r: number): THREE.Mesh => mesh(new three.SphereGeometry(r, 20, 14), jointMat);
   const jointAt = (
@@ -248,79 +278,99 @@ export function buildMannequin(three: typeof THREE, color: string | undefined): 
     joints.set(name, grp);
     return grp;
   };
+  const lathe = (profile: Array<[number, number]>, segs = 24): THREE.BufferGeometry =>
+    new three.LatheGeometry(profile.map(([r, y]) => new three.Vector2(r, y)), segs);
 
   const root = new three.Group();
 
-  // Pelvis block (root of the body).
+  // Pelvis block: hip shell, wider than deep, with side hip guards.
   const pelvis = new three.Group();
   pelvis.position.y = H.pelvisY;
   root.add(pelvis);
-  const pelvisMesh = mesh(new three.SphereGeometry(0.13, 24, 18));
-  pelvisMesh.scale.set(1.22, 0.72, 0.86);
+  const pelvisMesh = mesh(new three.SphereGeometry(0.135, 24, 18));
+  pelvisMesh.scale.set(1.15, 0.68, 0.82);
   pelvis.add(pelvisMesh);
+  for (const s of [1, -1]) {
+    const guard = mesh(new three.SphereGeometry(0.06, 16, 12));
+    guard.scale.set(0.9, 1.15, 0.95);
+    guard.position.set(s * 0.115, -0.02, 0);
+    pelvis.add(guard);
+  }
 
-  // Torso: a lathed shell (waist → chest → shoulders), bending at the waist.
-  const torso = jointAt('torso', pelvis, 0, H.torsoJoint, 0, 0.105);
-  const torsoProfile: Array<[number, number]> = [
-    [0.093, 0],
-    [0.103, 0.07],
-    [0.118, 0.17],
-    [0.142, 0.3],
-    [0.148, 0.36],
-    [0.122, 0.42],
-    [0.06, 0.46],
-    [0.04, H.torsoLen],
-  ];
-  torso.add(mesh(new three.LatheGeometry(torsoProfile.map(([r, y]) => new three.Vector2(r, y)), 28)));
+  // Abdomen: a short waist segment — the torso joint bends here.
+  const torso = jointAt('torso', pelvis, 0, H.waist, 0, 0.095);
+  torso.add(mesh(lathe([[0.088, 0], [0.098, 0.06], [0.092, 0.13], [0.08, 0.18]])));
 
-  // Head on a short neck (the neck rotates with the head — a nod bends here).
-  const head = jointAt('head', torso, 0, H.headJoint, 0);
-  const neck = mesh(new three.CylinderGeometry(0.038, 0.042, 0.07, 16));
-  neck.position.y = 0.02;
-  head.add(neck);
-  const skull = mesh(new three.SphereGeometry(0.112, 28, 22));
-  skull.scale.set(0.88, 1.1, 0.96);
-  skull.position.y = 0.155;
+  // Chest shell: broad and flat (wider than deep), clavicle taper on top.
+  const chest = jointAt('chest', torso, 0, H.chestUp, 0, 0.085);
+  const chestMesh = mesh(lathe([[0.085, -0.02], [0.12, 0.06], [0.135, 0.15], [0.11, 0.22], [0.045, 0.26]]));
+  chestMesh.scale.set(1.28, 1, 0.78);
+  chest.add(chestMesh);
+
+  // Neck + helmet head with a darker visor band (facing cue without a face).
+  const neck = jointAt('neck', chest, 0, H.neckUp, 0, 0.042);
+  neck.add(mesh(new three.CylinderGeometry(0.036, 0.042, 0.07, 16)));
+  const head = jointAt('head', neck, 0, H.headUp, 0);
+  const skull = mesh(new three.SphereGeometry(0.11, 28, 22));
+  skull.scale.set(0.88, 1.12, 0.98);
+  skull.position.y = 0.1;
   head.add(skull);
-  // Nose wedge: makes the facing direction readable from any angle.
-  const nose = mesh(new three.ConeGeometry(0.018, 0.05, 12));
-  nose.rotation.x = Math.PI / 2;
-  nose.position.set(0, 0.145, 0.108);
-  head.add(nose);
+  const visor = mesh(new three.SphereGeometry(0.105, 24, 10, 0, Math.PI * 2, Math.PI * 0.42, Math.PI * 0.16), jointMat);
+  visor.scale.set(0.9, 1.12, 1.0);
+  visor.position.y = 0.1;
+  visor.rotation.x = -Math.PI * 0.06;
+  head.add(visor);
 
-  // Arms: shoulder ball → tapered upper → elbow ball → tapered forearm →
-  // wrist ball → paddle hand (the attachTo slot lives at the palm).
+  // Arms: padded shoulder ball → upper arm → elbow ball → forearm with a
+  // wrist-guard flare → wrist ball → mitten hand (attachTo slot at the palm).
   for (const side of ['L', 'R'] as const) {
     const s = side === 'L' ? 1 : -1;
-    const shoulder = jointAt(`shoulder${side}`, torso, s * H.shoulderHalf, 0.395, 0, 0.056);
-    shoulder.add(limb(0.045, 0.037, H.armUpper));
-    const elbow = jointAt(`elbow${side}`, shoulder, 0, -H.armUpper, 0, 0.045);
-    elbow.add(limb(0.035, 0.028, H.armLower));
-    const wrist = jointAt(`wrist${side}`, elbow, 0, -H.armLower, 0, 0.034);
+    const shoulder = jointAt(`shoulder${side}`, chest, s * H.shoulderHalf, 0.185, 0, 0.052);
+    const pad = mesh(new three.SphereGeometry(0.072, 18, 12, 0, Math.PI * 2, 0, Math.PI * 0.55));
+    pad.scale.set(1, 0.9, 1);
+    pad.rotation.z = s * -0.35;
+    shoulder.add(pad);
+    shoulder.add(limb(0.042, 0.036, H.armUpper));
+    shoulder.add(bulge(0.048, 1, 1.35, 1, -0.09)); // biceps
+    const elbow = jointAt(`elbow${side}`, shoulder, 0, -H.armUpper, 0, 0.042);
+    elbow.add(limb(0.034, 0.03, H.armLower));
+    elbow.add(bulge(0.04, 1, 1.5, 1, -0.17)); // wrist guard flare
+    const wrist = jointAt(`wrist${side}`, elbow, 0, -H.armLower, 0, 0.032);
     const hand = new three.Group();
     hand.name = `hand${side}`;
-    hand.position.y = -0.06;
-    const palm = mesh(new three.SphereGeometry(0.052, 16, 12));
-    palm.scale.set(0.72, 1.2, 0.45);
+    hand.position.y = -0.055;
+    const palm = mesh(new three.SphereGeometry(0.05, 16, 12));
+    palm.scale.set(0.7, 1.2, 0.42);
     hand.add(palm);
+    const thumb = mesh(new three.SphereGeometry(0.022, 10, 8));
+    thumb.scale.set(0.8, 1.4, 0.8);
+    thumb.position.set(s * 0.032, 0.01, 0.015);
+    hand.add(thumb);
     wrist.add(hand);
   }
 
-  // Legs: hip ball → tapered thigh → knee ball → tapered calf → ankle ball →
-  // shoe (heel slightly behind the ankle, sole meeting the ground).
+  // Legs: hip ball → thigh → knee ball → calf (muscle bulge + ankle guard) →
+  // ankle ball → boot with toe cap.
   for (const side of ['L', 'R'] as const) {
     const s = side === 'L' ? 1 : -1;
-    const hip = jointAt(`hip${side}`, pelvis, s * H.hipHalf, -H.hipDrop, 0, 0.068);
-    hip.add(limb(0.062, 0.048, H.legUpper));
-    const knee = jointAt(`knee${side}`, hip, 0, -H.legUpper, 0, 0.055);
-    knee.add(limb(0.046, 0.036, H.legLower));
-    const ankle = jointAt(`ankle${side}`, knee, 0, -H.legLower, 0, 0.04);
-    const shoe = mesh(new three.SphereGeometry(0.058, 18, 14));
-    shoe.scale.set(0.78, 0.5, 1.95);
-    shoe.position.set(0, -0.038, 0.05);
-    ankle.add(shoe);
+    const hip = jointAt(`hip${side}`, pelvis, s * H.hipHalf, -H.hipDrop, 0, 0.062);
+    hip.add(limb(0.06, 0.046, H.legUpper));
+    hip.add(bulge(0.065, 1, 1.4, 1, -0.13)); // thigh
+    const knee = jointAt(`knee${side}`, hip, 0, -H.legUpper, 0, 0.052);
+    knee.add(limb(0.044, 0.032, H.legLower));
+    knee.add(bulge(0.05, 1, 1.5, 1, -0.12)); // calf
+    knee.add(bulge(0.038, 1, 1.3, 1, -0.34)); // ankle guard
+    const ankle = jointAt(`ankle${side}`, knee, 0, -H.legLower, 0, 0.038);
+    const boot = mesh(new three.SphereGeometry(0.055, 18, 14));
+    boot.scale.set(0.82, 0.55, 1.7);
+    boot.position.set(0, -0.036, 0.03);
+    ankle.add(boot);
+    const toe = mesh(new three.SphereGeometry(0.042, 14, 10));
+    toe.scale.set(0.85, 0.5, 1.0);
+    toe.position.set(0, -0.045, 0.115);
+    ankle.add(toe);
   }
 
-  const heightM = H.pelvisY + H.torsoJoint + H.headJoint + 0.155 + 0.112 * 1.1;
+  const heightM = H.pelvisY + H.waist + H.chestUp + H.neckUp + H.headUp + 0.1 + 0.11 * 1.12;
   return { root, joints, heightM };
 }
