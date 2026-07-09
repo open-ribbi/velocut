@@ -442,7 +442,7 @@ html, body, #root {
 .director-close:hover { background: #3a1d1d; color: #ff9a9a; }
 .director-body { flex: 1; display: flex; min-height: 0; }
 .director-canvas { flex: 1; width: 100%; height: 100%; min-width: 0; display: block; cursor: grab; }
-.director-side { width: 220px; padding: 10px; border-left: 1px solid #232a36; overflow-y: auto; }
+.director-side { width: 264px; padding: 10px; border-left: 1px solid #232a36; overflow-y: auto; }
 .director-key { display: inline-block; margin: 2px; font-size: 11px; padding: 3px 8px; border-radius: 5px; background: #1a1d23; color: #cfd6e2; }
 .director-key.active { background: #2b3242; color: #fff; }
 .director-hint { margin-top: 10px; line-height: 1.5; }
@@ -454,4 +454,14 @@ html, body, #root {
 .director-tool.active { background: #2b3242; color: #fff; border-color: #3d4a86; }
 .director-selcard { border: 1px solid #2a3140; border-radius: 8px; padding: 8px; margin-bottom: 10px; background: #14181f; }
 .director-selcard .group-title { display: flex; justify-content: space-between; align-items: center; margin-top: 0; }
-.director-selcard input[type='number'] { width: 70px; }
+.director-selcard input[type='number'] { width: 52px; }
+.director-selcard select { max-width: 160px; }
+.director-selcard .scene-actions .prop-label { white-space: nowrap; font-size: 11px; }
+.director-selcard .scene-action select { max-width: 96px; }
+.director-selcard .scene-action input[type='number'] { width: 42px; }
+.director-selcard .scene-vec3 input { width: 42px; }
+.scene-object-row { justify-content: space-between; }
+.scene-object-open { flex: 1; display: flex; justify-content: space-between; align-items: center; gap: 8px; text-align: left; background: #1a1d23; border: none; border-radius: 6px; padding: 6px 9px; color: #dfe5ee; cursor: pointer; }
+.scene-object-open:hover { background: #232a36; }
+.scene-object-id { font-weight: 600; }
+.scene-object-model { color: #8b93a3; font-size: 11px; }

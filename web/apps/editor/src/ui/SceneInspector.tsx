@@ -1,25 +1,28 @@
-// SceneInspector — structured manual editing for 3D scene clips.
+// SceneInspector — scene-level manual editing for 3D scene clips.
 //
 // The human half of "agent-first, human-adjustable": every control edits the
 // SAME in-document spec the agent writes, through the SAME command
 // (setAssetSpec), so each change is one attributed, undoable history node and
-// other tabs/peers see it immediately. The form covers the common fields;
-// the JSON tab is the escape hatch for anything it doesn't surface yet
-// (keyframed values show as read-only badges in the form).
+// other tabs/peers see it immediately.
+//
+// Division of labor (LibTV-style): this panel owns what belongs to the SCENE
+// — environment, lighting, camera, the object roster — while everything about
+// ONE object (model, transform, pose, gaze, actions, attachment) lives in the
+// Director's selection card, next to the object you're looking at. Clicking a
+// roster row opens the Director with that object selected. The JSON tab stays
+// the escape hatch for the full grammar (keyframes, shots, morphs, points).
 
 import { useEffect, useMemo, useState } from 'react';
 import type { Asset } from '@velocut/protocol';
-import type { Animatable } from '@velocut/render-sdk';
 import {
   loadSceneManifest,
   validateSceneSpec,
-  MANNEQUIN_DEFAULT_COLOR,
-  POSE_PRESETS,
   type SceneAssetManifest,
   type SceneSpec,
 } from '@velocut/scene-sdk';
 import type { Store } from '../state/store';
-import { DirectorPanel } from './DirectorPanel';
+import { DirectorPanel, type Sel } from './DirectorPanel';
+import { AnimatableField, Vec3Row } from './SceneFields';
 
 /** Deep-clone + mutate + dispatch: one edit = one setAssetSpec node. */
 function useSpecEditor(store: Store, asset: Asset) {
@@ -43,62 +46,13 @@ function useSpecEditor(store: Store, asset: Asset) {
   return { spec, patch };
 }
 
-/** Constant Animatable → number input; keyframed → read-only badge (edit via
- *  the JSON tab, which can express the full grammar). */
-function AnimatableField({
-  value,
-  fallback,
-  step = 0.1,
-  onChange,
-}: {
-  value: Animatable | undefined;
-  fallback: number;
-  step?: number;
-  onChange: (v: number) => void;
-}) {
-  if (Array.isArray(value)) {
-    return (
-      <span className="kf-chip" title="Keyframed — edit via the JSON tab">
-        ◆ {value.length} keys
-      </span>
-    );
-  }
-  return (
-    <input
-      type="number"
-      step={step}
-      value={Math.round(((value ?? fallback) as number) * 100) / 100}
-      onChange={(e) => onChange(Number(e.target.value))}
-    />
-  );
-}
-
-function Vec3Row({
-  label,
-  value,
-  onAxis,
-}: {
-  label: string;
-  value: { x?: Animatable; y?: Animatable; z?: Animatable } | undefined;
-  onAxis: (axis: 'x' | 'y' | 'z', v: number) => void;
-}) {
-  return (
-    <div className="prop-row scene-vec3">
-      <span className="prop-label">{label}</span>
-      {(['x', 'y', 'z'] as const).map((axis) => (
-        <AnimatableField key={axis} value={value?.[axis]} fallback={0} onChange={(v) => onAxis(axis, v)} />
-      ))}
-    </div>
-  );
-}
-
 export function SceneInspector({ store, asset }: { store: Store; asset: Asset }) {
   const { spec, patch } = useSpecEditor(store, asset);
   const [tab, setTab] = useState<'form' | 'json'>('form');
   const [manifest, setManifest] = useState<SceneAssetManifest | null>(null);
   const [jsonDraft, setJsonDraft] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [director, setDirector] = useState(false);
+  const [director, setDirector] = useState<{ open: boolean; sel: Sel | null }>({ open: false, sel: null });
 
   useEffect(() => {
     let alive = true;
@@ -121,8 +75,8 @@ export function SceneInspector({ store, asset }: { store: Store; asset: Asset })
 
   const run = (mutate: (draft: SceneSpec) => void) => setError(patch(mutate));
   const characterModels = Object.keys(manifest?.characters ?? {});
-  const clipNames = (model: string) => Object.keys(manifest?.characters[model]?.clips ?? {});
   const propModels = Object.keys(manifest?.props ?? {});
+  const openDirector = (sel: Sel | null) => setDirector({ open: true, sel });
 
   return (
     <div className="prop-group scene-inspector">
@@ -144,10 +98,12 @@ export function SceneInspector({ store, asset }: { store: Store; asset: Asset })
         </span>
       </div>
       {error && <div className="scene-error">{error}</div>}
-      <button className="fx-add director-open" onClick={() => setDirector(true)}>
+      <button className="fx-add director-open" onClick={() => openDirector(null)}>
         🎬 Open Director (stage view)
       </button>
-      {director && <DirectorPanel store={store} asset={asset} onClose={() => setDirector(false)} />}
+      {director.open && (
+        <DirectorPanel store={store} asset={asset} initialSel={director.sel} onClose={() => setDirector({ open: false, sel: null })} />
+      )}
 
       {tab === 'json' ? (
         <>
@@ -200,159 +156,37 @@ export function SceneInspector({ store, asset }: { store: Store; asset: Asset })
             </select>
           </div>
 
+          {/* Object roster — per-object editing happens in the Director,
+              beside the object itself. A row click opens it pre-selected. */}
           <div className="group-title">Characters</div>
           {(spec.characters ?? []).map((c, ci) => (
-            <div className="fx-block" key={c.id}>
-              <div className="fx-head">
-                <span>{c.id}</span>
-                <button className="fx-remove" onClick={() => run((d) => d.characters!.splice(ci, 1))}>
-                  ×
-                </button>
-              </div>
-              <div className="prop-row">
-                <span className="prop-label">Model</span>
-                <select value={c.model} onChange={(e) => run((d) => (d.characters![ci].model = e.target.value))}>
-                  {(characterModels.length ? characterModels : [c.model]).map((m) => (
-                    <option key={m} value={m}>
-                      {manifest?.characters[m]?.label ?? m}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <Vec3Row
-                label="Position"
-                value={c.position}
-                onAxis={(axis, v) => run((d) => ((d.characters![ci].position ??= {})[axis] = v))}
-              />
-              <div className="prop-row">
-                <span className="prop-label">Rotation Y</span>
-                <AnimatableField
-                  value={c.rotationY}
-                  fallback={0}
-                  step={5}
-                  onChange={(v) => run((d) => (d.characters![ci].rotationY = v))}
-                />
-              </div>
-              {manifest?.characters[c.model]?.file.startsWith('builtin:mannequin') && (
-                <>
-                  <div className="prop-row">
-                    <span className="prop-label">Pose</span>
-                    <select
-                      value={typeof c.pose === 'string' ? c.pose : (c.pose?.preset ?? 'standing')}
-                      onChange={(e) =>
-                        run((d) => {
-                          const cur = d.characters![ci].pose;
-                          // Keep joint overrides (edit them in the JSON tab).
-                          if (cur && typeof cur === 'object' && cur.joints) cur.preset = e.target.value;
-                          else d.characters![ci].pose = e.target.value;
-                        })
-                      }
-                    >
-                      {Object.keys(POSE_PRESETS).map((p) => (
-                        <option key={p} value={p}>
-                          {p}
-                        </option>
-                      ))}
-                    </select>
-                    {typeof c.pose === 'object' && c.pose?.joints && (
-                      <span className="kf-chip" title="Per-joint overrides — edit via the JSON tab">
-                        ◆ joints
-                      </span>
-                    )}
-                  </div>
-                  <div className="prop-row">
-                    <span className="prop-label">Color</span>
-                    <input
-                      type="color"
-                      value={c.color ?? MANNEQUIN_DEFAULT_COLOR}
-                      onChange={(e) => run((d) => (d.characters![ci].color = e.target.value))}
-                    />
-                  </div>
-                </>
-              )}
-              <div className="prop-row">
-                <span className="prop-label">Gaze</span>
-                <select
-                  value={c.gaze === 'camera' ? 'camera' : c.gaze ? `char:${c.gaze.character}` : ''}
-                  onChange={(e) =>
-                    run((d) => {
-                      const v = e.target.value;
-                      if (!v) delete d.characters![ci].gaze;
-                      else if (v === 'camera') d.characters![ci].gaze = 'camera';
-                      else d.characters![ci].gaze = { character: v.slice(5) };
-                    })
-                  }
-                >
-                  <option value="">None</option>
-                  <option value="camera">Camera</option>
-                  {(spec.characters ?? [])
-                    .filter((o) => o.id !== c.id)
-                    .map((o) => (
-                      <option key={o.id} value={`char:${o.id}`}>
-                        Look at {o.id}
-                      </option>
-                    ))}
-                </select>
-              </div>
-              <div className="scene-actions">
-                {(c.actions ?? []).map((a, ai) => (
-                  <div className="prop-row scene-action" key={ai}>
-                    <select
-                      value={a.clip}
-                      onChange={(e) => run((d) => (d.characters![ci].actions![ai].clip = e.target.value))}
-                    >
-                      {(clipNames(c.model).length ? clipNames(c.model) : [a.clip]).map((n) => (
-                        <option key={n} value={n}>
-                          {n}
-                        </option>
-                      ))}
-                    </select>
-                    <input
-                      type="number"
-                      step={0.1}
-                      min={0}
-                      title="Start (s)"
-                      value={a.start}
-                      onChange={(e) => run((d) => (d.characters![ci].actions![ai].start = Number(e.target.value)))}
-                    />
-                    <input
-                      type="number"
-                      step={0.1}
-                      min={0}
-                      title="Cross-fade (s)"
-                      value={a.fade ?? 0.3}
-                      onChange={(e) => run((d) => (d.characters![ci].actions![ai].fade = Number(e.target.value)))}
-                    />
-                    <button
-                      className="kf-btn"
-                      title="Remove action"
-                      onClick={() => run((d) => d.characters![ci].actions!.splice(ai, 1))}
-                    >
-                      ×
-                    </button>
-                  </div>
-                ))}
-                <button
-                  className="fx-add"
-                  onClick={() =>
-                    run((d) => {
-                      const clips = clipNames(c.model);
-                      (d.characters![ci].actions ??= []).push({ clip: clips[0] ?? 'Idle', start: 0 });
-                    })
-                  }
-                >
-                  + Action
-                </button>
-              </div>
+            <div className="prop-row scene-object-row" key={c.id}>
+              <button
+                className="scene-object-open"
+                title="Edit on the stage (opens the Director with this object selected)"
+                onClick={() => openDirector({ kind: 'character', index: ci })}
+              >
+                <span className="scene-object-id">{c.id}</span>
+                <span className="scene-object-model">{manifest?.characters[c.model]?.label ?? c.model}</span>
+              </button>
+              <button className="fx-remove" title="Remove" onClick={() => run((d) => d.characters!.splice(ci, 1))}>
+                ×
+              </button>
             </div>
           ))}
           <button
             className="fx-add"
             onClick={() =>
               run((d) => {
-                const model = characterModels[0] ?? 'char/robot';
+                const model = characterModels[0] ?? 'char/mannequin';
                 const n = (d.characters?.length ?? 0) + 1;
-                (d.characters ??= []).push({ id: `char${n}`, model, position: { x: 0, z: 0 }, actions: [{ clip: 'Idle', start: 0 }] });
+                const c: NonNullable<SceneSpec['characters']>[number] = { id: `char${n}`, model, position: { x: 0, z: 0 } };
+                if (manifest?.characters[model]?.file.startsWith('builtin:')) c.pose = 'standing';
+                else {
+                  const first = Object.keys(manifest?.characters[model]?.clips ?? {})[0];
+                  if (first) c.actions = [{ clip: first, start: 0 }];
+                }
+                (d.characters ??= []).push(c);
               })
             }
           >
@@ -361,44 +195,16 @@ export function SceneInspector({ store, asset }: { store: Store; asset: Asset })
 
           <div className="group-title">Props</div>
           {(spec.props ?? []).map((p, pi) => (
-            <div className="prop-row scene-action" key={pi}>
-              <select value={p.model} onChange={(e) => run((d) => (d.props![pi].model = e.target.value))}>
-                {(propModels.length ? propModels : [p.model]).map((m) => (
-                  <option key={m} value={m}>
-                    {manifest?.props[m]?.label ?? m}
-                  </option>
-                ))}
-              </select>
-              <input
-                type="color"
-                value={p.color ?? '#8fa3bf'}
-                onChange={(e) => run((d) => (d.props![pi].color = e.target.value))}
-              />
-              <select
-                title="Attach to a character bone (hand-held / worn)"
-                value={p.attachTo ? `${p.attachTo.character}:${p.attachTo.bone ?? 'handR'}` : ''}
-                onChange={(e) =>
-                  run((d) => {
-                    const v = e.target.value;
-                    if (!v) delete d.props![pi].attachTo;
-                    else {
-                      const [character, bone] = v.split(':');
-                      d.props![pi].attachTo = { character, bone };
-                      d.props![pi].position = { x: 0, y: 0, z: 0 };
-                    }
-                  })
-                }
+            <div className="prop-row scene-object-row" key={pi}>
+              <button
+                className="scene-object-open"
+                title="Edit on the stage (opens the Director with this object selected)"
+                onClick={() => openDirector({ kind: 'prop', index: pi })}
               >
-                <option value="">World</option>
-                {(spec.characters ?? []).flatMap((c) =>
-                  Object.keys(manifest?.characters[c.model]?.bones ?? {}).map((slot) => (
-                    <option key={`${c.id}:${slot}`} value={`${c.id}:${slot}`}>
-                      {c.id} · {slot}
-                    </option>
-                  )),
-                )}
-              </select>
-              <button className="kf-btn" title="Remove prop" onClick={() => run((d) => d.props!.splice(pi, 1))}>
+                <span className="scene-object-id">{manifest?.props[p.model]?.label ?? p.model}</span>
+                {p.attachTo && <span className="scene-object-model">on {p.attachTo.character}</span>}
+              </button>
+              <button className="fx-remove" title="Remove" onClick={() => run((d) => d.props!.splice(pi, 1))}>
                 ×
               </button>
             </div>

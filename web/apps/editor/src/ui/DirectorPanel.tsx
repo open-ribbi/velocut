@@ -32,8 +32,9 @@ import {
   type Stage,
 } from '@velocut/scene-sdk';
 import type { Store } from '../state/store';
+import { AnimatableField, Vec3Row } from './SceneFields';
 
-type Sel = { kind: 'character' | 'prop'; index: number };
+export type Sel = { kind: 'character' | 'prop'; index: number };
 type GizmoMode = 'translate' | 'rotate';
 
 /** Translate an animatable axis by delta: constants move, keyframe tracks
@@ -68,14 +69,25 @@ function cameraKeyTimes(spec: SceneSpec): number[] {
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
-export function DirectorPanel({ store, asset, onClose }: { store: Store; asset: Asset; onClose: () => void }) {
+export function DirectorPanel({
+  store,
+  asset,
+  onClose,
+  initialSel = null,
+}: {
+  store: Store;
+  asset: Asset;
+  onClose: () => void;
+  /** Pre-select an object (e.g. clicked in the inspector's object list). */
+  initialSel?: Sel | null;
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [t, setT] = useState(0);
   const tRef = useRef(0);
   tRef.current = t;
   const [error, setError] = useState<string | null>(null);
-  const [sel, setSel] = useState<Sel | null>(null);
-  const selRef = useRef<Sel | null>(null);
+  const [sel, setSel] = useState<Sel | null>(initialSel);
+  const selRef = useRef<Sel | null>(initialSel);
   const [mode, setMode] = useState<GizmoMode>('translate');
   const modeRef = useRef<GizmoMode>('translate');
   modeRef.current = mode;
@@ -384,6 +396,40 @@ export function DirectorPanel({ store, asset, onClose }: { store: Store; asset: 
   const selProp = sel?.kind === 'prop' ? spec?.props?.[sel.index] : undefined;
   const selObj = selChar ?? selProp;
   const isMannequin = !!selChar && !!manifest?.characters[selChar.model]?.file.startsWith('builtin:');
+  const characterModels = Object.keys(manifest?.characters ?? {});
+  const propModels = Object.keys(manifest?.props ?? {});
+  const clipNames = (model: string) => Object.keys(manifest?.characters[model]?.clips ?? {});
+
+  /** Mutate the selected object (character or prop) in one commit. */
+  const mutateSel = (fn: (o: NonNullable<typeof selObj>, d: SceneSpec) => void) => {
+    if (!sel) return;
+    mutateSpec((d) => {
+      const o = sel.kind === 'character' ? d.characters?.[sel.index] : d.props?.[sel.index];
+      if (o) fn(o, d);
+    });
+  };
+
+  /** Switching a character's model keeps the spec compilable: actions that
+   *  the new model doesn't have are dropped (they now fail loudly), and
+   *  pose/actions swap when crossing the mannequin/GLTF line. */
+  const switchCharacterModel = (model: string) => {
+    mutateSel((o) => {
+      const c = o as NonNullable<SceneSpec['characters']>[number];
+      c.model = model;
+      if (manifest?.characters[model]?.file.startsWith('builtin:')) {
+        delete c.actions;
+        c.pose = c.pose ?? 'standing';
+      } else {
+        delete c.pose;
+        const clips = manifest?.characters[model]?.clips ?? {};
+        c.actions = (c.actions ?? []).filter((a) => clips[a.clip]);
+        if (!c.actions.length) {
+          const first = Object.keys(clips)[0];
+          if (first) c.actions = [{ clip: first, start: 0 }];
+        }
+      }
+    });
+  };
 
   return (
     <div className="director-overlay">
@@ -431,22 +477,22 @@ export function DirectorPanel({ store, asset, onClose }: { store: Store; asset: 
                 </button>
               </div>
               <div className="prop-row">
+                <span className="prop-label">Model</span>
+                <select
+                  value={selObj.model}
+                  onChange={(e) => (selChar ? switchCharacterModel(e.target.value) : mutateSel((o) => (o.model = e.target.value)))}
+                >
+                  {((selChar ? characterModels : propModels).length ? (selChar ? characterModels : propModels) : [selObj.model]).map((m) => (
+                    <option key={m} value={m}>
+                      {(selChar ? manifest?.characters[m]?.label : manifest?.props[m]?.label) ?? m}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <Vec3Row label="Position" value={selObj.position} onAxis={(axis, v) => mutateSel((o) => ((o.position ??= {})[axis] = v))} />
+              <div className="prop-row">
                 <span className="prop-label">Rotate Y</span>
-                {Array.isArray(selObj.rotationY) ? (
-                  <span className="kf-chip" title="Keyframed — drag the rotate gizmo to shift the whole track">◆ {selObj.rotationY.length} keys</span>
-                ) : (
-                  <input
-                    type="number"
-                    step={15}
-                    value={Math.round((selObj.rotationY as number | undefined) ?? 0)}
-                    onChange={(e) =>
-                      mutateSpec((d) => {
-                        const o = sel.kind === 'character' ? d.characters?.[sel.index] : d.props?.[sel.index];
-                        if (o) o.rotationY = Number(e.target.value);
-                      })
-                    }
-                  />
-                )}
+                <AnimatableField value={selObj.rotationY} fallback={0} step={15} onChange={(v) => mutateSel((o) => (o.rotationY = v))} />
               </div>
               <div className="prop-row">
                 <span className="prop-label">Scale</span>
@@ -455,12 +501,7 @@ export function DirectorPanel({ store, asset, onClose }: { store: Store; asset: 
                   step={0.1}
                   min={0.05}
                   value={typeof selObj.scale === 'number' ? selObj.scale : (selObj.scale?.x ?? 1)}
-                  onChange={(e) =>
-                    mutateSpec((d) => {
-                      const o = sel.kind === 'character' ? d.characters?.[sel.index] : d.props?.[sel.index];
-                      if (o) o.scale = Number(e.target.value);
-                    })
-                  }
+                  onChange={(e) => mutateSel((o) => (o.scale = Number(e.target.value)))}
                 />
               </div>
               {isMannequin && (
@@ -469,11 +510,9 @@ export function DirectorPanel({ store, asset, onClose }: { store: Store; asset: 
                   <select
                     value={typeof selChar!.pose === 'string' ? selChar!.pose : (selChar!.pose?.preset ?? 'standing')}
                     onChange={(e) =>
-                      mutateSpec((d) => {
-                        const c = d.characters?.[sel.index];
-                        if (!c) return;
-                        const cur = c.pose;
-                        if (cur && typeof cur === 'object' && cur.joints) cur.preset = e.target.value;
+                      mutateSel((o) => {
+                        const c = o as NonNullable<SceneSpec['characters']>[number];
+                        if (c.pose && typeof c.pose === 'object' && c.pose.joints) c.pose.preset = e.target.value;
                         else c.pose = e.target.value;
                       })
                     }
@@ -484,21 +523,134 @@ export function DirectorPanel({ store, asset, onClose }: { store: Store; asset: 
                       </option>
                     ))}
                   </select>
+                  {typeof selChar!.pose === 'object' && selChar!.pose?.joints && (
+                    <span className="kf-chip" title="Per-joint overrides — edit via the inspector's JSON tab">◆ joints</span>
+                  )}
                 </div>
               )}
-              {(isMannequin || selProp) && (
+              <div className="prop-row">
+                <span className="prop-label">Color</span>
+                <input
+                  type="color"
+                  value={(selObj as { color?: string }).color ?? (selChar ? MANNEQUIN_DEFAULT_COLOR : '#8fa3bf')}
+                  onChange={(e) => mutateSel((o) => ((o as { color?: string }).color = e.target.value))}
+                />
+              </div>
+              {selChar && (
                 <div className="prop-row">
-                  <span className="prop-label">Color</span>
-                  <input
-                    type="color"
-                    value={(selObj as { color?: string }).color ?? (selChar ? MANNEQUIN_DEFAULT_COLOR : '#8fa3bf')}
+                  <span className="prop-label">Gaze</span>
+                  <select
+                    value={selChar.gaze === 'camera' ? 'camera' : selChar.gaze ? `char:${selChar.gaze.character}` : ''}
                     onChange={(e) =>
-                      mutateSpec((d) => {
-                        const o = sel.kind === 'character' ? d.characters?.[sel.index] : d.props?.[sel.index];
-                        if (o) (o as { color?: string }).color = e.target.value;
+                      mutateSel((o) => {
+                        const c = o as NonNullable<SceneSpec['characters']>[number];
+                        const v = e.target.value;
+                        if (!v) delete c.gaze;
+                        else if (v === 'camera') c.gaze = 'camera';
+                        else c.gaze = { character: v.slice(5) };
                       })
                     }
-                  />
+                  >
+                    <option value="">None</option>
+                    <option value="camera">Camera</option>
+                    {(spec?.characters ?? [])
+                      .filter((o) => o.id !== selChar.id)
+                      .map((o) => (
+                        <option key={o.id} value={`char:${o.id}`}>
+                          Look at {o.id}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              )}
+              {selChar && !isMannequin && (
+                <div className="scene-actions">
+                  <div className="prop-label">Actions (clip · start s · fade s)</div>
+                  {(selChar.actions ?? []).map((a, ai) => (
+                    <div className="prop-row scene-action" key={ai}>
+                      <select
+                        value={a.clip}
+                        onChange={(e) =>
+                          mutateSel((o) => ((o as NonNullable<SceneSpec['characters']>[number]).actions![ai].clip = e.target.value))
+                        }
+                      >
+                        {(clipNames(selChar.model).length ? clipNames(selChar.model) : [a.clip]).map((n) => (
+                          <option key={n} value={n}>
+                            {n}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        type="number"
+                        step={0.1}
+                        min={0}
+                        title="Start (s)"
+                        value={a.start}
+                        onChange={(e) =>
+                          mutateSel((o) => ((o as NonNullable<SceneSpec['characters']>[number]).actions![ai].start = Number(e.target.value)))
+                        }
+                      />
+                      <input
+                        type="number"
+                        step={0.1}
+                        min={0}
+                        title="Cross-fade (s)"
+                        value={a.fade ?? 0.3}
+                        onChange={(e) =>
+                          mutateSel((o) => ((o as NonNullable<SceneSpec['characters']>[number]).actions![ai].fade = Number(e.target.value)))
+                        }
+                      />
+                      <button
+                        className="kf-btn"
+                        title="Remove action"
+                        onClick={() => mutateSel((o) => (o as NonNullable<SceneSpec['characters']>[number]).actions!.splice(ai, 1))}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    className="fx-add"
+                    onClick={() =>
+                      mutateSel((o) => {
+                        const c = o as NonNullable<SceneSpec['characters']>[number];
+                        const clips = clipNames(selChar.model);
+                        (c.actions ??= []).push({ clip: clips[0] ?? 'Idle', start: 0 });
+                      })
+                    }
+                  >
+                    + Action
+                  </button>
+                </div>
+              )}
+              {selProp && (
+                <div className="prop-row">
+                  <span className="prop-label">Attach</span>
+                  <select
+                    title="Attach to a character bone (hand-held / worn)"
+                    value={selProp.attachTo ? `${selProp.attachTo.character}:${selProp.attachTo.bone ?? 'handR'}` : ''}
+                    onChange={(e) =>
+                      mutateSel((o) => {
+                        const p = o as NonNullable<SceneSpec['props']>[number];
+                        const v = e.target.value;
+                        if (!v) delete p.attachTo;
+                        else {
+                          const [character, bone] = v.split(':');
+                          p.attachTo = { character, bone };
+                          p.position = { x: 0, y: 0, z: 0 };
+                        }
+                      })
+                    }
+                  >
+                    <option value="">World</option>
+                    {(spec?.characters ?? []).flatMap((c) =>
+                      Object.keys(manifest?.characters[c.model]?.bones ?? {}).map((slot) => (
+                        <option key={`${c.id}:${slot}`} value={`${c.id}:${slot}`}>
+                          {c.id} · {slot}
+                        </option>
+                      )),
+                    )}
+                  </select>
                 </div>
               )}
             </div>
