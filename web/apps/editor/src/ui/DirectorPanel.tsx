@@ -194,11 +194,13 @@ export function DirectorPanel({ store, asset, onClose }: { store: Store; asset: 
       renderer.setSize(w, h, false);
       renderer.shadowMap.enabled = true;
 
-      // Free orbit camera for staging…
+      // Free orbit camera for staging — restored from the last frame's
+      // viewpoint, because this whole effect re-runs on every spec commit
+      // and losing your camera on each edit is unusable.
       const orbit = new three.PerspectiveCamera(50, w / h, 0.1, 500);
-      orbit.position.set(8, 6, 10);
+      orbit.position.set(...orbitPosRef.current);
       const controls = new OrbitControls(orbit, canvas);
-      controls.target.set(0, 1, 0);
+      controls.target.set(...orbitTargetRef.current);
       // …plus the SPEC camera shown as a frustum, so blocking happens with the
       // real shot in view.
       const specCam = new three.PerspectiveCamera(40, (parsed.width ?? 16) / (parsed.height ?? 9), 0.5, 12);
@@ -242,12 +244,26 @@ export function DirectorPanel({ store, asset, onClose }: { store: Store; asset: 
         selBox.visible = !!root;
       };
 
-      let dragStart: { pos: import('three').Vector3; rotY: number } | null = null;
+      // Yaw is read via a YXZ euler and UNWRAPPED incrementally during the
+      // drag: a raw `rotation.y` delta reflects at ±90° (XYZ euler gimbal
+      // flip), which read as "the ring bounces back and can't pass 180°".
+      // Accumulating shortest-angle steps per change event supports any
+      // total rotation, including multiple turns.
+      const eul = new three.Euler();
+      const yawOf = () => eul.setFromQuaternion(proxy.quaternion, 'YXZ').y;
+      const wrapPi = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
+      let dragStart: { pos: import('three').Vector3; lastYaw: number; yawAccum: number } | null = null;
+      gizmo.addEventListener('objectChange', () => {
+        if (!dragStart) return;
+        const cur = yawOf();
+        dragStart.yawAccum += wrapPi(cur - dragStart.lastYaw);
+        dragStart.lastYaw = cur;
+      });
       gizmo.addEventListener('dragging-changed', (ev: { value?: unknown }) => {
         const dragging = !!ev.value;
         controls.enabled = !dragging;
         if (dragging) {
-          dragStart = { pos: proxy.position.clone(), rotY: proxy.rotation.y };
+          dragStart = { pos: proxy.position.clone(), lastYaw: yawOf(), yawAccum: 0 };
           return;
         }
         // Release → commit one undoable spec edit.
@@ -255,7 +271,7 @@ export function DirectorPanel({ store, asset, onClose }: { store: Store; asset: 
         const dx = round2(proxy.position.x - dragStart.pos.x);
         const dy = round2(proxy.position.y - dragStart.pos.y);
         const dz = round2(proxy.position.z - dragStart.pos.z);
-        const dRotY = Math.round(((proxy.rotation.y - dragStart.rotY) * 180) / Math.PI);
+        const dRotY = Math.round((dragStart.yawAccum * 180) / Math.PI);
         dragStart = null;
         const s = selRef.current;
         if (!s) return;
@@ -325,8 +341,10 @@ export function DirectorPanel({ store, asset, onClose }: { store: Store; asset: 
         if (root) {
           if (gizmo.dragging) {
             // Object follows the gizmo's proxy (ghost preview of the edit).
+            // Rotation adds the UNWRAPPED accumulated yaw on top of the pose
+            // (reading proxy.rotation.y directly reflects at ±90°).
             root.position.copy(proxy.position);
-            if (modeRef.current === 'rotate') root.rotation.y = proxy.rotation.y;
+            if (modeRef.current === 'rotate') root.rotation.y += dragStart?.yawAccum ?? 0;
           } else {
             proxy.position.copy(root.position);
             proxy.rotation.copy(root.rotation);
