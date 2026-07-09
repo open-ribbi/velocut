@@ -36,5 +36,11 @@ export function scenePromptDoc(manifest: SceneAssetManifest): string {
     'Pace walks so position keyframes match the gait: distance = speedMps × seconds ' +
       '(e.g. Walking at 1.4m/s covers 4.2m in 3s). World units are meters, ground is y=0, camera looks -Z by default.',
   );
+  lines.push(
+    'Physics (per-prop opt-in, baked deterministically): physics: "dynamic" | "fixed" | "kinematic" | ' +
+      '{type, mass?, restitution?, friction?, velocity?, angularVelocity?, startAt?}. ' +
+      'Reach for it when motion should EMERGE (falls, collapses, impacts, rolling, scattering); ' +
+      'keep keyframes for choreographed moves. Characters are not simulated.',
+  );
   return lines.join('\n');
 }

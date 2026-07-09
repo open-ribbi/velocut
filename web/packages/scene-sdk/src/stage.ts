@@ -9,11 +9,12 @@
 // poses from the spec at time t (pure with respect to previous frames), so
 // what the director stages IS what the interpreter renders.
 
-import { sampleAnimatable } from '@velocut/render-sdk';
+import { sampleAnimatable } from '@velocut/render-sdk/motionspec';
 import type * as THREE from 'three';
 import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { resolveActions, type ClipMeta } from './actions.ts';
 import { buildMannequin, MANNEQUIN_JOINTS, POSE_PRESETS, type MannequinJoint } from './mannequin.ts';
+import { bakePhysics, samplePhysicsTrack, type BakeTrack } from './physics.ts';
 import type { SceneAssetManifest, SceneSpec, Scale3, Vec3A } from './types.ts';
 
 /** Apply a uniform or per-axis scale (missing axes stay 1). */
@@ -86,6 +87,9 @@ export interface StageProp {
   /** Set when parented to a character bone: meters→bone-local unit factor
    *  (compensates baseScale and any rig-inherited scale). */
   attachComp?: number;
+  /** Baked simulation track for physics:'dynamic' props — poseAt samples it
+   *  instead of the spec transform (fixed/kinematic stay spec-driven). */
+  bake?: BakeTrack;
 }
 
 export interface Stage {
@@ -348,6 +352,21 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
     props.push({ root: mesh, spec: p });
   }
 
+  // ---------------------------------------------------------------- physics
+  // Props that opted in get simulated ONCE here (deterministic bake); poseAt
+  // stays a pure sampler of t, so scrub/preview/export agree. Rapier (WASM)
+  // loads only when a spec actually uses physics.
+  if ((spec.props ?? []).some((p) => p.physics != null)) {
+    const tracks = await bakePhysics(
+      spec,
+      props.map((p) => ({ spec: p.spec, mesh: p.root as THREE.Mesh })),
+    );
+    props.forEach((p, i) => {
+      const track = tracks[i];
+      if (track) p.bake = track;
+    });
+  }
+
   /** Max head turn away from the body's facing (radians ≈ ±70°). */
   const GAZE_CLAMP = (70 * Math.PI) / 180;
   const UP = new three.Vector3(0, 1, 0);
@@ -470,6 +489,13 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
         p.root.rotation.y = (sampleAnimatable(p.spec.rotationY, t, 0) * Math.PI) / 180;
         applyScale(p.root, p.spec.scale ?? 1);
         p.root.scale.multiplyScalar(k);
+        continue;
+      }
+      if (p.bake) {
+        // Simulated prop: transform comes from the baked track (full 3D
+        // rotation — tumbling bodies aren't yaw-only).
+        samplePhysicsTrack(p.bake, t, p.root);
+        if (p.spec.scale != null) applyScale(p.root, p.spec.scale);
         continue;
       }
       const [x, y, z] = sampleVec3(p.spec.position, t, 0, 0.5, 0);

@@ -225,3 +225,96 @@ test('resolveActions: determinism — same inputs, same output', () => {
     assert.deepEqual(resolveActions(seq, t, CLIPS), resolveActions(seq, t, CLIPS));
   }
 });
+
+// ------------------------------------------------------------------ physics
+
+test('validateSceneSpec: physics vocabulary', () => {
+  const prop = (physics: unknown, extra: object = {}) => ({
+    ...base,
+    props: [{ model: 'prop/cube', position: { x: 1, y: 2 }, physics, ...extra } as never],
+  });
+  // Accepted forms.
+  assert.equal(validateSceneSpec(prop('dynamic')), null);
+  assert.equal(validateSceneSpec(prop('fixed')), null);
+  assert.equal(
+    validateSceneSpec(prop({ type: 'dynamic', mass: 40, restitution: 0.5, friction: 0.2, velocity: [12, 2, 0], angularVelocity: [0, 90, 0], startAt: 1 })),
+    null,
+  );
+  // Kinematic colliders are the keyframe-driven ones.
+  assert.equal(
+    validateSceneSpec({ ...base, props: [{ model: 'prop/cube', position: { x: [{ t: 0, v: 0 }, { t: 2, v: 4 }] }, physics: 'kinematic' }] }),
+    null,
+  );
+  assert.equal(validateSceneSpec({ ...base, physics: { gravity: 3.7 } }), null);
+
+  const rejects: Array<[unknown, RegExp]> = [
+    [prop('bouncy'), /physics must be/],
+    [prop({ type: 'dynamic', restitution: 1.5 }), /restitution/],
+    [prop({ type: 'dynamic', mass: 0 }), /mass/],
+    [prop({ type: 'dynamic', velocity: [1, 2] }), /velocity/],
+    [prop({ type: 'fixed', velocity: [1, 0, 0] }), /only apply to type 'dynamic'/],
+    [prop({ type: 'dynamic', bounce: 1 }), /takes only/],
+    [{ ...base, props: [{ model: 'prop/cube', position: { y: [{ t: 0, v: 0 }, { t: 1, v: 2 }] }, physics: 'dynamic' }] }, /must be constants/],
+    [{ ...base, characters: [{ id: 'a', model: 'char/robot' }], props: [{ model: 'prop/cube', physics: 'dynamic', attachTo: { character: 'a' } }] }, /attachTo cannot combine/],
+    [{ ...base, physics: { gravity: -1 } }, /gravity/],
+    [{ ...base, physics: { wind: 3 } }, /takes only/],
+  ];
+  for (const [spec, re] of rejects) {
+    const err = validateSceneSpec(spec);
+    assert.ok(err && re.test(err), `expected ${re} for ${JSON.stringify(spec)}, got: ${err}`);
+  }
+});
+
+test('bakePhysics: a dropped ball settles on the ground, deterministically', async () => {
+  const three = await import('three');
+  const { bakePhysics, samplePhysicsTrack, PHYSICS_HZ } = await import('../src/physics.ts');
+  const spec: SceneSpec = {
+    version: 1,
+    durationUs: 6_000_000,
+    props: [
+      { model: 'prop/sphere', position: { y: 3 }, physics: 'dynamic' },
+      { model: 'prop/cube', position: { x: 3, y: 0.5 }, physics: 'fixed' },
+      { model: 'prop/cube', position: { x: -3 } }, // no physics → no track
+    ],
+  };
+  const targets = spec.props!.map((p) => ({
+    spec: p,
+    mesh: new three.Mesh(p.model === 'prop/sphere' ? new three.SphereGeometry(0.5, 32, 16) : new three.BoxGeometry(1, 1, 1)),
+  }));
+  const tracks = await bakePhysics(spec, targets);
+  assert.equal(tracks.length, 3);
+  assert.ok(tracks[0], 'dynamic prop gets a track');
+  assert.equal(tracks[1], null, 'fixed props stay spec-driven');
+  assert.equal(tracks[2], null);
+
+  const ball = tracks[0]!;
+  const out = { position: new three.Vector3(), quaternion: new three.Quaternion() };
+  samplePhysicsTrack(ball, 0, out);
+  assert.ok(Math.abs(out.position.y - 3) < 1e-6, `starts at y=3, got ${out.position.y}`);
+  samplePhysicsTrack(ball, 6, out);
+  assert.ok(Math.abs(out.position.y - 0.5) < 0.06, `rests at ~radius (0.5), got ${out.position.y}`);
+  // The world goes to sleep → the bake early-outs well before 6s of samples.
+  assert.ok(ball.count < 6 * PHYSICS_HZ, `early-out expected, recorded ${ball.count} samples`);
+
+  // Determinism: an identical second bake is byte-identical.
+  const again = await bakePhysics(spec, targets);
+  assert.deepEqual(Array.from(again[0]!.samples), Array.from(ball.samples));
+  assert.equal(again[0]!.count, ball.count);
+});
+
+test('bakePhysics: startAt holds a body, then releases it with its velocity', async () => {
+  const three = await import('three');
+  const { bakePhysics, samplePhysicsTrack } = await import('../src/physics.ts');
+  const spec: SceneSpec = {
+    version: 1,
+    durationUs: 3_000_000,
+    props: [{ model: 'prop/sphere', position: { x: 0, y: 1 }, physics: { type: 'dynamic', velocity: [10, 0, 0], startAt: 1 } }],
+  };
+  const targets = [{ spec: spec.props![0], mesh: new three.Mesh(new three.SphereGeometry(0.5, 32, 16)) }];
+  const [track] = await bakePhysics(spec, targets);
+  const out = { position: new three.Vector3(), quaternion: new three.Quaternion() };
+  samplePhysicsTrack(track!, 0.99, out);
+  assert.ok(Math.abs(out.position.x) < 1e-6, `held in place before startAt, got x=${out.position.x}`);
+  samplePhysicsTrack(track!, 1.5, out);
+  assert.ok(out.position.x > 3, `moving after release, got x=${out.position.x}`);
+});

@@ -64,6 +64,27 @@ export interface CharacterPose {
   joints?: Record<string, [Animatable, Animatable, Animatable]>;
 }
 
+/** Rigid-body physics for a prop (Rapier, baked deterministically at build).
+ *  dynamic = simulated (position/rotationY give the CONSTANT initial
+ *  transform; motion comes from the sim). fixed = immovable collider (ramps,
+ *  walls). kinematic = keyframe-driven collider that pushes dynamics (moving
+ *  platforms, sweeping arms). */
+export interface PropPhysics {
+  type: 'dynamic' | 'fixed' | 'kinematic';
+  /** Kilograms (dynamic; default derived from the collider volume). */
+  mass?: number;
+  /** Bounciness 0..1 (default 0.3). */
+  restitution?: number;
+  /** Surface friction >= 0 (default 0.6). */
+  friction?: number;
+  /** Initial linear velocity, m/s (dynamic only). */
+  velocity?: [number, number, number];
+  /** Initial angular velocity, degrees/s (dynamic only). */
+  angularVelocity?: [number, number, number];
+  /** Seconds — the body holds its initial pose until then (timed collapses). */
+  startAt?: number;
+}
+
 export interface SceneProp {
   id?: string;
   /** Registry prop id (e.g. 'prop/cube') — built-in geometry in v1. */
@@ -84,6 +105,10 @@ export interface SceneProp {
   points?: [number, number][];
   /** Extrusion thickness for 'prop/extrude', meters (default 0.1). */
   depth?: number;
+  /** Opt into the rigid-body simulation: a type shorthand or full options.
+   *  Mutually exclusive with attachTo; dynamic/fixed require a constant
+   *  initial transform (keyframes belong to kinematic colliders). */
+  physics?: PropPhysics['type'] | PropPhysics;
 }
 
 export interface SceneCamera {
@@ -122,6 +147,11 @@ export interface SceneSpec {
   camera?: SceneCamera;
   /** Multi-shot cut list — overrides `camera` when present (see SceneShot). */
   shots?: SceneShot[];
+  /** World physics settings (only matter for props with a `physics` field). */
+  physics?: {
+    /** Downward gravity, m/s² (default 9.81). */
+    gravity?: number;
+  };
 }
 
 // ------------------------------------------------------------ asset manifest
@@ -193,6 +223,44 @@ const isVec3A = (v: unknown): boolean => {
   const o = v as Vec3A;
   return [o.x, o.y, o.z].every((a) => a === undefined || isAnimatable(a));
 };
+
+const PHYSICS_TYPES = ['dynamic', 'fixed', 'kinematic'] as const;
+const PHYSICS_KEYS = ['type', 'mass', 'restitution', 'friction', 'velocity', 'angularVelocity', 'startAt'];
+const isVel3 = (v: unknown): boolean => Array.isArray(v) && v.length === 3 && v.every(fin);
+
+function checkPropPhysics(p: SceneProp): string | null {
+  const raw = p.physics!;
+  const ph = typeof raw === 'string' ? { type: raw } : raw;
+  if (typeof ph !== 'object' || ph == null || !PHYSICS_TYPES.includes(ph.type)) {
+    return `prop physics must be 'dynamic' | 'fixed' | 'kinematic' or { type, … }`;
+  }
+  if (typeof raw === 'object' && !Object.keys(raw).every((k) => PHYSICS_KEYS.includes(k))) {
+    return `prop physics takes only { ${PHYSICS_KEYS.join(', ')} }`;
+  }
+  if (p.attachTo) return 'prop: physics and attachTo cannot combine (bone-parented props are not simulated)';
+  if (ph.mass != null && !(fin(ph.mass) && ph.mass > 0)) return 'prop physics.mass must be > 0 (kg)';
+  if (ph.restitution != null && !(fin(ph.restitution) && ph.restitution >= 0 && ph.restitution <= 1)) {
+    return 'prop physics.restitution must be 0..1';
+  }
+  if (ph.friction != null && !(fin(ph.friction) && ph.friction >= 0)) return 'prop physics.friction must be >= 0';
+  if (ph.startAt != null && !(fin(ph.startAt) && ph.startAt >= 0)) return 'prop physics.startAt must be seconds >= 0';
+  for (const k of ['velocity', 'angularVelocity'] as const) {
+    if (ph[k] != null && !isVel3(ph[k])) return `prop physics.${k} must be [x, y, z] numbers`;
+  }
+  if (ph.type !== 'dynamic' && (ph.velocity || ph.angularVelocity || ph.startAt != null)) {
+    return `prop physics: velocity/angularVelocity/startAt only apply to type 'dynamic'`;
+  }
+  if (ph.type !== 'kinematic') {
+    // The simulation owns a dynamic body's motion (and a fixed body doesn't
+    // move at all) — keyframed transforms would silently disagree with the
+    // bake. Loud rule: constants only; keyframes belong to kinematic.
+    const keyed = Array.isArray(p.rotationY) || (p.position != null && [p.position.x, p.position.y, p.position.z].some(Array.isArray));
+    if (keyed) {
+      return `prop physics '${ph.type}': position/rotationY must be constants (the simulation drives motion — use physics.velocity/startAt, or type 'kinematic' for a keyframe-driven collider)`;
+    }
+  }
+  return null;
+}
 
 /** Structural validation. Returns an error message or null. Registry checks
  *  (does the model/clip exist?) happen at compile/host time against the
@@ -302,7 +370,17 @@ export function validateSceneSpec(spec: unknown): string | null {
       if (p.points != null && p.model !== 'prop/lathe' && p.model !== 'prop/extrude') {
         return `prop '${p.model}' does not take points (only prop/lathe and prop/extrude do)`;
       }
+      if (p.physics != null) {
+        const err = checkPropPhysics(p);
+        if (err) return err;
+      }
     }
+  }
+  if (s.physics != null) {
+    if (typeof s.physics !== 'object' || Array.isArray(s.physics)) return 'spec.physics must be an object';
+    if (!Object.keys(s.physics).every((k) => k === 'gravity')) return 'spec.physics takes only { gravity? }';
+    const g = s.physics.gravity;
+    if (g != null && !(fin(g) && g >= 0 && g <= 100)) return 'spec.physics.gravity must be 0..100 (m/s², downward)';
   }
   const checkCamera = (cam: SceneCamera, where: string): string | null => {
     if (typeof cam !== 'object' || cam == null) return `${where} must be an object`;

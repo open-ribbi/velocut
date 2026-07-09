@@ -32,6 +32,9 @@ export default defineConfig({
     alias: {
       '@velocut/protocol': fileURLToPath(new URL('../../packages/protocol/src/types.ts', import.meta.url)),
       '@velocut/core-ts': fileURLToPath(new URL('../../packages/core-ts/src/engine.ts', import.meta.url)),
+      // Specific subpath BEFORE the package alias — the plain key is a prefix
+      // match, which would mangle '@velocut/render-sdk/motionspec'.
+      '@velocut/render-sdk/motionspec': fileURLToPath(new URL('../../packages/render-sdk/src/motionspec.ts', import.meta.url)),
       '@velocut/render-sdk': fileURLToPath(new URL('../../packages/render-sdk/src/index.ts', import.meta.url)),
       '@velocut/agent-sdk': fileURLToPath(new URL('../../packages/agent-sdk/src/index.ts', import.meta.url)),
       '@velocut/collab-sdk': fileURLToPath(new URL('../../packages/collab-sdk/src/index.ts', import.meta.url)),

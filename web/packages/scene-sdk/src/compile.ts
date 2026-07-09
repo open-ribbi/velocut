@@ -9,7 +9,7 @@
 // three.js loads dynamically inside load(): the editor bundle pays for 3D
 // only once a scene clip actually exists.
 
-import { sampleAnimatable } from '@velocut/render-sdk';
+import { sampleAnimatable } from '@velocut/render-sdk/motionspec';
 import type * as THREE from 'three';
 import { buildStage, sampleVec3, DEFAULT_ASSET_BASE, type Stage } from './stage.ts';
 import { expandShots } from './shots.ts';

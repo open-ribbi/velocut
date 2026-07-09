@@ -14,6 +14,7 @@ export {
   type SceneProp,
   type SceneAction,
   type SceneShot,
+  type PropPhysics,
   type Scale3,
   type Vec3A,
   type SceneAssetManifest,
@@ -23,6 +24,7 @@ export { resolveActions, type ActivePose, type ClipMeta } from './actions.ts';
 export { POSE_PRESETS, MANNEQUIN_JOINTS, MANNEQUIN_DEFAULT_COLOR, type MannequinJoint } from './mannequin.ts';
 export { expandShots, CUT_EASE } from './shots.ts';
 export { scenePromptDoc } from './prompt.ts';
+export { bakePhysics, samplePhysicsTrack, propPhysics, PHYSICS_HZ, PHYSICS_MAX_S, type BakeTrack } from './physics.ts';
 export { compileSceneSpec, applySpecCamera, specCameraPosition, type CompiledScene } from './compile.ts';
 export {
   buildStage,
