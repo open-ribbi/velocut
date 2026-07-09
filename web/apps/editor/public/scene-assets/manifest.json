@@ -60,6 +60,36 @@
         "Unarmed_Melee_Attack_Kick": { "loop": false }
       }
     },
+    "char/figure": {
+      "file": "characters/figure.glb",
+      "label": "Animated figure (neutral mannequin, clip-driven)",
+      "license": "CC0-1.0 (Quaternius; listed CC-BY 3.0 on Poly Pizza — attribution recorded)",
+      "heightM": 1.78,
+      "bones": { "handR": "DEF-handR", "handL": "DEF-handL", "head": "DEF-head" },
+      "clips": {
+        "Idle_Loop": { "loop": true },
+        "Idle_Talking_Loop": { "loop": true },
+        "Walk_Loop": { "loop": true, "speedMps": 1.2 },
+        "Walk_Formal_Loop": { "loop": true, "speedMps": 1.0 },
+        "Jog_Fwd_Loop": { "loop": true, "speedMps": 2.4 },
+        "Sprint_Loop": { "loop": true, "speedMps": 4.5 },
+        "Crouch_Idle_Loop": { "loop": true },
+        "Crouch_Fwd_Loop": { "loop": true, "speedMps": 0.8 },
+        "Sitting_Enter": { "loop": false },
+        "Sitting_Idle_Loop": { "loop": true },
+        "Sitting_Talking_Loop": { "loop": true },
+        "Sitting_Exit": { "loop": false },
+        "Interact": { "loop": false },
+        "PickUp_Table": { "loop": false },
+        "Push_Loop": { "loop": true, "speedMps": 0.6 },
+        "Punch_Jab": { "loop": false },
+        "Punch_Cross": { "loop": false },
+        "Hit_Chest": { "loop": false },
+        "Roll": { "loop": false },
+        "Dance_Loop": { "loop": true },
+        "Death01": { "loop": false }
+      }
+    },
     "char/robot": {
       "file": "characters/robot.glb",
       "label": "Robot",

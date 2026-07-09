@@ -11,6 +11,7 @@ Mixamo) ever enters this directory.
 | `characters/robot.glb` (RobotExpressive) | [three.js examples](https://github.com/mrdoob/three.js/tree/dev/examples/models/gltf/RobotExpressive) | Tomás Laulhé (quaternius.com), modifications Don McCurdy | CC0-1.0 |
 | `characters/fox.glb` (Fox) | [glTF-Sample-Models](https://github.com/KhronosGroup/glTF-Sample-Models/tree/master/2.0/Fox) | Model: PixelMannen (CC0); rigging & animation: @AsoboStudio and @scurest (CC-BY 4.0) | CC0-1.0 + CC-BY 4.0 |
 | `characters/knight.glb` (Knight, 75 animation clips) | [KayKit Adventurers 1.0](https://github.com/KayKit-Game-Assets/KayKit-Character-Pack-Adventures-1.0) | Kay Lousberg (kaylousberg.com) | CC0-1.0 |
+| `characters/figure.glb` (Animated Base Character — neutral mannequin, 45 animation clips) | [Poly Pizza](https://poly.pizza/m/cwYvO5UauX) | Quaternius (quaternius.com) | CC0-1.0 per quaternius.com; Poly Pizza lists CC-BY 3.0, attribution given either way |
 
 Built-in environments and props (`env/*`, `prop/*`) are generated
 procedurally by `@velocut/scene-sdk` — no external assets involved.

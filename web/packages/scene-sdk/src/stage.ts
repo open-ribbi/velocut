@@ -193,6 +193,40 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
     inner.traverse((o) => {
       o.castShadow = true;
     });
+    // Body tint (multi-figure scenes need tell-apart colors, same as the
+    // builtin mannequin). Clones share materials with the GLTF cache, so
+    // recoloring means cloning the material per character — only untextured
+    // ones (tinting a texture reads as broken). Each material's lightness
+    // ratio is preserved, so two-tone figures keep their joint contrast.
+    if (c.color) {
+      const tint = new three.Color(c.color);
+      const hsl = { h: 0, s: 0, l: 0 };
+      let maxL = 0;
+      inner.traverse((o) => {
+        const m = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | THREE.MeshStandardMaterial[] | undefined;
+        for (const mat of Array.isArray(m) ? m : m ? [m] : []) {
+          if (!mat.map && mat.color) maxL = Math.max(maxL, mat.color.getHSL(hsl).l);
+        }
+      });
+      const recolored = new Map<THREE.Material, THREE.Material>();
+      inner.traverse((o) => {
+        const mesh = o as THREE.Mesh;
+        if (!mesh.isMesh) return;
+        const remap = (mat: THREE.Material): THREE.Material => {
+          const std = mat as THREE.MeshStandardMaterial;
+          if (std.map || !std.color) return mat;
+          let out = recolored.get(mat);
+          if (!out) {
+            out = mat.clone();
+            const ratio = maxL > 0 ? std.color.getHSL(hsl).l / maxL : 1;
+            (out as THREE.MeshStandardMaterial).color.copy(tint).multiplyScalar(ratio);
+            recolored.set(mat, out);
+          }
+          return out;
+        };
+        mesh.material = Array.isArray(mesh.material) ? mesh.material.map(remap) : remap(mesh.material);
+      });
+    }
     // Wrap in a group: baseScale normalizes the model's native units (e.g. the
     // Fox is authored in centimeters) on the INNER node, so the user-facing
     // scale/position on the outer root stays in meters.
