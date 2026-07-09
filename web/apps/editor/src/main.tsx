@@ -5,7 +5,7 @@ import { App } from './App';
 import { Container } from './di/container';
 import { TOKENS } from './di/tokens';
 import { createEngine } from './services/engine';
-import { MediaLibrary, RendererClient, Playback, AudioEngine, WhisperTranscriber, Exporter, Observer, ConfigurableTts, ttsProviders, localTts, type TtsConfig } from '@velocut/render-sdk';
+import { MediaLibrary, RendererClient, Playback, AudioEngine, WhisperTranscriber, Exporter, Observer, ConfigurableTts, ttsProviders, localTts, validateMotionSpec, type TtsConfig } from '@velocut/render-sdk';
 import { CollabSession, loadMedia, kvGet, kvPut } from '@velocut/collab-sdk';
 import { FontLibrary } from './services/fonts';
 import { captionAsset } from './services/caption';
@@ -13,7 +13,7 @@ import { observeForAgent, type ObserveInput } from './services/observe';
 import { synthesizeNarration } from './services/tts';
 import { runAgentScript } from './services/script';
 import { createMotionClip, syncMotionAsset, migrateLegacyMotionSpecs, type MotionClipOptions } from './services/motion';
-import { createSceneClip, pruneSceneRenderers, syncSceneAsset, type SceneClipOptions } from './services/scene';
+import { checkSpecCommand, createSceneClip, pruneSceneRenderers, syncSceneAsset, type SceneClipOptions } from './services/scene';
 import { loadSceneManifest, scenePromptDoc } from '@velocut/scene-sdk';
 import { searchWeb } from './services/search';
 import { Store } from './state/store';
@@ -221,12 +221,21 @@ async function bootstrap() {
   };
   store.subscribe(scheduleRestore);
 
+  // Raw applies (agent scripts, DevTools) can carry setAssetSpec — validate
+  // the spec BEFORE the engine stores it opaquely: an invalid spec in the
+  // document renders stale (last good compile) until reload, then black.
+  const guardedDispatch = (cmd: Command) => {
+    const specErr = checkSpecCommand(store, cmd as Parameters<typeof checkSpecCommand>[1], validateMotionSpec);
+    if (specErr) return { ok: false, error: { code: 'invalidSpec', message: specErr } } as ReturnType<typeof store.dispatch>;
+    return store.dispatch(cmd);
+  };
+
   // Agent API — the same dispatch path the UI uses. An external agent (or
   // you, in DevTools) can edit the project with plain JSON commands:
   //   velocut.apply({type:'splitClip', clipId:'clip_2', atUs:1500000})
   (window as any).velocut = {
     apply: (cmd: Command | string) =>
-      store.dispatch(typeof cmd === 'string' ? JSON.parse(cmd) : cmd),
+      guardedDispatch(typeof cmd === 'string' ? JSON.parse(cmd) : cmd),
     undo: () => store.undo(),
     redo: () => store.redo(),
     doc: () => store.getState().doc,
@@ -248,7 +257,7 @@ async function bootstrap() {
     script: (code: string) =>
       runAgentScript(
         {
-          apply: (cmd) => store.dispatch(typeof cmd === 'string' ? JSON.parse(cmd) : (cmd as Command)),
+          apply: (cmd) => guardedDispatch(typeof cmd === 'string' ? JSON.parse(cmd) : (cmd as Command)),
           // Sandbox path forces LOCAL (in-browser) TTS: a cloud provider would POST
           // the script's (attacker-controllable) text to a third-party endpoint from
           // the HOST realm, an egress the sandbox's connect-src 'none' can't cover.

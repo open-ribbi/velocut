@@ -65,6 +65,7 @@
       "label": "Animated figure (neutral mannequin, clip-driven)",
       "license": "CC0-1.0 (Quaternius; listed CC-BY 3.0 on Poly Pizza — attribution recorded)",
       "heightM": 1.78,
+      "yawDeg": 180,
       "bones": { "handR": "DEF-handR", "handL": "DEF-handL", "head": "DEF-head" },
       "clips": {
         "Idle_Loop": { "loop": true },

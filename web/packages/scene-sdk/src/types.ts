@@ -145,6 +145,12 @@ export interface SceneAssetManifest {
       /** Normalizes the model's native units to meters (e.g. 0.01 for a
        *  centimeter-authored GLB) — applied under the user-facing transform. */
       baseScale?: number;
+      /** Normalizes the model's rest facing to the spec convention
+       *  (rotationY 0 faces +Z): degrees baked under the user-facing
+       *  transform (180 for a model authored facing -Z). Without it, body
+       *  direction and gaze/lookAt semantics disagree and no spec value can
+       *  fix both. */
+      yawDeg?: number;
       /** Semantic bone slots (handR/handL/head/…) → actual rig bone names,
        *  the vocabulary prop attachTo speaks. */
       bones?: Record<string, string>;
@@ -262,7 +268,9 @@ export function validateSceneSpec(spec: unknown): string | null {
     }
   }
   if (s.props != null) {
-    if (!Array.isArray(s.props) || s.props.length > 50) return 'spec.props must be an array of at most 50';
+    // Generous cap: blockout sets (a greybox city block is easily 100 cubes)
+    // are a first-class workflow; the cap only bounds compile cost.
+    if (!Array.isArray(s.props) || s.props.length > 200) return 'spec.props must be an array of at most 200';
     for (const p of s.props) {
       if (!p || typeof p.model !== 'string') return 'every prop needs a model id';
       if (p.position != null && !isVec3A(p.position)) return 'prop: invalid position';

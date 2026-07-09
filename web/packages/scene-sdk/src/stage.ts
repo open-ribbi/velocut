@@ -70,6 +70,9 @@ export interface StageCharacter {
    *  gaze's premultiplied yaw never accumulates when no clip drives the head
    *  (poseAt must stay a pure function of t). */
   headRest: THREE.Quaternion | null;
+  /** Rest-facing offset baked on the inner node (manifest yawDeg), radians —
+   *  gaze clamps relative to the ACTUAL facing, spec rotationY + this. */
+  yawRad: number;
   /** Meshes with morph targets — driven by character.morphs. */
   morphMeshes: THREE.Mesh[];
   /** Set for the built-in poseable figure: joint name → its rotation group. */
@@ -175,6 +178,7 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
         heightM: entry.heightM ?? m.heightM,
         head: m.joints.get('head') ?? null,
         headRest: null, // pose fully re-sets every joint each frame
+        yawRad: 0,
         morphMeshes: [],
         mannequinJoints: m.joints,
         spec: c,
@@ -227,10 +231,12 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
         mesh.material = Array.isArray(mesh.material) ? mesh.material.map(remap) : remap(mesh.material);
       });
     }
-    // Wrap in a group: baseScale normalizes the model's native units (e.g. the
-    // Fox is authored in centimeters) on the INNER node, so the user-facing
-    // scale/position on the outer root stays in meters.
+    // Wrap in a group: baseScale/yawDeg normalize the model's native units
+    // and rest facing on the INNER node, so the user-facing transform on the
+    // outer root keeps the spec conventions (meters; rotationY 0 faces +Z).
     if (entry.baseScale != null) inner.scale.setScalar(entry.baseScale);
+    const yawRad = ((entry.yawDeg ?? 0) * Math.PI) / 180;
+    if (yawRad) inner.rotation.y = yawRad;
     const root = new three.Group();
     root.add(inner);
     scene.add(root);
@@ -273,6 +279,7 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
       heightM: entry.heightM ?? 1.7,
       head,
       headRest: head ? (head as THREE.Object3D).quaternion.clone() : null,
+      yawRad,
       morphMeshes,
       spec: c,
     });
@@ -360,7 +367,7 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
     const dz = target.z - headPos.z;
     if (dx * dx + dz * dz < 1e-6) return;
     const desiredYaw = Math.atan2(dx, dz);
-    const bodyYaw = (sampleAnimatable(c.spec.rotationY, t, 0) * Math.PI) / 180;
+    const bodyYaw = (sampleAnimatable(c.spec.rotationY, t, 0) * Math.PI) / 180 + c.yawRad;
     // Shortest signed difference, clamped to the neck's range.
     let extra = desiredYaw - bodyYaw;
     extra = Math.atan2(Math.sin(extra), Math.cos(extra));

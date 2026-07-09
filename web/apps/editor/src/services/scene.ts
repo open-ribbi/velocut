@@ -133,6 +133,39 @@ const attachedSpecs = new Map<string, string>();
  *  WebGL context instead of stranding it until GC. */
 const attachedCompiled = new Map<string, CompiledScene>();
 
+/** Guard raw setAssetSpec commands (velocut.apply / the script sandbox)
+ *  BEFORE they reach the engine. The engine stores specs opaquely by design,
+ *  and the UI validates its own edits — but a raw apply used to write an
+ *  invalid spec straight into the document: the attached renderer silently
+ *  kept showing the LAST good compile (so the author saw stale success), and
+ *  the clip only collapsed to black on reload. Reject at the door with the
+ *  validator's message so an agent can self-correct immediately. */
+export function checkSpecCommand(
+  store: Store,
+  cmd: { type?: string; assetId?: string; spec?: unknown; commands?: unknown[] },
+  validateMotion: (spec: unknown) => string | null,
+): string | null {
+  if (cmd?.type === 'batch' && Array.isArray(cmd.commands)) {
+    for (const inner of cmd.commands) {
+      const err = checkSpecCommand(store, inner as typeof cmd, validateMotion);
+      if (err) return err;
+    }
+    return null;
+  }
+  if (cmd?.type !== 'setAssetSpec' || typeof cmd.spec !== 'string') return null;
+  const asset = store.getState().doc.assets.find((a) => a.id === cmd.assetId);
+  if (!asset) return null; // unknown asset → let the engine produce its own error
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(cmd.spec);
+  } catch {
+    return null; // not JSON → the engine rejects it with its own message
+  }
+  if (asset.src.startsWith('scene://')) return validateSceneSpec(parsed);
+  if (asset.src.startsWith('motion://')) return validateMotion(parsed);
+  return null;
+}
+
 /** Free renderers whose asset left the document (undo of creation, deletion,
  *  a remote peer's removal). Called after every media restore sweep. */
 export function pruneSceneRenderers(store: Store): void {

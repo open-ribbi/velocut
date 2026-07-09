@@ -23,6 +23,9 @@ automatically.
   "license": "CC0-1.0 (author)",       // record it in LICENSES.md too
   "heightM": 1.7,                       // real-world height in meters
   "baseScale": 1,                       // native-units → meters (0.01 for cm rigs)
+  "yawDeg": 0,                          // rest-facing fix: 180 if the model faces -Z
+                                        // (check! rotationY 0 must face the camera —
+                                        // otherwise body vs gaze/lookAt disagree)
   "bones": {                            // semantic attach slots → rig bone names
     "handR": "RightHand", "handL": "LeftHand", "head": "Head"
   },
