@@ -61,6 +61,17 @@ html, body, #root {
 .asset-item:hover { background: #1d2026; }
 .asset-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .asset-dur { color: #5b6372; font-size: 11px; }
+/* "Reference in agent chat" — visible on row hover, drops asset_N into the console input. */
+.asset-ref {
+  flex: 0 0 auto;
+  width: 20px; height: 20px; padding: 0;
+  border: none; border-radius: 4px;
+  background: transparent; color: #5b6372;
+  font-size: 12px; line-height: 1; cursor: pointer;
+  visibility: hidden;
+}
+.asset-item:hover .asset-ref { visibility: visible; }
+.asset-ref:hover { background: #2a2e37; color: #aeb6c4; }
 /* Unloaded-media warning: doc references the asset but its media isn't attached
    (file missing / lost on reload) — its clip renders silent black otherwise. */
 .asset-warn {

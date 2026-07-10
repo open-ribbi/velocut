@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { Store, UiState } from '../state/store';
 import type { MediaLibrary } from '@velocut/render-sdk';
 import type { Envelope, TrackKind } from '@velocut/protocol';
+import { referenceToAgent } from '../services/reference';
 
 const ICON: Record<string, string> = { video: '🎬', image: '🖼', audio: '🎵' };
 
@@ -165,6 +166,16 @@ export function AssetPanel({ store, media, state, width }: { store: Store; media
         >
           <span className={`asset-kind asset-${a.kind}`}>{ICON[a.kind] ?? '📄'}</span>
           <span className="asset-name">{a.name}</span>
+          <button
+            className="asset-ref"
+            title="Reference in agent chat"
+            onClick={(e) => {
+              e.stopPropagation();
+              referenceToAgent({ id: a.id, name: a.name });
+            }}
+          >
+            ＠
+          </button>
           {unloaded.has(a.id) && (
             <span className="asset-warn" title={unloadedHint(a.src)} onClick={(e) => e.stopPropagation()}>
               !

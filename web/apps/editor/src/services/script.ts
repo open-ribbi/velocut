@@ -68,12 +68,15 @@ export interface ScriptApi {
   /** Render ONE clip in isolation to an mp4 (≤ the provider reference budget)
    *  and upload it — the previz-as-reference-video path. Same handle contract. */
   uploadClip(opts: unknown): Promise<unknown>;
+  /** Upload an imported IMAGE asset's original file (character photos → the
+   *  reference-images field). Same handle contract; video assets are refused. */
+  uploadAsset(opts: unknown): Promise<unknown>;
 }
 
 /** RPC method names the sandbox may call. motionClip is included: it now takes a
  *  declarative JSON spec (no functions), so it structured-clones cleanly and the
  *  host renders it with a fixed interpreter — no eval. */
-const RPC_METHODS = ['apply', 'tts', 'observe', 'evaluate', 'document', 'seek', 'motionClip', 'sceneClip', 'sceneAssets', 'videoGen', 'videoGenChannels', 'uploadFrame', 'uploadClip'] as const;
+const RPC_METHODS = ['apply', 'tts', 'observe', 'evaluate', 'document', 'seek', 'motionClip', 'sceneClip', 'sceneAssets', 'videoGen', 'videoGenChannels', 'uploadFrame', 'uploadClip', 'uploadAsset'] as const;
 
 // Wall-clock cap on SANDBOX-side compute: kills runaway loops / stuck awaits.
 // Time spent inside a host RPC doesn't count (the clock pauses while the host

@@ -11,7 +11,9 @@
 // contains URLs this module produced against the user-configured store.
 
 import { createUploader, isolateClip, Exporter, type MediaLibrary, type Observer } from '@velocut/render-sdk';
+import { loadMedia } from '@velocut/collab-sdk';
 import type { Store } from '../state/store';
+import { activeStorage } from './projects';
 
 export interface UploadConfig {
   /** Uploader kind id from the render-sdk registry ('s3' | 'relay' | …). */
@@ -101,11 +103,13 @@ export interface UploadCaptureResult {
 export function sandboxUploads(store: Store, media: MediaLibrary, observer: Observer): {
   uploadFrame: (o: unknown) => Promise<unknown>;
   uploadClip: (o: unknown) => Promise<unknown>;
+  uploadAsset: (o: unknown) => Promise<unknown>;
 } {
   const strip = ({ url: _url, ...rest }: UploadCaptureResult): unknown => rest;
   return {
     uploadFrame: async (o) => strip(await uploadFrame(store, observer, (o ?? {}) as { timeUs: number })),
     uploadClip: async (o) => strip(await uploadClip(store, media, (o ?? {}) as { clipId: string; maxS?: number })),
+    uploadAsset: async (o) => strip(await uploadAsset(store, (o ?? {}) as { assetId: string })),
   };
 }
 
@@ -131,6 +135,28 @@ export async function uploadFrame(
   const blob = await canvas.convertToBlob({ type: 'image/png' });
   try {
     const { url } = await up.upload(blob, { name: opts.name ?? 'frame.png', contentType: 'image/png' });
+    return { ok: true, handle: registerHandle(url), url };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/** Upload an imported IMAGE asset's original file — the character-photo →
+ *  reference_images path (a pasted photo standing in for a previz mannequin).
+ *  Video assets are refused: providers cap reference-video length, so video
+ *  must go through uploadClip's bounded re-render. */
+export async function uploadAsset(store: Store, opts: { assetId: string }): Promise<UploadCaptureResult> {
+  const up = uploader();
+  if (!up) return { ok: false, message: 'No upload storage configured — open Agent settings → Upload storage.' };
+  const asset = store.getState().doc.assets.find((a) => a.id === opts.assetId);
+  if (!asset) return { ok: false, message: `uploadAsset: no asset '${opts.assetId}'` };
+  if (asset.kind !== 'image') {
+    return { ok: false, message: `uploadAsset: '${opts.assetId}' is ${asset.kind} — only image assets upload as-is; use uploadClip for video (providers cap reference length).` };
+  }
+  const file = await loadMedia(asset.src, activeStorage().mediaDir);
+  if (!file) return { ok: false, message: `uploadAsset: media for '${opts.assetId}' is not in project storage — re-import the file.` };
+  try {
+    const { url } = await up.upload(file, { name: asset.name || 'asset.png', contentType: file.type || 'image/png' });
     return { ok: true, handle: registerHandle(url), url };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : String(e) };

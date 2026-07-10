@@ -17,6 +17,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { Clip, TimeUs } from '@velocut/protocol';
 import type { MediaLibrary } from '@velocut/render-sdk';
 import type { Store, UiState } from '../state/store';
+import { referenceToAgent } from '../services/reference';
 
 const RULER_H = 30;
 const TRACK_H = 54;
@@ -817,6 +818,14 @@ export function TimelinePanel({ store, state, media, height }: { store: Store; s
                   }}
                 >
                   ✂ Split at Playhead
+                </button>
+                <button
+                  onClick={() => {
+                    referenceToAgent({ id: menu.clipId });
+                    setMenu(null);
+                  }}
+                >
+                  ＠ Reference in Agent Chat
                 </button>
                 <button
                   className="ctx-danger"

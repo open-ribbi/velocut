@@ -5,7 +5,7 @@
 // gestures use. Tool calls render as cards so the user sees every command
 // the model applied (and can undo them like any other edit).
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type Anthropic from '@anthropic-ai/sdk';
 import { runAgentTurn, type AgentEvent } from '@velocut/agent-sdk';
 import { type MediaLibrary, type Transcriber, type Observer, type TextToSpeech, type ShotAnalysis, effectPromptDoc } from '@velocut/render-sdk';
@@ -37,6 +37,8 @@ import {
   type VideoGenConfig,
 } from '../services/videogen';
 import { loadUploadConfig, saveUploadConfig, testUploadStorage, sandboxUploads, type UploadConfig } from '../services/upload';
+import { importMediaFiles } from '../services/import';
+import { onAgentReference, referenceToken } from '../services/reference';
 import { videoGenProviders, uploaderKinds } from '@velocut/render-sdk';
 import { useFloatingDock } from './useDraggable';
 
@@ -201,12 +203,42 @@ export function AgentConsole({
   const [input, setInput] = useState('');
   const [items, setItems] = useState<ChatItem[]>([]);
   const [busy, setBusy] = useState(false);
+  const [importing, setImporting] = useState(0);
   const [lightbox, setLightbox] = useState<string | null>(null);
   const history = useRef<Anthropic.MessageParam[]>([]);
   const listRef = useRef<HTMLDivElement>(null);
   const dock = useFloatingDock('velocut.agentDockPos', open, () => setOpen(true));
 
   const scrollDown = () => requestAnimationFrame(() => listRef.current?.scrollTo({ top: 1e9 }));
+
+  /** Append a reference token to the draft, keeping it space-delimited. */
+  const appendRef = (token: string) => setInput((v) => (v && !/\s$/.test(v) ? `${v} ${token} ` : `${v}${token} `));
+
+  // Timeline clips / asset rows publish "reference in agent chat" → open the
+  // console and drop the id token (clip_N / asset_N — the ids the agent's
+  // tools already speak) into the draft.
+  useEffect(
+    () =>
+      onAgentReference((ref) => {
+        setOpen(true);
+        appendRef(referenceToken(ref));
+      }),
+    [],
+  );
+
+  // Media pasted or dropped into the console = the Import path (OPFS + asset
+  // in the document) + a reference token, so "use this photo" is one gesture.
+  const importAndReference = async (files: File[]) => {
+    setImporting((n) => n + 1);
+    try {
+      const imported = await importMediaFiles(store, media, files);
+      for (const a of imported) appendRef(referenceToken({ id: a.assetId, name: a.name }));
+      if (!imported.length)
+        setItems((l) => [...l, { role: 'error', text: 'Nothing importable — paste/drop video, image or audio files.' }]);
+    } finally {
+      setImporting((n) => n - 1);
+    }
+  };
 
   const send = async () => {
     const text = input.trim();
@@ -391,7 +423,20 @@ export function AgentConsole({
   }
 
   return (
-    <div className="agent-console" ref={dock.panelRef} style={dock.panelStyle}>
+    <div
+      className="agent-console"
+      ref={dock.panelRef}
+      style={dock.panelStyle}
+      onDragOver={(e) => {
+        if (e.dataTransfer.types.includes('Files')) e.preventDefault();
+      }}
+      onDrop={(e) => {
+        const files = Array.from(e.dataTransfer.files ?? []);
+        if (!files.length) return;
+        e.preventDefault();
+        void importAndReference(files);
+      }}
+    >
       <div className="agent-head" onPointerDown={dock.onPanelDragStart}>
         <span className="drag-grip" title="Drag to move">⠿</span>
         <span className="agent-title">AI Editing Assistant</span>
@@ -471,11 +516,12 @@ export function AgentConsole({
         })}
         {/* The dots show only until the first streamed token arrives. */}
         {busy && items[items.length - 1]?.role === 'user' && <div className="chat-busy">Thinking…</div>}
+        {importing > 0 && <div className="chat-busy">Importing media…</div>}
       </div>
       <div className="agent-input-row">
         <textarea
           value={input}
-          placeholder="Describe your editing intent; press Enter to send"
+          placeholder="Describe your editing intent; Enter to send. Paste/drop media to import & reference it."
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
@@ -483,6 +529,12 @@ export function AgentConsole({
               void send();
             }
             e.stopPropagation();
+          }}
+          onPaste={(e) => {
+            const files = Array.from(e.clipboardData?.files ?? []);
+            if (!files.length) return;
+            e.preventDefault();
+            void importAndReference(files);
           }}
         />
         <button className="primary" disabled={busy || !input.trim()} onClick={() => void send()}>

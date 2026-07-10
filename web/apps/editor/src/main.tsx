@@ -17,7 +17,7 @@ import { checkSpecCommand, createSceneClip, pruneSceneRenderers, syncSceneAsset,
 import { loadSceneManifest, scenePromptDoc } from '@velocut/scene-sdk';
 import { searchWeb } from './services/search';
 import { generateVideoClip, describeVideoGenChannels, sandboxVideoGen, type VideoGenClipOptions } from './services/videogen';
-import { uploadFrame, uploadClip, sandboxUploads } from './services/upload';
+import { uploadFrame, uploadClip, uploadAsset, sandboxUploads } from './services/upload';
 import { Store } from './state/store';
 import { HistoryTree } from './state/history';
 import { ensureActiveProject, storageKeys, listProjects, createProject, renameProject, deleteProject, openProject, registerFlushBeforeSwitch } from './services/projects';
@@ -261,6 +261,7 @@ async function bootstrap() {
     // store). Host path returns the real URL alongside the upload:// handle.
     uploadFrame: (o: { timeUs: number; name?: string }) => uploadFrame(store, container.resolve(TOKENS.Observer), o),
     uploadClip: (o: { clipId: string; maxS?: number; name?: string }) => uploadClip(store, media, o),
+    uploadAsset: (o: { assetId: string }) => uploadAsset(store, o),
     // Web research (grounded search) — same surface the agent's velocut_search reaches.
     search: (query: string) => searchWeb(query),
     // Run an editing program in one call (the velocut_script host surface) — same

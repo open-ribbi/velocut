@@ -7,8 +7,7 @@ import {
   type AudioClipPlan,
   type VideoCodecFamily,
 } from '@velocut/render-sdk';
-import { saveMedia } from '@velocut/collab-sdk';
-import { activeStorage } from '../services/projects';
+import { importMediaFiles } from '../services/import';
 import { ProjectMenu } from './ProjectMenu';
 import { splitAtPlayhead } from '../App';
 
@@ -115,78 +114,7 @@ export function Toolbar({
     }
   };
 
-  const importFiles = async (files: File[]) => {
-    for (const file of files) {
-      const isVideo = file.type.startsWith('video/');
-      const isImage = file.type.startsWith('image/');
-      const isAudio = file.type.startsWith('audio/');
-      if (!isVideo && !isImage && !isAudio) continue;
-      try {
-        // Media bytes live in OPFS so projects survive reloads; the
-        // document only stores the opfs:// locator.
-        const src = await saveMedia(file, activeStorage().mediaDir).catch(() => `local://${file.name}`);
-        if (isAudio) {
-          const probe = await media.probeAudio(file);
-          const resp = store.dispatch({
-            type: 'addAsset',
-            kind: 'audio',
-            src,
-            name: file.name,
-            durationUs: probe.durationUs,
-            width: 0,
-            height: 0,
-            hasAudio: true,
-          });
-          if (resp.ok) {
-            const ev = resp.events.find((e) => e.kind === 'assetAdded');
-            if (ev && ev.kind === 'assetAdded') await media.attachAudio(ev.assetId, probe.buffer);
-          }
-        } else if (isVideo) {
-          // Probe first so the document gets complete metadata in ONE command.
-          const source = await media.probeVideo(file);
-          const p = source.probe();
-          const resp = store.dispatch({
-            type: 'addAsset',
-            kind: 'video',
-            src,
-            name: file.name,
-            durationUs: p.durationUs,
-            width: p.width,
-            height: p.height,
-            hasAudio: p.hasAudio,
-          });
-          if (resp.ok) {
-            const ev = resp.events.find((e) => e.kind === 'assetAdded');
-            if (ev && ev.kind === 'assetAdded') {
-              media.attachVideo(ev.assetId, source, file);
-              // Preview proxy build is opt-in until it has resource guards — a
-              // background 4K transcode can run a second hardware decoder
-              // alongside the live preview's and exhaust the GPU (machine hang).
-              if (localStorage.getItem('velocut.autoProxy') === '1') void media.buildProxy(ev.assetId);
-            }
-          }
-        } else {
-          const frame = await media.probeImage(file);
-          const resp = store.dispatch({
-            type: 'addAsset',
-            kind: 'image',
-            src,
-            name: file.name,
-            durationUs: 0,
-            width: frame.displayWidth,
-            height: frame.displayHeight,
-            hasAudio: false,
-          });
-          if (resp.ok) {
-            const ev = resp.events.find((e) => e.kind === 'assetAdded');
-            if (ev && ev.kind === 'assetAdded') media.attachImage(ev.assetId, frame);
-          }
-        }
-      } catch (err) {
-        console.error('[velocut] import failed', err);
-      }
-    }
-  };
+  const importFiles = (files: File[]) => void importMediaFiles(store, media, files);
 
   const selected = state.selectedClipId
     ? state.doc.tracks.flatMap((t) => t.clips).find((c) => c.id === state.selectedClipId)
