@@ -49,6 +49,19 @@ export {
   type SynthResult,
 } from './tts.ts';
 export {
+  S3Uploader,
+  RelayUploader,
+  registerUploaderKind,
+  uploaderKinds,
+  createUploader,
+  type MediaUploader,
+  type UploaderKind,
+  type UploadOptions,
+  type UploadResult,
+  type S3UploaderConfig,
+  type RelayUploaderConfig,
+} from './upload.ts';
+export {
   TaskApiVideoGen,
   registerVideoGenProvider,
   videoGenProviders,

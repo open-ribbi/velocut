@@ -17,6 +17,7 @@ import { checkSpecCommand, createSceneClip, pruneSceneRenderers, syncSceneAsset,
 import { loadSceneManifest, scenePromptDoc } from '@velocut/scene-sdk';
 import { searchWeb } from './services/search';
 import { generateVideoClip, describeVideoGenChannels, sandboxVideoGen, type VideoGenClipOptions } from './services/videogen';
+import { uploadFrame, uploadClip, sandboxUploads } from './services/upload';
 import { Store } from './state/store';
 import { HistoryTree } from './state/history';
 import { ensureActiveProject, storageKeys, listProjects, createProject, renameProject, deleteProject, openProject, registerFlushBeforeSwitch } from './services/projects';
@@ -256,6 +257,10 @@ async function bootstrap() {
     // USER path; the sandbox RPC below is the restricted one.
     videoGen: (o: VideoGenClipOptions) => generateVideoClip(store, media, o),
     videoGenChannels: () => describeVideoGenChannels(),
+    // Conditioning uploads (frame PNG / isolated-clip mp4 → the configured
+    // store). Host path returns the real URL alongside the upload:// handle.
+    uploadFrame: (o: { timeUs: number; name?: string }) => uploadFrame(store, container.resolve(TOKENS.Observer), o),
+    uploadClip: (o: { clipId: string; maxS?: number; name?: string }) => uploadClip(store, media, o),
     // Web research (grounded search) — same surface the agent's velocut_search reaches.
     search: (query: string) => searchWeb(query),
     // Run an editing program in one call (the velocut_script host surface) — same
@@ -286,10 +291,11 @@ async function bootstrap() {
             const manifest = await loadSceneManifest();
             return { doc: scenePromptDoc(manifest), manifest };
           },
-          // Sandbox video-gen: channel id + model + prompt ONLY (endpoint/key
-          // resolve from host config; reference URLs rejected inside).
+          // Sandbox video-gen: channel id + model + prompt, reference media
+          // only as upload:// handles (endpoint/key resolve from host config).
           videoGen: sandboxVideoGen(store, media),
           videoGenChannels: () => describeVideoGenChannels(),
+          ...sandboxUploads(store, media, container.resolve(TOKENS.Observer)),
         },
         code,
       ),

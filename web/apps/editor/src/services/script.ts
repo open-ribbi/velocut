@@ -61,12 +61,19 @@ export interface ScriptApi {
   /** Discover configured video-gen channels: [{id, label, models, defaultModel}]
    *  — no endpoints, no keys. */
   videoGenChannels(): unknown;
+  /** Render the composite at a time and upload it to the user-configured
+   *  store. Returns an OPAQUE {handle: 'upload://…'} usable in videoGen
+   *  reference fields — the real URL never crosses into the sandbox. */
+  uploadFrame(opts: unknown): Promise<unknown>;
+  /** Render ONE clip in isolation to an mp4 (≤ the provider reference budget)
+   *  and upload it — the previz-as-reference-video path. Same handle contract. */
+  uploadClip(opts: unknown): Promise<unknown>;
 }
 
 /** RPC method names the sandbox may call. motionClip is included: it now takes a
  *  declarative JSON spec (no functions), so it structured-clones cleanly and the
  *  host renders it with a fixed interpreter — no eval. */
-const RPC_METHODS = ['apply', 'tts', 'observe', 'evaluate', 'document', 'seek', 'motionClip', 'sceneClip', 'sceneAssets', 'videoGen', 'videoGenChannels'] as const;
+const RPC_METHODS = ['apply', 'tts', 'observe', 'evaluate', 'document', 'seek', 'motionClip', 'sceneClip', 'sceneAssets', 'videoGen', 'videoGenChannels', 'uploadFrame', 'uploadClip'] as const;
 
 // Wall-clock cap on SANDBOX-side compute: kills runaway loops / stuck awaits.
 // Time spent inside a host RPC doesn't count (the clock pauses while the host

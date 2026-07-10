@@ -36,7 +36,8 @@ import {
   type VideoGenChannel,
   type VideoGenConfig,
 } from '../services/videogen';
-import { videoGenProviders } from '@velocut/render-sdk';
+import { loadUploadConfig, saveUploadConfig, testUploadStorage, sandboxUploads, type UploadConfig } from '../services/upload';
+import { videoGenProviders, uploaderKinds } from '@velocut/render-sdk';
 import { useFloatingDock } from './useDraggable';
 
 interface ChatItem {
@@ -263,9 +264,11 @@ export function AgentConsole({
                   const manifest = await loadSceneManifest();
                   return { doc: scenePromptDoc(manifest), manifest };
                 },
-                // Restricted surface: channel id + model + prompt only.
+                // Restricted surface: channel id + model + prompt; reference
+                // media only as host-minted upload:// handles.
                 videoGen: sandboxVideoGen(store, media),
                 videoGenChannels: () => describeVideoGenChannels(),
+                ...sandboxUploads(store, media, observer),
               },
               code,
             ),
@@ -382,6 +385,7 @@ export function AgentConsole({
           onClose={() => setSettingsOpen(false)}
         />
         <VideoGenSettings />
+        <UploadSettings />
       </div>
     );
   }
@@ -673,6 +677,156 @@ function VideoGenSettings() {
           + Add channel
         </button>
       </div>
+    </div>
+  );
+}
+
+/** Per-kind field descriptors for the upload storage form. Secrets are never
+ *  echoed back (blank = keep the saved value), same rule as the LLM key. */
+const UPLOAD_FIELDS: Record<string, Array<{ key: string; label: string; secret?: boolean; placeholder?: string }>> = {
+  s3: [
+    { key: 'endpoint', label: 'Endpoint', placeholder: 'https://s3.example.com (or the bucket domain)' },
+    { key: 'bucket', label: 'Bucket', placeholder: 'bucket name (empty if the endpoint IS the bucket)' },
+    { key: 'region', label: 'Region', placeholder: 'auto' },
+    { key: 'accessKeyId', label: 'Access key' },
+    { key: 'secretAccessKey', label: 'Secret key', secret: true },
+    { key: 'prefix', label: 'Key prefix', placeholder: 'velocut/ (optional)' },
+    { key: 'publicBase', label: 'Public base', placeholder: 'public read URL base (blank → presigned GET, 7 days)' },
+  ],
+  relay: [
+    { key: 'endpoint', label: 'Endpoint', placeholder: 'https://your-relay.example/upload' },
+    { key: 'authToken', label: 'Auth token', secret: true, placeholder: 'optional bearer token' },
+  ],
+};
+const UPLOAD_SECRETS = ['secretAccessKey', 'authToken'];
+
+/** Upload storage settings — where conditioning media (frames / previz clips)
+ *  gets uploaded so video-gen providers can fetch it. One store serves every
+ *  channel. Unconfigured = the capability doesn't exist. */
+function UploadSettings() {
+  const kinds = uploaderKinds();
+  const [saved, setSaved] = useState<UploadConfig | null>(loadUploadConfig);
+  const [draft, setDraft] = useState<UploadConfig | null>(null);
+  const [test, setTest] = useState<{ busy: boolean; ok?: boolean; message?: string }>({ busy: false });
+
+  const openEditor = () => {
+    const base = saved ?? { kind: kinds[0]?.id ?? 's3', config: {} };
+    setDraft({
+      kind: base.kind,
+      config: Object.fromEntries(Object.entries(base.config).filter(([k]) => !UPLOAD_SECRETS.includes(k))),
+    });
+    setTest({ busy: false });
+  };
+  const finalDraft = (): UploadConfig => {
+    const merged: UploadConfig = { kind: draft!.kind, config: { ...draft!.config } };
+    for (const [k, v] of Object.entries(merged.config)) {
+      if (typeof v === 'string' && !v.trim()) delete merged.config[k];
+    }
+    // Blank secrets keep their saved values (they are never echoed into the form).
+    if (saved && saved.kind === merged.kind) {
+      for (const k of UPLOAD_SECRETS) {
+        if (!merged.config[k] && saved.config[k]) merged.config[k] = saved.config[k];
+      }
+    }
+    return merged;
+  };
+
+  if (draft) {
+    const fields = UPLOAD_FIELDS[draft.kind] ?? [{ key: 'endpoint', label: 'Endpoint' }];
+    const d = finalDraft();
+    const valid = Boolean(d.config.endpoint);
+    return (
+      <div className="videogen-settings">
+        <h4>Upload storage</h4>
+        <p>
+          Where conditioning media (frames, previz clips) is uploaded so video providers can fetch it by URL.
+          Credentials stay in this browser; the store must allow browser (CORS) PUT from this origin.
+        </p>
+        {kinds.length > 1 && (
+          <label className="llm-row">
+            <span>Protocol</span>
+            <select value={draft.kind} onChange={(e) => setDraft({ kind: e.target.value, config: {} })}>
+              {kinds.map((k) => (
+                <option key={k.id} value={k.id}>
+                  {k.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        {fields.map((f) => (
+          <label className="llm-row" key={f.key}>
+            <span>{f.label}</span>
+            <input
+              type={f.secret ? 'password' : 'text'}
+              value={(draft.config[f.key] as string) ?? ''}
+              placeholder={
+                f.secret && saved?.kind === draft.kind && saved.config[f.key]
+                  ? '•••••••• (saved — type to replace)'
+                  : f.placeholder
+              }
+              onChange={(e) => setDraft({ ...draft, config: { ...draft.config, [f.key]: e.target.value } })}
+            />
+          </label>
+        ))}
+        <div className="llm-actions">
+          <button
+            disabled={!valid || test.busy}
+            onClick={async () => {
+              setTest({ busy: true });
+              const r = await testUploadStorage(finalDraft());
+              setTest({ busy: false, ...r });
+            }}
+          >
+            {test.busy ? 'Testing…' : 'Test upload'}
+          </button>
+          <button
+            className="primary"
+            disabled={!valid}
+            onClick={() => {
+              const next = finalDraft();
+              saveUploadConfig(next);
+              setSaved(next);
+              setDraft(null);
+            }}
+          >
+            Save
+          </button>
+          <button onClick={() => setDraft(null)}>Cancel</button>
+        </div>
+        {test.message && <div className={`llm-test ${test.ok ? 'llm-test-ok' : 'llm-test-fail'}`}>{test.message}</div>}
+      </div>
+    );
+  }
+
+  return (
+    <div className="videogen-settings">
+      <h4>Upload storage</h4>
+      {saved ? (
+        <div className="llm-row videogen-channel">
+          <span>
+            <b>{saved.kind}</b>
+          </span>
+          <span className="videogen-models">{String(saved.config.endpoint ?? '')}</span>
+          <button onClick={openEditor}>Edit</button>
+          <button
+            title="Remove upload storage"
+            onClick={() => {
+              saveUploadConfig(null);
+              setSaved(null);
+            }}
+          >
+            ×
+          </button>
+        </div>
+      ) : (
+        <p>Not configured — frame/clip uploads (video-gen reference conditioning) are unavailable.</p>
+      )}
+      {!saved && (
+        <div className="llm-actions">
+          <button onClick={openEditor}>Configure</button>
+        </div>
+      )}
     </div>
   );
 }

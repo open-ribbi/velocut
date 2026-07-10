@@ -17,6 +17,7 @@ import { createVideoGen, videoGenProviders, type MediaLibrary, type VideoGenRequ
 import { saveMedia } from '@velocut/collab-sdk';
 import type { Store } from '../state/store';
 import { activeStorage } from './projects';
+import { resolveUploadHandle } from './upload';
 
 export interface VideoGenChannel {
   /** User-chosen channel id (what scripts/agents name), e.g. 'my-relay'. */
@@ -113,20 +114,26 @@ export interface VideoGenClipOptions {
   signal?: AbortSignal;
 }
 
+const REF_FIELDS = ['firstFrameUrl', 'lastFrameUrl', 'referenceImageUrls', 'referenceVideoUrls'] as const;
+
 /** The sandbox-restricted videoGen entry (ScriptApi.videoGen): channel id +
- *  model + prompt only — reference-URL options are rejected so prompt-injected
- *  programs cannot make the provider fetch attacker URLs or steer conditioning
- *  media. Shared by both script hosts (window.velocut.script + the agent). */
+ *  model + prompt, and reference media ONLY as upload:// handles minted by
+ *  the host's uploadFrame/uploadClip — never raw URLs, so prompt-injected
+ *  programs cannot make the provider fetch attacker endpoints or steer
+ *  conditioning media beyond what the host itself rendered and uploaded.
+ *  Shared by both script hosts (window.velocut.script + the agent). */
 export function sandboxVideoGen(store: Store, media: MediaLibrary): (o: unknown) => Promise<VideoGenClipResult> {
   return (o) => {
     const opts = (o ?? {}) as Record<string, unknown>;
-    const banned = ['firstFrameUrl', 'lastFrameUrl', 'referenceImageUrls', 'referenceVideoUrls'];
-    const hit = banned.find((k) => opts[k] != null);
-    if (hit) {
-      return Promise.resolve({
-        ok: false,
-        message: `videoGen: '${hit}' is not available from a sandboxed script (reference media is user-configured only). Generate from the prompt alone.`,
-      });
+    for (const k of REF_FIELDS) {
+      const vals = opts[k] == null ? [] : Array.isArray(opts[k]) ? (opts[k] as unknown[]) : [opts[k]];
+      const raw = vals.find((v) => typeof v !== 'string' || !v.startsWith('upload://'));
+      if (raw != null) {
+        return Promise.resolve({
+          ok: false,
+          message: `videoGen: '${k}' only accepts upload:// handles from velocut.uploadFrame/uploadClip in a sandboxed script (got '${String(raw).slice(0, 60)}'). Raw URLs are user-configured paths only.`,
+        });
+      }
     }
     return generateVideoClip(store, media, opts as unknown as VideoGenClipOptions);
   };
@@ -187,6 +194,27 @@ export async function generateVideoClip(store: Store, media: MediaLibrary, opts:
     return { ok: false, message: `videoGen: ${e instanceof Error ? e.message : String(e)} (registered kinds: ${kinds})` };
   }
 
+  // Reference media accepts upload:// handles (minted by uploadFrame/
+  // uploadClip) alongside raw URLs — resolve them to the real store URLs
+  // here, failing loudly on a stale/unknown handle.
+  const deref = (v: string): string => {
+    if (!v.startsWith('upload://')) return v;
+    const real = resolveUploadHandle(v);
+    if (!real) throw new Error(`videoGen: unknown upload handle '${v}' — handles come from uploadFrame/uploadClip in THIS session`);
+    return real;
+  };
+  let refs: Pick<VideoGenRequest, 'firstFrameUrl' | 'lastFrameUrl' | 'referenceImageUrls' | 'referenceVideoUrls'>;
+  try {
+    refs = {
+      firstFrameUrl: opts.firstFrameUrl && deref(opts.firstFrameUrl),
+      lastFrameUrl: opts.lastFrameUrl && deref(opts.lastFrameUrl),
+      referenceImageUrls: opts.referenceImageUrls?.map(deref),
+      referenceVideoUrls: opts.referenceVideoUrls?.map(deref),
+    };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e) };
+  }
+
   const req: VideoGenRequest = {
     model,
     prompt: opts.prompt,
@@ -194,10 +222,7 @@ export async function generateVideoClip(store: Store, media: MediaLibrary, opts:
     resolution: opts.resolution,
     ratio: opts.ratio,
     generateAudio: opts.generateAudio,
-    firstFrameUrl: opts.firstFrameUrl,
-    lastFrameUrl: opts.lastFrameUrl,
-    referenceImageUrls: opts.referenceImageUrls,
-    referenceVideoUrls: opts.referenceVideoUrls,
+    ...refs,
     onStatus: opts.onStatus,
     signal: opts.signal,
   };
