@@ -108,7 +108,7 @@ export function sandboxUploads(store: Store, media: MediaLibrary, observer: Obse
   const strip = ({ url: _url, ...rest }: UploadCaptureResult): unknown => rest;
   return {
     uploadFrame: async (o) => strip(await uploadFrame(store, observer, (o ?? {}) as { timeUs: number })),
-    uploadClip: async (o) => strip(await uploadClip(store, media, (o ?? {}) as { clipId: string; maxS?: number })),
+    uploadClip: async (o) => strip(await uploadClip(store, media, (o ?? {}) as { clipId: string; fromS?: number; maxS?: number })),
     uploadAsset: async (o) => strip(await uploadAsset(store, (o ?? {}) as { assetId: string })),
   };
 }
@@ -163,20 +163,26 @@ export async function uploadAsset(store: Store, opts: { assetId: string }): Prom
   }
 }
 
-/** Render ONE clip in isolation (its own layer only, from its own start) to
- *  an mp4 and upload it — the previz-as-reference-video path. Length is
- *  capped at the providers' reference budget. */
+/** Render ONE clip in isolation (its own layer only, on its own clock) to
+ *  an mp4 and upload it — the previz-as-reference-video path. fromS picks the
+ *  window's start within the clip (default 0 — e.g. reference the mid-clip
+ *  action beat, not just the opening); length is capped at the providers'
+ *  reference budget. */
 export async function uploadClip(
   store: Store,
   media: MediaLibrary,
-  opts: { clipId: string; maxS?: number; name?: string; onProgress?: (frac: number) => void },
+  opts: { clipId: string; fromS?: number; maxS?: number; name?: string; onProgress?: (frac: number) => void },
 ): Promise<UploadCaptureResult> {
   const up = uploader();
   if (!up) return { ok: false, message: 'No upload storage configured — open Agent settings → Upload storage.' };
   const doc = store.getState().doc;
   const clip = doc.tracks.flatMap((t) => t.clips).find((c) => c.id === opts.clipId);
   if (!clip) return { ok: false, message: `uploadClip: no clip '${opts.clipId}'` };
-  const durationUs = Math.min(clip.durationUs, Math.round((opts.maxS ?? CLIP_MAX_S) * 1e6));
+  const fromUs = Math.round((opts.fromS ?? 0) * 1e6);
+  if (fromUs < 0 || fromUs >= clip.durationUs) {
+    return { ok: false, message: `uploadClip: fromS must be within the clip (0–${(clip.durationUs / 1e6).toFixed(1)}s)` };
+  }
+  const durationUs = Math.min(clip.durationUs - fromUs, Math.round((opts.maxS ?? CLIP_MAX_S) * 1e6));
 
   let blob: Blob;
   try {
@@ -188,7 +194,7 @@ export async function uploadClip(
       durationUs,
       // The clip alone, on its own clock — previz references shouldn't carry
       // whatever else the timeline composits at that range.
-      evaluate: (t) => isolateClip(store.evaluate(clip.startUs + t), clip.id),
+      evaluate: (t) => isolateClip(store.evaluate(clip.startUs + fromUs + t), clip.id),
       audioClips: [],
       onProgress: opts.onProgress ? (frac) => opts.onProgress!(frac) : undefined,
     });

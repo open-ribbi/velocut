@@ -65,8 +65,9 @@ export interface ScriptApi {
    *  store. Returns an OPAQUE {handle: 'upload://…'} usable in videoGen
    *  reference fields — the real URL never crosses into the sandbox. */
   uploadFrame(opts: unknown): Promise<unknown>;
-  /** Render ONE clip in isolation to an mp4 (≤ the provider reference budget)
-   *  and upload it — the previz-as-reference-video path. Same handle contract. */
+  /** Render ONE clip in isolation to an mp4 (≤ the provider reference budget;
+   *  fromS picks the window's start within the clip) and upload it — the
+   *  previz-as-reference-video path. Same handle contract. */
   uploadClip(opts: unknown): Promise<unknown>;
   /** Upload an imported IMAGE asset's original file (character photos → the
    *  reference-images field). Same handle contract; video assets are refused. */

@@ -260,7 +260,7 @@ async function bootstrap() {
     // Conditioning uploads (frame PNG / isolated-clip mp4 → the configured
     // store). Host path returns the real URL alongside the upload:// handle.
     uploadFrame: (o: { timeUs: number; name?: string }) => uploadFrame(store, container.resolve(TOKENS.Observer), o),
-    uploadClip: (o: { clipId: string; maxS?: number; name?: string }) => uploadClip(store, media, o),
+    uploadClip: (o: { clipId: string; fromS?: number; maxS?: number; name?: string }) => uploadClip(store, media, o),
     uploadAsset: (o: { assetId: string }) => uploadAsset(store, o),
     // Web research (grounded search) — same surface the agent's velocut_search reaches.
     search: (query: string) => searchWeb(query),
