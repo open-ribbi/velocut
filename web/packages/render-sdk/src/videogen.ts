@@ -58,7 +58,8 @@ export interface VideoGenEndpointConfig {
   baseUrl: string;
   apiKey: string;
   pollIntervalMs?: number;
-  /** Overall generation deadline (default 10 min). */
+  /** Overall generation deadline (default 20 min — multi-reference tasks
+   *  run well past a t2v's couple of minutes). */
   timeoutMs?: number;
 }
 
@@ -168,7 +169,7 @@ export class TaskApiVideoGen implements VideoGenerator {
 
     const started = Date.now();
     const pollMs = this.config.pollIntervalMs ?? 5000;
-    const deadline = started + (this.config.timeoutMs ?? 10 * 60_000);
+    const deadline = started + (this.config.timeoutMs ?? 20 * 60_000);
     req.onStatus?.(submitBody.status ?? 'pending', 0);
 
     for (;;) {
