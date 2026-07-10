@@ -24,8 +24,11 @@ test('boots with an engine, imports media, edits, and survives a reload', async 
   await (await chooser).setFiles({ name: 'red.png', mimeType: 'image/png', buffer: RED_PNG });
   await expect(page.locator('.asset-item')).toHaveCount(1);
 
-  // Click-to-add creates the track and lays the clip down (3s image default).
-  await page.locator('.asset-item').click();
+  // Drag-to-place: dropping below the (empty) lane area mints a video track
+  // and lays the clip at the drop position (3s image default).
+  await page
+    .locator('.asset-item')
+    .dragTo(page.locator('.timeline-panel canvas'), { targetPosition: { x: 200, y: 60 } });
   await expect.poll(async () => (await doc(page))?.tracks[0]?.clips.length).toBe(1);
 
   // Split at the playhead (1.5s) through the toolbar.
