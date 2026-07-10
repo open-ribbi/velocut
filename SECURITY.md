@@ -24,6 +24,12 @@ Below are the boundaries you should understand before using the Agent features.
 - The Gemini search and MiniMax TTS keys are injected via the Vite dev server
   proxy; the browser never holds them (see README "Optional capabilities and key
   conventions").
+- Video-generation channel keys follow the LLM pattern, not the proxy pattern:
+  they live in localStorage (`velocut.videogen`) and travel in the browser's own
+  `Authorization` header. The dev-only `/videogen-proxy/<host>/…` Vite route is a
+  pure CORS relay (channel APIs allowlist origins and reject localhost) — it
+  injects nothing. In production the channel endpoint must allow CORS, the same
+  contract as a configured LLM gateway.
 
 ## The Agent's two levels of execution privilege
 
@@ -43,8 +49,16 @@ Below are the boundaries you should understand before using the Agent features.
    - **Cannot touch the parent page's DOM / cookies / `window.velocut`**
      (cross-origin isolation)
    - Can only call a whitelisted API (`apply`/`tts`/`observe`/`evaluate`/
-     `document`/`seek`), executed serially on the host via MessageChannel RPC;
-     a 60s wall-clock timeout guards against runaway scripts.
+     `document`/`seek`/`motionClip`/`sceneClip`/`videoGen`/…), executed serially
+     on the host via MessageChannel RPC; a 60s wall-clock timeout on sandbox
+     compute (host RPC time excluded) guards against runaway scripts.
+   - Paid/eGress-capable RPCs are further restricted on this path: `tts` is
+     pinned to the browser-local backend (cloud TTS would POST attacker-
+     controllable text from the host realm), and `videoGen` accepts only a
+     **configured channel id + model + prompt** — endpoint and key resolve from
+     host-side configuration, and reference-media URL options are rejected, so
+     a prompt-injected program can neither point the host at an attacker
+     endpoint nor make the provider fetch attacker URLs.
 
 ## Known risk: the injection chain (mitigated)
 

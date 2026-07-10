@@ -49,6 +49,17 @@ export {
   type SynthResult,
 } from './tts.ts';
 export {
+  TaskApiVideoGen,
+  registerVideoGenProvider,
+  videoGenProviders,
+  createVideoGen,
+  type VideoGenerator,
+  type VideoGenProviderKind,
+  type VideoGenEndpointConfig,
+  type VideoGenRequest,
+  type VideoGenResult,
+} from './videogen.ts';
+export {
   compileMotionSpec,
   validateMotionSpec,
   sampleAnimatable,

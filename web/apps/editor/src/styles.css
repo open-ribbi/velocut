@@ -421,6 +421,15 @@ html, body, #root {
 .llm-test-ok { background: #17301f; color: #7fd39a; }
 .llm-test-fail { background: #3a1d1d; color: #ff9a9a; }
 
+/* --------------------------------------------- video generation channels */
+.videogen-settings { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid #2e323b; margin: 8px 12px 12px; padding-top: 10px; }
+.videogen-settings h4 { margin: 0; font-size: 12.5px; color: #aeb6c4; }
+.videogen-settings p { color: #8b93a3; font-size: 12px; line-height: 1.6; margin: 0; }
+.videogen-settings input, .videogen-settings select { background: #14161b; color: #d6dbe4; border: 1px solid #2e323b; border-radius: 6px; padding: 6px 8px; font-size: 12.5px; }
+.videogen-channel { font-size: 12px; }
+.videogen-channel > span:first-child { flex: 0 0 auto; }
+.videogen-models { flex: 1; min-width: 0; color: #8891a3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 /* ---------------------------------------------------------- scene inspector */
 .scene-tabs { float: right; display: inline-flex; gap: 4px; }
 .scene-tabs button { font-size: 11px; padding: 2px 8px; border-radius: 5px; background: #1a1d23; color: #9aa3b2; }

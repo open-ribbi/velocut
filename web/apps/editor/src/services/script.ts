@@ -53,14 +53,27 @@ export interface ScriptApi {
   /** Discover the 3D asset registry (character models + their animation clips,
    *  environments, lighting, props) — the grounded vocabulary for sceneClip. */
   sceneAssets(): Promise<unknown>;
+  /** Generate an AI video clip via a CONFIGURED channel and land it on the
+   *  timeline. The sandbox may name a channel id + model + prompt only — the
+   *  host resolves endpoint/key from configuration, and reference-URL options
+   *  are rejected on this path (see main.tsx). Costs real credits. */
+  videoGen(opts: unknown): Promise<unknown>;
+  /** Discover configured video-gen channels: [{id, label, models, defaultModel}]
+   *  — no endpoints, no keys. */
+  videoGenChannels(): unknown;
 }
 
 /** RPC method names the sandbox may call. motionClip is included: it now takes a
  *  declarative JSON spec (no functions), so it structured-clones cleanly and the
  *  host renders it with a fixed interpreter — no eval. */
-const RPC_METHODS = ['apply', 'tts', 'observe', 'evaluate', 'document', 'seek', 'motionClip', 'sceneClip', 'sceneAssets'] as const;
+const RPC_METHODS = ['apply', 'tts', 'observe', 'evaluate', 'document', 'seek', 'motionClip', 'sceneClip', 'sceneAssets', 'videoGen', 'videoGenChannels'] as const;
 
-const SCRIPT_TIMEOUT_MS = 60_000; // wall-clock cap: kills runaway loops / stuck awaits
+// Wall-clock cap on SANDBOX-side compute: kills runaway loops / stuck awaits.
+// Time spent inside a host RPC doesn't count (the clock pauses while the host
+// runs trusted code) — otherwise any videoGen call (minutes of provider-side
+// rendering) would kill the program that awaits it. Loops that spam cheap
+// RPCs to stay alive are bounded separately by RPC_LIMIT.
+const SCRIPT_TIMEOUT_MS = 60_000;
 
 /** The program that runs INSIDE the sandboxed iframe. Authored as a string so it
  *  can be inlined into srcdoc. It builds the `velocut` proxy (each method posts an
@@ -199,9 +212,26 @@ export function runAgentScript(api: ScriptApi, code: string): Promise<ScriptResu
       resolve(r);
     };
 
-    const timer = setTimeout(() => {
-      finish({ ok: false, error: `Script timed out (>${SCRIPT_TIMEOUT_MS / 1000}s) and was aborted.` });
-    }, SCRIPT_TIMEOUT_MS);
+    // Pausable sandbox clock: the timer runs only while the SANDBOX holds the
+    // ball. It stops when an RPC reaches the host and restarts (with the
+    // remaining budget) when the result is posted back.
+    let remainingMs = SCRIPT_TIMEOUT_MS;
+    let timerStarted = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const stopClock = () => {
+      if (timer === undefined) return;
+      clearTimeout(timer);
+      timer = undefined;
+      remainingMs = Math.max(0, remainingMs - (Date.now() - timerStarted));
+    };
+    const startClock = () => {
+      if (settled || timer !== undefined) return;
+      timerStarted = Date.now();
+      timer = setTimeout(() => {
+        finish({ ok: false, error: `Script timed out (>${SCRIPT_TIMEOUT_MS / 1000}s of sandbox compute) and was aborted.` });
+      }, remainingMs);
+    };
+    startClock();
 
     // Cap total RPC calls per run: a tight loop hammering observe/tts (each a heavy
     // decode / synth on the host) is a bounded CPU-DoS. A ceiling well above any
@@ -227,6 +257,7 @@ export function runAgentScript(api: ScriptApi, code: string): Promise<ScriptResu
         const { id, method, args } = d;
         queue = queue.then(async () => {
           if (settled) return;
+          stopClock(); // host is doing the work now — don't bill the sandbox
           try {
             if (++rpcCount > RPC_LIMIT) {
               finish({ ok: false, error: `Script exceeded the API call limit (${RPC_LIMIT}) and was aborted.` });
@@ -240,6 +271,8 @@ export function runAgentScript(api: ScriptApi, code: string): Promise<ScriptResu
             hostPort.postMessage({ t: 'rpcResult', id, ok: true, value: jsonSafe(value) });
           } catch (e) {
             hostPort.postMessage({ t: 'rpcResult', id, ok: false, error: e instanceof Error ? e.message : String(e) });
+          } finally {
+            startClock();
           }
         });
       }

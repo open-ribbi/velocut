@@ -1,7 +1,62 @@
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import { fileURLToPath } from 'node:url';
 import { readFileSync } from 'node:fs';
+import { Readable } from 'node:stream';
+
+// Video generation channels — dev-only CORS relay. Channel APIs (e.g.
+// api.huimengi.com) allowlist origins and reject localhost, and their result
+// CDNs (aliyun OSS signed URLs) send no CORS headers at all — so the browser
+// can't reach either directly in dev. The path encodes the target:
+// /videogen-proxy/<host>/path?query → https://<host>/path?query.
+// A custom middleware (not server.proxy: vite's bare http-proxy has no
+// per-request routing) so ONE rule covers the API host and whatever CDN host
+// each result lands on. Unlike the MiniMax/Gemini proxies, NO key is injected —
+// the channel key is user-configured and travels in the browser's own
+// Authorization header; this relay only lends its origin.
+function videoGenProxy(): Plugin {
+  return {
+    name: 'velocut-videogen-proxy',
+    apply: 'serve',
+    configureServer(server) {
+      server.middlewares.use('/videogen-proxy', (req, res) => {
+        void (async () => {
+          const [, host = '', ...rest] = (req.url ?? '').split('/');
+          if (!/^[a-z0-9.-]+$/i.test(host) || !host.includes('.')) {
+            res.statusCode = 400;
+            res.end('videogen-proxy: bad target host');
+            return;
+          }
+          const headers: Record<string, string> = {};
+          for (const k of ['authorization', 'content-type', 'accept'] as const) {
+            const v = req.headers[k];
+            if (typeof v === 'string') headers[k] = v;
+          }
+          try {
+            const method = req.method ?? 'GET';
+            const upstream = await fetch(`https://${host}/${rest.join('/')}`, {
+              method,
+              headers,
+              ...(method === 'GET' || method === 'HEAD'
+                ? {}
+                : { body: Readable.toWeb(req) as ReadableStream, duplex: 'half' as const }),
+            });
+            res.statusCode = upstream.status;
+            for (const k of ['content-type', 'content-length']) {
+              const v = upstream.headers.get(k);
+              if (v) res.setHeader(k, v);
+            }
+            if (upstream.body) Readable.fromWeb(upstream.body as never).pipe(res);
+            else res.end();
+          } catch (e) {
+            res.statusCode = 502;
+            res.end(`videogen-proxy: upstream fetch failed: ${e instanceof Error ? e.message : String(e)}`);
+          }
+        })();
+      });
+    },
+  };
+}
 
 // MiniMax TTS secret stays SERVER-SIDE (the production-correct pattern): the
 // proxy injects the Authorization header so the browser never holds the key.
@@ -27,7 +82,7 @@ function googleKey(): string {
 }
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), videoGenProxy()],
   resolve: {
     alias: {
       '@velocut/protocol': fileURLToPath(new URL('../../packages/protocol/src/types.ts', import.meta.url)),

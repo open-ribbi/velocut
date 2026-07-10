@@ -16,6 +16,7 @@ import { createMotionClip, syncMotionAsset, migrateLegacyMotionSpecs, type Motio
 import { checkSpecCommand, createSceneClip, pruneSceneRenderers, syncSceneAsset, type SceneClipOptions } from './services/scene';
 import { loadSceneManifest, scenePromptDoc } from '@velocut/scene-sdk';
 import { searchWeb } from './services/search';
+import { generateVideoClip, describeVideoGenChannels, sandboxVideoGen, type VideoGenClipOptions } from './services/videogen';
 import { Store } from './state/store';
 import { HistoryTree } from './state/history';
 import { ensureActiveProject, storageKeys, listProjects, createProject, renameProject, deleteProject, openProject, registerFlushBeforeSwitch } from './services/projects';
@@ -250,6 +251,11 @@ async function bootstrap() {
     motionClip: (o: MotionClipOptions) => createMotionClip(store, media, o),
     // Declarative 3D scene clip (Scene Director) — same seam as motionClip.
     sceneClip: (o: SceneClipOptions) => createSceneClip(store, media, o),
+    // AI video generation via a configured channel (Agent settings → Video
+    // generation). Full option surface incl. reference URLs — this is the
+    // USER path; the sandbox RPC below is the restricted one.
+    videoGen: (o: VideoGenClipOptions) => generateVideoClip(store, media, o),
+    videoGenChannels: () => describeVideoGenChannels(),
     // Web research (grounded search) — same surface the agent's velocut_search reaches.
     search: (query: string) => searchWeb(query),
     // Run an editing program in one call (the velocut_script host surface) — same
@@ -280,6 +286,10 @@ async function bootstrap() {
             const manifest = await loadSceneManifest();
             return { doc: scenePromptDoc(manifest), manifest };
           },
+          // Sandbox video-gen: channel id + model + prompt ONLY (endpoint/key
+          // resolve from host config; reference URLs rejected inside).
+          videoGen: sandboxVideoGen(store, media),
+          videoGenChannels: () => describeVideoGenChannels(),
         },
         code,
       ),
