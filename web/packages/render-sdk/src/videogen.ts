@@ -8,12 +8,12 @@
 // channel is configuration (URL + key), not code. A provider with a genuinely
 // different protocol is one registerVideoGenProvider call.
 //
-// Built-in kind 'task-api': the async-task pattern (HuiMeng and most Chinese
-// relays): POST {base}/api/v1/tasks {model, params} → task_id, then poll
+// Built-in kind 'task-api': the async-task pattern most video-gen relays
+// converge on: POST {base}/api/v1/tasks {model, params} → task_id, then poll
 // GET {base}/api/v1/tasks/{id} until completed/failed. Bearer auth.
 
 export interface VideoGenRequest {
-  /** Channel-defined model id (e.g. 'seedance-2.0'). */
+  /** Channel-defined model id (as the configured relay names it). */
   model: string;
   /** Scene/motion description (most providers cap ~500 chars). */
   prompt: string;
@@ -54,7 +54,7 @@ export interface VideoGenerator {
 /** Endpoint configuration a channel supplies — the part that differs between
  *  channels speaking the same protocol. */
 export interface VideoGenEndpointConfig {
-  /** API root, no trailing slash (e.g. 'https://api.huimengi.com'). */
+  /** API root, no trailing slash (e.g. 'https://api.example.com'). */
   baseUrl: string;
   apiKey: string;
   pollIntervalMs?: number;
@@ -209,6 +209,6 @@ export class TaskApiVideoGen implements VideoGenerator {
 
 registerVideoGenProvider({
   id: 'task-api',
-  label: 'Async task API (HuiMeng-style relays)',
+  label: 'Async task API (submit \u2192 poll relays)',
   create: (cfg) => new TaskApiVideoGen(cfg),
 });

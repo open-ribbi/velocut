@@ -4,9 +4,9 @@ import { fileURLToPath } from 'node:url';
 import { readFileSync } from 'node:fs';
 import { Readable } from 'node:stream';
 
-// Video generation channels — dev-only CORS relay. Channel APIs (e.g.
-// api.huimengi.com) allowlist origins and reject localhost, and their result
-// CDNs (aliyun OSS signed URLs) send no CORS headers at all — so the browser
+// Video generation channels — dev-only CORS relay. Channel APIs commonly
+// allowlist origins and reject localhost, and their result CDNs (signed
+// object-storage URLs) often send no CORS headers at all — so the browser
 // can't reach either directly in dev. The path encodes the target:
 // /videogen-proxy/<host>/path?query → https://<host>/path?query.
 // A custom middleware (not server.proxy: vite's bare http-proxy has no

@@ -541,7 +541,7 @@ function VideoGenSettings() {
           <span>Channel id</span>
           <input
             value={draft.id}
-            placeholder="huimeng (what the agent names)"
+            placeholder="my-relay (what the agent names)"
             onChange={(e) => setDraft({ ...draft, id: e.target.value })}
           />
         </label>
@@ -562,7 +562,7 @@ function VideoGenSettings() {
           <input
             type="url"
             value={draft.baseUrl}
-            placeholder="https://api.huimengi.com"
+            placeholder="https://api.your-provider.example"
             onChange={(e) => setDraft({ ...draft, baseUrl: e.target.value })}
           />
         </label>
@@ -585,7 +585,7 @@ function VideoGenSettings() {
           <input
             type="password"
             value={keyDraft}
-            placeholder={draft.apiKey ? '•••••••• (saved — type to replace)' : 'hm-...'}
+            placeholder={draft.apiKey ? '•••••••• (saved — type to replace)' : 'the key your provider issued'}
             onChange={(e) => setKeyDraft(e.target.value)}
           />
         </label>
@@ -593,7 +593,7 @@ function VideoGenSettings() {
           <span>Models</span>
           <input
             value={draft.models.join(', ')}
-            placeholder="seedance-2.0, seedance-2.0-mini (comma-separated)"
+            placeholder="model ids, comma-separated (as your provider names them)"
             onChange={(e) => setDraft({ ...draft, models: e.target.value.split(',').map((s) => s.trim()) })}
           />
         </label>

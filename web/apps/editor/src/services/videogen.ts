@@ -19,7 +19,7 @@ import type { Store } from '../state/store';
 import { activeStorage } from './projects';
 
 export interface VideoGenChannel {
-  /** User-chosen channel id (what scripts/agents name), e.g. 'huimeng'. */
+  /** User-chosen channel id (what scripts/agents name), e.g. 'my-relay'. */
   id: string;
   label?: string;
   /** Protocol implementation id from the render-sdk registry. */

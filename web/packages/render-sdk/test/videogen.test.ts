@@ -29,7 +29,7 @@ function scriptFetch(responses: Array<{ status?: number; body: unknown }>): Call
 }
 
 const gen = () =>
-  new TaskApiVideoGen({ baseUrl: 'https://relay.example/', apiKey: 'hm-test', pollIntervalMs: 1, timeoutMs: 5000 });
+  new TaskApiVideoGen({ baseUrl: 'https://relay.example/', apiKey: 'key-test', pollIntervalMs: 1, timeoutMs: 5000 });
 
 test('task-api: submit → poll pending → processing → completed', async () => {
   const calls = scriptFetch([
@@ -40,7 +40,7 @@ test('task-api: submit → poll pending → processing → completed', async () 
   ]);
   const statuses: string[] = [];
   const r = await gen().generate({
-    model: 'seedance-2.0',
+    model: 'video-model-1',
     prompt: 'a cat walks on the beach',
     durationS: 5,
     resolution: '720p',
@@ -57,9 +57,9 @@ test('task-api: submit → poll pending → processing → completed', async () 
   // Submit call shape: trailing slash trimmed, bearer auth, snake_case params.
   const submit = calls[0];
   assert.equal(submit.url, 'https://relay.example/api/v1/tasks');
-  assert.equal((submit.init!.headers as Record<string, string>).authorization, 'Bearer hm-test');
+  assert.equal((submit.init!.headers as Record<string, string>).authorization, 'Bearer key-test');
   const body = JSON.parse(submit.init!.body as string);
-  assert.equal(body.model, 'seedance-2.0');
+  assert.equal(body.model, 'video-model-1');
   assert.deepEqual(body.params, {
     prompt: 'a cat walks on the beach',
     duration: 5,
@@ -77,7 +77,7 @@ test('task-api: image conditioning maps to first/last frame + reference params',
     { body: { id: 't-2', status: 'completed', result: { video_url: 'https://cdn.example/v2.mp4' } } },
   ]);
   await gen().generate({
-    model: 'seedance-2.0',
+    model: 'video-model-1',
     prompt: 'p',
     firstFrameUrl: 'https://pub.example/first.png',
     lastFrameUrl: 'https://pub.example/last.png',
