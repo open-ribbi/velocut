@@ -18,6 +18,7 @@ import type { Clip, TimeUs } from '@velocut/protocol';
 import type { MediaLibrary } from '@velocut/render-sdk';
 import type { Store, UiState } from '../state/store';
 import { referenceToAgent } from '../services/reference';
+import { draggedAsset, type DraggedAsset } from '../services/dnd';
 
 const RULER_H = 30;
 const TRACK_H = 54;
@@ -78,6 +79,9 @@ export function TimelinePanel({ store, state, media, height }: { store: Store; s
   // viewport: horizontal scroll (us at left edge), zoom (px/us), vertical scroll (px)
   const view = useRef({ scrollUs: 0, pxPerUs: 100 / 1e6, scrollY: 0 });
   const gesture = useRef<Gesture | null>(null);
+  // In-flight asset drag from the AssetPanel: where it would land (ghost).
+  // newTrack = the drop is below the lanes and mints a matching track.
+  const dropGhost = useRef<{ trackIdx: number; startUs: TimeUs; durUs: TimeUs; ok: boolean; newTrack?: boolean } | null>(null);
   const stateRef = useRef(state);
   stateRef.current = state;
 
@@ -179,6 +183,73 @@ export function TimelinePanel({ store, state, media, height }: { store: Store; s
       }
     }
     return null;
+  };
+
+  // ------------------------------------------- asset drop (from AssetPanel)
+
+  /** Where a dragged asset would land at (x, y): the lane under the cursor if
+   *  its kind matches and the span is free, or a to-be-minted track when the
+   *  cursor is below the lanes (or the project has none). null = nowhere. */
+  const dropPlanAt = (a: DraggedAsset, x: number, y: number): typeof dropGhost.current => {
+    if (x < HEADER_W || y <= RULER_H) return null;
+    const durUs = a.durationUs > 0 ? a.durationUs : 3_000_000; // images: 3s
+    const startUs = snap(xToUs(x), null).us;
+    const kind = a.kind === 'audio' ? 'audio' : 'video';
+    const ti = trackIdxAtY(y);
+    if (ti >= 0) {
+      const track = stateRef.current.doc.tracks[ti];
+      const free =
+        track.kind === kind &&
+        !track.locked &&
+        !track.clips.some((c) => startUs < c.startUs + c.durationUs && c.startUs < startUs + durUs);
+      return { trackIdx: ti, startUs, durUs, ok: free };
+    }
+    // Below the last lane (or an empty project): offer a new matching track.
+    const cy = y - RULER_H + view.current.scrollY;
+    if (cy >= contentHeight()) return { trackIdx: stateRef.current.doc.tracks.length, startUs, durUs, ok: true, newTrack: true };
+    return null; // the gap between lanes
+  };
+
+  /** Fit (contain) media into the canvas — a 4K clip on a 720p doc otherwise
+   *  draws at native pixels (6× the canvas) and only its centre shows. ids are
+   *  minted deterministically (<kind>_<nextId>), so the new clip scales in the
+   *  SAME batch (one undo). */
+  const fitCmds = (a: DraggedAsset, clipId: string) => {
+    const doc = stateRef.current.doc;
+    if (a.kind === 'audio' || !a.width || !a.height) return [];
+    const scale = Math.min(doc.width / a.width, doc.height / a.height);
+    if (Math.abs(scale - 1) < 0.001) return [];
+    return [
+      {
+        type: 'setTransform' as const,
+        clipId,
+        transform: { x: 0, y: 0, scaleX: scale, scaleY: scale, rotation: 0, opacity: 1 },
+      },
+    ];
+  };
+
+  const commitDrop = (a: DraggedAsset, plan: NonNullable<typeof dropGhost.current>) => {
+    const doc = stateRef.current.doc;
+    const resp = plan.newTrack
+      ? store.dispatch({
+          type: 'batch',
+          commands: [
+            { type: 'addTrack', kind: a.kind === 'audio' ? 'audio' : 'video' },
+            { type: 'addClip', trackId: `track_${doc.nextId}`, assetId: a.id, startUs: plan.startUs, durationUs: plan.durUs },
+            ...fitCmds(a, `clip_${doc.nextId + 1}`),
+          ],
+        })
+      : store.dispatch({
+          type: 'batch',
+          commands: [
+            { type: 'addClip', trackId: doc.tracks[plan.trackIdx].id, assetId: a.id, startUs: plan.startUs, durationUs: plan.durUs },
+            ...fitCmds(a, `clip_${doc.nextId}`),
+          ],
+        });
+    if (resp.ok) {
+      const ev = resp.events.find((e) => e.kind === 'clipAdded');
+      if (ev && ev.kind === 'clipAdded') store.select(ev.clipId);
+    }
   };
 
   // Decode one clip's source-window PCM into a peak envelope (abs-max per bin),
@@ -425,6 +496,38 @@ export function TimelinePanel({ store, state, media, height }: { store: Store; s
       }
       ctx.globalAlpha = 1;
     });
+
+    // ---- asset drop ghost (drag from the AssetPanel): the would-be clip,
+    //      blue on a valid lane/span, red where it can't land; a dashed lane
+    //      hints the track that a below-the-lanes drop would mint.
+    const dg = dropGhost.current;
+    if (dg) {
+      const gy = dg.newTrack
+        ? RULER_H + contentHeight() - view.current.scrollY + (contentHeight() > 0 ? TRACK_GAP : 0)
+        : trackTop(dg.trackIdx);
+      const gh = dg.newTrack ? TRACK_H : trackH(dg.trackIdx);
+      if (dg.newTrack) {
+        ctx.fillStyle = 'rgba(127,180,255,0.07)';
+        ctx.fillRect(HEADER_W, gy, W - HEADER_W, gh);
+        ctx.strokeStyle = 'rgba(127,180,255,0.4)';
+        ctx.setLineDash([5, 4]);
+        ctx.strokeRect(HEADER_W + 0.5, gy + 0.5, W - HEADER_W - 1, gh - 1);
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#5b6372';
+        ctx.font = '10px system-ui';
+        ctx.fillText('new track', 18, gy + 6);
+      }
+      const gx0 = Math.max(usToX(dg.startUs), HEADER_W);
+      const gx1 = usToX(dg.startUs + dg.durUs);
+      if (gx1 > HEADER_W && gx0 < W) {
+        ctx.fillStyle = dg.ok ? 'rgba(127,180,255,0.35)' : 'rgba(224,82,82,0.3)';
+        roundRect(ctx, gx0, gy + 3, Math.max(2, gx1 - gx0), gh - 6, 5);
+        ctx.fill();
+        ctx.strokeStyle = dg.ok ? '#7fb4ff' : '#e05252';
+        roundRect(ctx, gx0, gy + 3, Math.max(2, gx1 - gx0), gh - 6, 5);
+        ctx.stroke();
+      }
+    }
 
     // ---- reorder insertion line
     if (g?.kind === 'reorder') {
@@ -746,12 +849,43 @@ export function TimelinePanel({ store, state, media, height }: { store: Store; s
       draw();
     };
 
+    // Asset drag from the AssetPanel: ghost the landing spot during dragover,
+    // place on drop. preventDefault on dragover is what makes the canvas a
+    // legal drop target.
+    const onDragOver = (e: DragEvent) => {
+      const a = draggedAsset();
+      if (!a) return;
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      const plan = dropPlanAt(a, e.clientX - rect.left, e.clientY - rect.top);
+      if (e.dataTransfer) e.dataTransfer.dropEffect = plan?.ok ? 'copy' : 'none';
+      dropGhost.current = plan;
+      draw();
+    };
+    const onDragLeave = () => {
+      if (!dropGhost.current) return;
+      dropGhost.current = null;
+      draw();
+    };
+    const onDrop = (e: DragEvent) => {
+      const a = draggedAsset();
+      const plan = dropGhost.current;
+      dropGhost.current = null;
+      if (!a) return;
+      e.preventDefault();
+      if (plan?.ok) commitDrop(a, plan);
+      draw();
+    };
+
     canvas.addEventListener('pointerdown', onPointerDown);
     canvas.addEventListener('pointermove', onPointerMove);
     canvas.addEventListener('pointerup', onPointerUp);
     canvas.addEventListener('dblclick', onDblClick);
     canvas.addEventListener('contextmenu', onContextMenu);
     canvas.addEventListener('wheel', onWheel, { passive: false });
+    canvas.addEventListener('dragover', onDragOver);
+    canvas.addEventListener('dragleave', onDragLeave);
+    canvas.addEventListener('drop', onDrop);
     const ro = new ResizeObserver(() => draw());
     ro.observe(wrapRef.current!);
     return () => {
@@ -761,6 +895,9 @@ export function TimelinePanel({ store, state, media, height }: { store: Store; s
       canvas.removeEventListener('dblclick', onDblClick);
       canvas.removeEventListener('contextmenu', onContextMenu);
       canvas.removeEventListener('wheel', onWheel);
+      canvas.removeEventListener('dragover', onDragOver);
+      canvas.removeEventListener('dragleave', onDragLeave);
+      canvas.removeEventListener('drop', onDrop);
       ro.disconnect();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

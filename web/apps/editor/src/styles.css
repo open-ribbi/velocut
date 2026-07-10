@@ -56,8 +56,9 @@ html, body, #root {
 .empty-hint { color: #5b6372; font-size: 12px; padding: 6px 0; }
 .asset-item {
   display: flex; align-items: center; gap: 8px;
-  padding: 7px 8px; border-radius: 6px; cursor: pointer;
+  padding: 7px 8px; border-radius: 6px; cursor: grab;
 }
+.asset-item:active { cursor: grabbing; }
 .asset-item:hover { background: #1d2026; }
 .asset-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .asset-dur { color: #5b6372; font-size: 11px; }

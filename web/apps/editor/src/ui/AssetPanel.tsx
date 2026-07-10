@@ -3,6 +3,7 @@ import type { Store, UiState } from '../state/store';
 import type { MediaLibrary } from '@velocut/render-sdk';
 import type { Envelope, TrackKind } from '@velocut/protocol';
 import { referenceToAgent } from '../services/reference';
+import { ASSET_MIME, setDraggedAsset } from '../services/dnd';
 
 const ICON: Record<string, string> = { video: '🎬', image: '🖼', audio: '🎵' };
 
@@ -62,64 +63,6 @@ export function AssetPanel({ store, media, state, width }: { store: Store; media
     if (ev && ev.kind === 'clipAdded') store.select(ev.clipId);
   };
 
-  /** Fit (contain) media into the canvas — a 4K clip on a 720p doc otherwise
-   *  draws at native pixels (6× the canvas) and only its centre shows. ids are
-   *  minted deterministically (<kind>_<nextId>), so we can scale the new clip
-   *  in the SAME batch (one undo). */
-  const fitCmds = (asset: { kind: string; width: number; height: number }, clipId: string) => {
-    if (asset.kind === 'audio' || !asset.width || !asset.height) return [];
-    const scale = Math.min(state.doc.width / asset.width, state.doc.height / asset.height);
-    if (Math.abs(scale - 1) < 0.001) return [];
-    return [
-      {
-        type: 'setTransform' as const,
-        clipId,
-        transform: { x: 0, y: 0, scaleX: scale, scaleY: scale, rotation: 0, opacity: 1 },
-      },
-    ];
-  };
-
-  const addToTimeline = (assetId: string) => {
-    const doc = state.doc;
-    const asset = doc.assets.find((a) => a.id === assetId);
-    if (!asset) return;
-    const trackKind: TrackKind = asset.kind === 'audio' ? 'audio' : 'video';
-    const dur = asset.durationUs > 0 ? asset.durationUs : 3_000_000; // images: 3s
-    const track = doc.tracks.find((t) => t.kind === trackKind && !t.locked);
-    if (!track) {
-      const trackId = `track_${doc.nextId}`;
-      const clipId = `clip_${doc.nextId + 1}`; // minted after the track
-      selectNewClip(
-        store.dispatch({
-          type: 'batch',
-          commands: [
-            // Video renders bottom→top in array order: put it at the bottom so
-            // text/subtitle tracks always composite above. Audio is unordered.
-            { type: 'addTrack', kind: trackKind, index: trackKind === 'video' ? 0 : undefined },
-            { type: 'addClip', trackId, assetId, startUs: 0, durationUs: dur },
-            ...fitCmds(asset, clipId),
-          ],
-        }),
-      );
-      return;
-    }
-    // Place at playhead if free, else append at track end.
-    const end = track.clips.reduce((m, c) => Math.max(m, c.startUs + c.durationUs), 0);
-    const collides = track.clips.some(
-      (c) => state.playheadUs < c.startUs + c.durationUs && c.startUs < state.playheadUs + dur,
-    );
-    const clipId = `clip_${doc.nextId}`;
-    selectNewClip(
-      store.dispatch({
-        type: 'batch',
-        commands: [
-          { type: 'addClip', trackId: track.id, assetId, startUs: collides ? end : state.playheadUs, durationUs: dur },
-          ...fitCmds(asset, clipId),
-        ],
-      }),
-    );
-  };
-
   const addTextLayer = () => {
     const doc = state.doc;
     const textTrack = doc.tracks.find((t) => t.kind === 'text' && !t.locked);
@@ -161,8 +104,16 @@ export function AssetPanel({ store, media, state, width }: { store: Store; media
         <div
           key={a.id}
           className="asset-item"
-          onClick={(e) => e.detail <= 1 && addToTimeline(a.id)}
-          title="Click to add to timeline"
+          draggable
+          title="Drag onto a timeline track to place it"
+          onDragStart={(e) => {
+            e.dataTransfer.setData(ASSET_MIME, a.id);
+            e.dataTransfer.effectAllowed = 'copy';
+            // Mirror the payload for the timeline's dragover ghost (dataTransfer
+            // data is unreadable until drop).
+            setDraggedAsset({ id: a.id, kind: a.kind, durationUs: a.durationUs, width: a.width, height: a.height });
+          }}
+          onDragEnd={() => setDraggedAsset(null)}
         >
           <span className={`asset-kind asset-${a.kind}`}>{ICON[a.kind] ?? '📄'}</span>
           <span className="asset-name">{a.name}</span>
