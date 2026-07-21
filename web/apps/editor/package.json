@@ -10,7 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.104.1",
+    "@anthropic-ai/sdk": "^0.112.4",
     "@velocut/agent-sdk": "*",
     "@velocut/collab-sdk": "*",
     "@velocut/core-ts": "*",
@@ -19,15 +19,15 @@
     "@velocut/scene-sdk": "*",
     "three": "^0.185.1",
     "gsap": "^3.15.0",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
   },
   "devDependencies": {
-    "@types/react": "^18.3.12",
-    "@types/react-dom": "^18.3.1",
-    "@vitejs/plugin-react": "^4.3.4",
-    "@webgpu/types": "^0.1.51",
-    "typescript": "^5.6.3",
-    "vite": "^5.4.11"
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.3",
+    "@webgpu/types": "^0.1.71",
+    "typescript": "^7.0.2",
+    "vite": "^8.1.5"
   }
 }
