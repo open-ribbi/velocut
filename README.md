@@ -1,13 +1,13 @@
 <!-- markdownlint-disable MD041 -->
 **English** | [简体中文](README.zh-CN.md)
 
-# Velocut
+# Velocut — AI-native video editing in the browser
 
 [![CI](https://github.com/open-ribbi/velocut/actions/workflows/ci.yml/badge.svg)](.github/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Node](https://img.shields.io/badge/node-%E2%89%A522.6-brightgreen)
 
-An **AI-native, local-first video editor that runs entirely in the browser**. A canonical Rust engine (compiled to WASM) is mirrored by a TypeScript reference engine and kept in lock-step by shared golden-vector tests; WebGPU handles compositing and WebCodecs handles decode/export; and an LLM agent edits through the *exact same* JSON command protocol a human drives from the UI.
+Velocut, by [Ribbi](https://ribbi.ai), is an **AI-native, local-first video editor that runs entirely in the browser** — no install, no upload, your footage never leaves your machine. A canonical Rust engine (compiled to WASM) is mirrored by a TypeScript reference engine and kept in lock-step by shared golden-vector tests; WebGPU handles compositing and WebCodecs handles decode/export; and an LLM agent edits through the *exact same* JSON command protocol a human drives from the UI.
 
 > **Protocol-first, AI-native.** Humans edit via the UI, the LLM issues JSON commands directly — both flow through one command pipeline into one document model. The AI agent is treated as the system's first-class *user*; the human UI's job is to make the agent's perception and actions visible and correctable.
 

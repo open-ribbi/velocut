@@ -1,13 +1,13 @@
 <!-- markdownlint-disable MD041 -->
 [English](README.md) | **简体中文**
 
-# Velocut
+# Velocut — 浏览器里的 AI 原生视频剪辑
 
 [![CI](https://github.com/open-ribbi/velocut/actions/workflows/ci.yml/badge.svg)](.github/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Node](https://img.shields.io/badge/node-%E2%89%A522.6-brightgreen)
 
-Rust + WASM + WebGPU 的 Web 视频剪辑引擎与编辑器。**协议先行、AI-native**:人通过 UI 剪辑、LLM 直接下发 JSON 命令剪辑,两者走同一条命令链路,映射到同一个 UI。
+Velocut 是 [Ribbi](https://ribbi.ai) 开源的 Rust + WASM + WebGPU Web 视频剪辑引擎与编辑器——免安装、不上传,素材永远留在本地。**协议先行、AI-native**:人通过 UI 剪辑、LLM 直接下发 JSON 命令剪辑,两者走同一条命令链路,映射到同一个 UI。
 
 ![Velocut 编辑器——多轨时间线(波形/关键帧/转场/变速)+ WebGPU 合成预览](docs/media/editor.png)
 
