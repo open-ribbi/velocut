@@ -7,6 +7,6 @@
   "exports": { ".": "./src/index.ts" },
   "dependencies": {
     "@velocut/protocol": "*",
-    "yjs": "^13.6.31"
+    "yjs": "^13.6.32"
   }
 }

@@ -9,10 +9,10 @@
     "./motionspec": "./src/motionspec.ts"
   },
   "dependencies": {
-    "@huggingface/transformers": "^3.8.1",
+    "@huggingface/transformers": "^4.2.0",
     "@velocut/protocol": "*",
     "aws4fetch": "^1.0.20",
     "mp4-muxer": "^5.2.2",
-    "mp4box": "^0.5.2"
+    "mp4box": "^2.4.1"
   }
 }

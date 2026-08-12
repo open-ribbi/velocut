@@ -8,10 +8,10 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@dimforge/rapier3d-compat": "^0.19.3",
+    "@dimforge/rapier3d-compat": "^0.20.0",
     "three": "^0.185.1"
   },
   "devDependencies": {
-    "@types/three": "^0.185.0"
+    "@types/three": "^0.185.4"
   }
 }
