@@ -119,6 +119,7 @@ try {
   assert.equal(range.status, 206);
   assert.equal((await range.arrayBuffer()).byteLength, 16);
   assert.equal((await fetch(studio.url + '/%2e%2e%2fpackage.json')).status, 403);
+  console.log('Browser graphics configuration:', JSON.stringify(browserOptions));
   browser = await chromium.launch(browserOptions);
   const page = await browser.newPage();
   await page.goto(studio.url);

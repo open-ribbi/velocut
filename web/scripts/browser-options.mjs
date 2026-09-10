@@ -4,12 +4,11 @@
  */
 export const browserOptions = {
   headless: process.env.VELOCUT_HEADED !== '1',
-  ...(process.platform === 'linux' ? { channel: 'chromium' } : {}),
+  ...(process.platform !== 'darwin' ? { channel: 'chromium' } : {}),
   args: [
     '--enable-unsafe-webgpu', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist',
     '--use-gl=angle',
-    ...(process.platform === 'win32' ? ['--use-webgpu-adapter=swiftshader'] : []),
-    ...(process.platform === 'linux' ? [
+    ...(process.platform !== 'darwin' ? [
       '--enable-features=Vulkan', '--use-angle=vulkan', '--use-vulkan=swiftshader',
       '--use-webgpu-adapter=swiftshader', '--disable-vulkan-surface',
     ] : ['--use-angle=swiftshader']),
