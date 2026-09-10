@@ -20,7 +20,7 @@ const run = (code) =>
     cwd: workspace,
     encoding: 'utf8',
   });
-let browser, studio, preview, client, devServer;
+let browser, studio, preview, client, devServer, consumerEsbuild;
 try {
   await writeFile(
     resolve(workspace, 'package.json'),
@@ -40,6 +40,7 @@ try {
     ],
     { cwd: workspace, stdio: 'inherit' },
   );
+  consumerEsbuild = await import(pathToFileURL(resolve(workspace, 'node_modules/esbuild/lib/main.js')));
   for (const p of manifest.packages)
     assert.ok((await realpath(resolve(workspace, 'node_modules', p.name))).startsWith(workspace));
   const output = run(
@@ -281,12 +282,18 @@ window.probe=(async()=>{
       2,
     ),
   );
+} catch (error) {
+  console.error('Distribution verification failed:', error);
+  throw error;
 } finally {
   await client?.close();
   await browser?.close();
   await studio?.close();
   await devServer?.close();
   if (preview) await new Promise((resolve) => preview.httpServer.close(resolve));
+  // Vite retains esbuild's service even after closing its HTTP servers.
+  // Release the executable before deleting it on Windows.
+  consumerEsbuild?.stop();
   if (process.env.VELOCUT_KEEP_CONSUMER !== '1')
-    await rm(workspace, { recursive: true, force: true });
+    await rm(workspace, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 }
