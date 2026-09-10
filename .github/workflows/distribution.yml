@@ -49,6 +49,9 @@ jobs:
         if: runner.os != 'Linux'
         env:
           VELOCUT_HEADED: ${{ runner.os == 'Windows' && '1' || '0' }}
+          # Windows file scanning makes recursive node_modules deletion slow.
+          # Processes are stopped by the verifier; the ephemeral runner removes files.
+          VELOCUT_KEEP_CONSUMER: ${{ runner.os == 'Windows' && '1' || '0' }}
         run: npm run test:distribution
       - uses: actions/upload-artifact@v4
         with:
