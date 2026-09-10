@@ -20,7 +20,7 @@ const run = (code) =>
     cwd: workspace,
     encoding: 'utf8',
   });
-let browser, studio, preview, client, devServer, consumerEsbuild;
+let browser, browserServer, studio, preview, client, devServer, consumerEsbuild;
 try {
   await writeFile(
     resolve(workspace, 'package.json'),
@@ -120,7 +120,8 @@ try {
   assert.equal((await range.arrayBuffer()).byteLength, 16);
   assert.equal((await fetch(studio.url + '/%2e%2e%2fpackage.json')).status, 403);
   console.log('Browser graphics configuration:', JSON.stringify(browserOptions));
-  browser = await chromium.launch(browserOptions);
+  browserServer = await chromium.launchServer(browserOptions);
+  browser = await chromium.connect(browserServer.wsEndpoint());
   const page = await browser.newPage();
   await page.goto(studio.url);
   await page.waitForFunction(() => window.velocut?.sceneEdit);
@@ -293,13 +294,14 @@ window.probe=(async()=>{
   const cleanupDeadline = setTimeout(() => { console.error('Distribution cleanup exceeded 20 seconds'); process.exit(1); }, 20_000);
   cleanupDeadline.unref();
   await client?.close();
-  await browser?.close();
+  await browserServer?.kill();
+  console.log('Distribution browser process stopped');
   await studio?.close();
-  await devServer?.close();
-  if (preview) await new Promise((resolve) => { preview.httpServer.close(resolve); preview.httpServer.closeAllConnections(); });
-  // Vite retains esbuild's service even after closing its HTTP servers.
-  // Release the executable before deleting it on Windows.
   consumerEsbuild?.stop();
+  await devServer?.close();
+  console.log('Distribution development server stopped');
+  if (preview) await new Promise((resolve) => { preview.httpServer.close(resolve); preview.httpServer.closeAllConnections(); });
+  console.log('Distribution preview server stopped');
   if (process.env.VELOCUT_KEEP_CONSUMER !== '1')
     await rm(workspace, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   clearTimeout(cleanupDeadline);
