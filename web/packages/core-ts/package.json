@@ -1,6 +1,6 @@
 {
   "name": "@velocut/core-ts",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "license": "MIT",
   "type": "module",
   "exports": {
@@ -12,7 +12,7 @@
     "./package.json": "./package.json"
   },
   "dependencies": {
-    "@velocut/protocol": "0.1.0"
+    "@velocut/protocol": "0.0.1"
   },
   "files": [
     "dist",

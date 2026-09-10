@@ -1,6 +1,6 @@
 {
   "name": "@velocut/mcp",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "type": "module",
   "license": "MIT",
   "scripts": {
@@ -13,7 +13,7 @@
     "esbuild": "^0.21.5",
     "@modelcontextprotocol/server": "2.0.0",
     "zod": "^4.0.0",
-    "@velocut/protocol": "0.1.0"
+    "@velocut/protocol": "0.0.1"
   },
   "bin": {
     "velocut-mcp": "./dist/cli.cjs"

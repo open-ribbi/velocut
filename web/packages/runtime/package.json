@@ -1,6 +1,6 @@
 {
   "name": "@velocut/runtime",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "type": "module",
   "license": "MIT",
   "exports": {
@@ -62,10 +62,10 @@
     "prepack": "node ../../scripts/validate-package.mjs"
   },
   "dependencies": {
-    "@velocut/protocol": "0.1.0",
-    "@velocut/core-ts": "0.1.0",
-    "@velocut/render-sdk": "0.1.0",
-    "@velocut/scene-sdk": "0.1.0",
+    "@velocut/protocol": "0.0.1",
+    "@velocut/core-ts": "0.0.1",
+    "@velocut/render-sdk": "0.0.1",
+    "@velocut/scene-sdk": "0.0.1",
     "three": "^0.185.1"
   },
   "engines": {

@@ -1,8 +1,10 @@
 {
   "name": "velocut",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "description": "Direct the live Velocut 3D editor from Codex with editable scenes and visual feedback.",
-  "author": { "name": "Velocut contributors" },
+  "author": {
+    "name": "Velocut contributors"
+  },
   "license": "MIT",
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
@@ -12,7 +14,14 @@
     "longDescription": "Use the model in your Codex conversation to create editable 3D scenes, import GLB assets, arrange objects and lights, direct cameras, and inspect real rendered images. Pairs to a local Velocut editor; no separate model API key.",
     "developerName": "Velocut contributors",
     "category": "Productivity",
-    "capabilities": ["Interactive", "Write"],
-    "defaultPrompt": ["Connect to my local Velocut editor.", "Build a cafe scene with tables and warm lighting.", "Inspect my scene and improve its camera composition."]
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Connect to my local Velocut editor.",
+      "Build a cafe scene with tables and warm lighting.",
+      "Inspect my scene and improve its camera composition."
+    ]
   }
 }

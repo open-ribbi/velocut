@@ -5,7 +5,7 @@ Requires Node.js 22.6+. The reasoning model belongs to your MCP client; this
 package does not invoke a second model or require an additional model API key.
 
 After the package is published, configure your MCP client with command `npx`
-and arguments `-y`, `@velocut/mcp@0.1.0`. The `velocut-mcp` executable defaults to
+and arguments `-y`, `@velocut/mcp@0.0.1`. The `velocut-mcp` executable defaults to
 stdio. `--help` and `--version` do not start a server. Pin a release in shared
 configurations. For unpublished builds install the release `.tgz` first and use
 `node node_modules/@velocut/mcp/dist/cli.cjs`.

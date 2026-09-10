@@ -23,7 +23,7 @@ export function toolResult(value) {
 
 export async function createVelocutServer(options = {}) {
   const broker = await createBroker(options);
-  const server = new McpServer({ name: 'velocut', version: '0.1.0' }, { instructions:
+  const server = new McpServer({ name: 'velocut', version: '0.0.1' }, { instructions:
     'Control the paired live Velocut editor, using this Codex conversation for reasoning. Connect/open the returned URL, list sessions, and explicitly choose the intended project. Read scene_assets before authoring. Pass read revisions to edits. Observe actual images after edits. Never replay a timed-out write without inspecting state: its outcome may be unknown. Scripts run only in the editor sandbox. Cloud generation, uploads, and model API credentials are not part of this plugin.' });
   const register = (name, description, shape, callback, readOnly = false) => server.registerTool(name, {
     description, inputSchema: z.object(shape), annotations: { readOnlyHint: readOnly, destructiveHint: !readOnly, openWorldHint: false },

@@ -6,7 +6,7 @@ compiler. Node.js 22.6+ and a browser with WebGPU/WebCodecs are required.
 After registry publication:
 
 ```sh
-npx @velocut/cli@0.1.0 studio
+npx @velocut/cli@0.0.1 studio
 ```
 
 For an unpublished local release, install its `.tgz`, then run

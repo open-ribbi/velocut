@@ -1,6 +1,6 @@
 {
   "name": "@velocut/scene-sdk",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "license": "MIT",
   "type": "module",
   "exports": {
@@ -16,7 +16,7 @@
     "@dimforge/rapier3d-compat": "^0.19.3",
     "three": "^0.185.1",
     "@types/three": "^0.185.0",
-    "@velocut/render-sdk": "0.1.0"
+    "@velocut/render-sdk": "0.0.1"
   },
   "devDependencies": {
     "@types/three": "^0.185.0"

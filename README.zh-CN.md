@@ -29,7 +29,7 @@ node start-studio.mjs
 对应版本发布到 npm 后，也可以运行：
 
 ```sh
-npx @velocut/cli@0.1.0 studio
+npx @velocut/cli@0.0.1 studio
 ```
 
 发行目录同时包含 Codex marketplace。将该目录添加为插件来源，安装 Velocut，

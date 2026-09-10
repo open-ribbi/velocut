@@ -1,6 +1,6 @@
 {
   "name": "@velocut/render-sdk",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "license": "MIT",
   "type": "module",
   "exports": {
@@ -42,7 +42,7 @@
     }
   },
   "dependencies": {
-    "@velocut/protocol": "0.1.0",
+    "@velocut/protocol": "0.0.1",
     "aws4fetch": "^1.0.20",
     "mp4-muxer": "^5.2.2",
     "mp4box": "^0.5.2",

@@ -38,7 +38,7 @@ and port: browser projects are scoped to that origin.
 **npm, after the requested version is published:**
 
 ```sh
-npx @velocut/cli@0.1.0 studio
+npx @velocut/cli@0.0.1 studio
 ```
 
 **From source:**

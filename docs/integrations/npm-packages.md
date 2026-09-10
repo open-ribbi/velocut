@@ -1,6 +1,6 @@
 # Independent SDKs, Studio and MCP
 
-The monorepo produces seven public-package candidates at version 0.1.0. No
+The monorepo produces seven public-package candidates at version 0.0.1. No
 registry publication is performed by build/test commands. Replace the example
 version only with a release that actually exists in your registry.
 
@@ -34,7 +34,7 @@ npm run pack:release
 The generated `artifacts/` directory (repository root) contains:
 
 - Seven `.tgz` npm packages and `manifest.json` with versions and SHA-256 hashes.
-- `velocut-0.1.0/`: a relocatable standalone distribution. Run
+- `velocut-0.0.1/`: a relocatable standalone distribution. Run
   `node start-studio.mjs` there. Its `studio/` includes the prebuilt UI, scene
   assets and bundled browser dependencies; npm install is unnecessary.
 - The same standalone directory is a Codex marketplace with

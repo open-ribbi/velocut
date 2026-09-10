@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 import { pipeline } from 'node:stream/promises';
 
-export const VERSION = '0.1.0';
+export const VERSION = '0.0.1';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), 'studio');
 const mime = {
   '.html': 'text/html; charset=utf-8',

@@ -1,6 +1,6 @@
 {
   "name": "@velocut/cli",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "description": "Run the prebuilt Velocut Studio locally without a source checkout",
   "type": "module",
   "license": "MIT",
