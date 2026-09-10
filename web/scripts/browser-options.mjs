@@ -8,6 +8,7 @@ export const browserOptions = {
   args: [
     '--enable-unsafe-webgpu', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist',
     '--use-gl=angle',
+    ...(process.platform === 'win32' ? ['--use-webgpu-adapter=swiftshader'] : []),
     ...(process.platform === 'linux' ? [
       '--enable-features=Vulkan', '--use-angle=vulkan', '--use-vulkan=swiftshader',
       '--use-webgpu-adapter=swiftshader', '--disable-vulkan-surface',

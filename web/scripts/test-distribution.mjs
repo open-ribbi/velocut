@@ -38,7 +38,7 @@ try {
       'vite@5.4.11',
       'typescript@5.9.3',
     ],
-    { cwd: workspace, stdio: 'inherit' },
+    { cwd: workspace, stdio: 'inherit', timeout: 180_000 },
   );
   consumerEsbuild = await import(pathToFileURL(resolve(workspace, 'node_modules/esbuild/lib/main.js')));
   for (const p of manifest.packages)
@@ -220,7 +220,8 @@ window.probe=(async()=>{
   });
   const consumer = await browser.newPage({ viewport: { width: 320, height: 180 } });
   await consumer.goto(preview.resolvedUrls.local[0]);
-  const result = await consumer.evaluate(() => window.probe);
+  console.log('Verifying production SDK render probe');
+  const result = await consumer.evaluate(() => Promise.race([window.probe, new Promise(resolve => setTimeout(() => resolve({ok:false,error:'GPU/worker probe exceeded 45 seconds'}),45_000))]));
   assert.equal(result.ok, true, JSON.stringify(result));
   await consumer.waitForTimeout(400);
   const screenshot = (await consumer.screenshot()).toString('base64');
@@ -248,7 +249,8 @@ window.probe=(async()=>{
   await devServer.listen();
   const devPage = await browser.newPage();
   await devPage.goto(devServer.resolvedUrls.local[0]);
-  const devResult = await devPage.evaluate(()=>window.probe);
+  console.log('Verifying development SDK render probe');
+  const devResult = await devPage.evaluate(()=>Promise.race([window.probe,new Promise(resolve=>setTimeout(()=>resolve({ok:false,error:'Dev GPU/worker probe exceeded 45 seconds'}),45_000))]));
   assert.equal(devResult?.ok,true,JSON.stringify(devResult));
   await devPage.evaluate(()=>window.cleanup());
   console.log('Installed SDK Vite development mode and shared subpath state passed');
@@ -286,6 +288,7 @@ window.probe=(async()=>{
   console.error('Distribution verification failed:', error);
   throw error;
 } finally {
+  console.log('Closing distribution browser and build services');
   await client?.close();
   await browser?.close();
   await studio?.close();
