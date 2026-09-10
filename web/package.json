@@ -13,8 +13,10 @@
   "scripts": {
     "dev": "npm -w velocut-editor run dev",
     "build": "npm -w velocut-editor run build",
-    "test": "node --experimental-strip-types --test 'packages/**/test/*.test.ts'",
-    "e2e": "playwright test"
+    "test": "node --experimental-strip-types --test 'packages/**/test/*.test.ts' && npm run test:codex-plugin",
+    "e2e": "playwright test",
+    "build:codex-plugin": "npm -w @velocut/codex-bridge run build",
+    "test:codex-plugin": "npm run build:codex-plugin && node --test 'packages/codex-bridge/test/*.test.mjs'"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1"

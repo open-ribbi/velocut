@@ -12,7 +12,9 @@
 import { sampleAnimatable } from '@velocut/render-sdk/motionspec';
 import type * as THREE from 'three';
 import { buildStage, sampleVec3, DEFAULT_ASSET_BASE, type Stage } from './stage.ts';
+import { constructionCamera, inspectStage, SCENE_VIEWS, type SceneViewCamera, type SceneView } from './inspection.ts';
 import { expandShots } from './shots.ts';
+import type { SceneResources } from './models.ts';
 import type { SceneSpec, Vec3A } from './types.ts';
 
 export interface CompiledScene {
@@ -26,6 +28,8 @@ export interface CompiledScene {
   render(index: number): VideoFrame;
   /** Release the GL context and scene resources. */
   dispose(): void;
+  inspect(timeS: number): ReturnType<typeof inspectStage>;
+  capture(opts: { timeS?: number; view?: SceneView; objectId?: string; camera?: SceneViewCamera }): Promise<Blob>;
 }
 
 /** Deterministic handheld wobble: a fixed multi-sine of t (distinct phases
@@ -58,10 +62,10 @@ export function applySpecCamera(camera: THREE.PerspectiveCamera, spec: SceneSpec
   );
   const look = cam?.lookAt;
   if (look && 'character' in look && typeof look.character === 'string') {
-    const pos = stage.characterPosition(look.character, t);
-    if (pos) {
-      const h = stage.characters.find((c) => c.spec.id === look.character)?.heightM ?? 1.7;
-      camera.lookAt(pos[0], pos[1] + h * 0.72, pos[2]);
+    const target = stage.characters.find((c) => c.spec.id === look.character);
+    if (target) {
+      target.root.updateWorldMatrix(true, false);
+      camera.lookAt(target.root.localToWorld(new stage.three.Vector3(0, target.heightM * 0.72, 0)));
     } else {
       camera.lookAt(0, 1, 0);
     }
@@ -82,7 +86,7 @@ export function applySpecCamera(camera: THREE.PerspectiveCamera, spec: SceneSpec
 
 export function compileSceneSpec(
   rawSpec: SceneSpec,
-  defaults: { width: number; height: number; fps: number; assetBase?: string },
+  defaults: { width: number; height: number; fps: number; assetBase?: string; resources?: SceneResources },
 ): CompiledScene {
   const spec = expandShots(rawSpec);
   const width = Math.round(spec.width ?? defaults.width);
@@ -100,7 +104,7 @@ export function compileSceneSpec(
   let canvas: OffscreenCanvas | null = null;
 
   async function load(): Promise<void> {
-    stage = await buildStage(spec, assetBase);
+    stage = await buildStage(spec, assetBase, defaults.resources);
     canvas = new OffscreenCanvas(width, height);
     renderer = new stage.three.WebGLRenderer({
       canvas: canvas as unknown as HTMLCanvasElement,
@@ -122,6 +126,38 @@ export function compileSceneSpec(
     return new VideoFrame(canvas, { timestamp: clamped * frameDurUs, duration: frameDurUs });
   }
 
+  function pose(timeS: number): void {
+    if (!stage) throw new Error('Scene not loaded');
+    if (!Number.isFinite(timeS) || timeS < 0 || timeS > spec.durationUs / 1e6) throw new Error('timeS is outside the scene');
+    stage.poseAt(timeS, { cameraPos: specCameraPosition(spec, timeS) });
+  }
+
+  function inspect(timeS: number) {
+    pose(timeS);
+    return inspectStage(stage!);
+  }
+
+  async function capture(opts: { timeS?: number; view?: SceneView; objectId?: string; camera?: SceneViewCamera }): Promise<Blob> {
+    const t = opts.timeS ?? 0;
+    pose(t);
+    if (!renderer || !stage || !canvas || !camera) throw new Error('Scene not loaded');
+    const view = opts.view ?? 'perspective';
+    if (!SCENE_VIEWS.includes(view)) throw new Error('unknown scene view');
+    const entries = [...stage.characters, ...stage.props, ...stage.groups, ...stage.lights];
+    const targets = opts.objectId ? entries.filter((e) => e.spec.id === opts.objectId) : entries;
+    if (opts.objectId && !targets.length) throw new Error(`unknown object '${opts.objectId}'`);
+    if (view === 'shot' && opts.camera) throw new Error('custom view camera cannot override the authored shot view');
+    if (view === 'shot') {
+      applySpecCamera(camera, spec, stage, t);
+      renderer.render(stage.scene, camera);
+    } else {
+      const { camera: cam } = constructionCamera(stage, width, height, view, opts.objectId, opts.camera);
+      renderer.render(stage.scene, cam);
+    }
+    // convertToBlob captures this rendered canvas before yielding its result.
+    return canvas.convertToBlob({ type: 'image/png' });
+  }
+
   function dispose(): void {
     // forceContextLoss frees the GL context NOW (browsers cap live contexts
     // at ~8-16; waiting for GC turns spec-edit iteration into "oldest context
@@ -136,5 +172,5 @@ export function compileSceneSpec(
     canvas = null;
   }
 
-  return { width, height, frameDurUs, frameCount, load, render, dispose };
+  return { width, height, frameDurUs, frameCount, load, render, dispose, inspect, capture };
 }

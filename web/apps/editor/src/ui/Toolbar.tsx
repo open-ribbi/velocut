@@ -1,3 +1,5 @@
+import { CodexPanel } from './CodexPanel';
+import type { CodexConnection } from '../services/codex-connection';
 import { useRef, useState } from 'react';
 import type { Store, UiState } from '../state/store';
 import {
@@ -33,11 +35,13 @@ export function Toolbar({
   playback,
   media,
   state,
+  codex,
 }: {
   store: Store;
   playback: Playback;
   media: MediaLibrary;
   state: UiState;
+  codex?: CodexConnection;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [exportPct, setExportPct] = useState<{ frac: number; label: string } | null>(null);
@@ -124,6 +128,7 @@ export function Toolbar({
     <div className="toolbar">
       <span className="brand">Velocut</span>
       <ProjectMenu />
+      {codex && <CodexPanel connection={codex} />}
       <button onClick={() => fileRef.current?.click()}>Import Media</button>
       <input
         ref={fileRef}

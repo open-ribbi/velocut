@@ -11,13 +11,18 @@
 import { Observer, isolateClip, type FrameMetrics, type AudioSliceRef, type GrabSpec } from '@velocut/render-sdk';
 import type { ObserveResult } from '@velocut/agent-sdk';
 import type { FrameGraph, VDocument } from '@velocut/protocol';
+import { inspectScene } from './scene';
+import type { SceneViewCamera, SceneView } from '@velocut/scene-sdk';
 import type { Store } from '../state/store';
 
 export interface ObserveInput {
   /** frame = one moment; contact = thumbnail grid; scan = measured timeline;
    *  audio = fine-grained audio structure of an asset (silence gaps + onsets);
    *  shots = shot/cut segmentation of a video asset (boundaries + key times). */
-  mode?: 'frame' | 'contact' | 'scan' | 'audio' | 'shots';
+  mode?: 'frame' | 'contact' | 'scan' | 'audio' | 'shots' | 'scene';
+  view?: SceneView;
+  camera?: SceneViewCamera;
+  objectId?: string;
   /** What to look at. Omit = the composite the user sees. */
   source?: { clipId?: string; assetId?: string };
   /** frame: the instant (timeline µs; or source µs when source=assetId). */
@@ -86,6 +91,21 @@ export async function observeForAgent(
   input: ObserveInput,
 ): Promise<ObserveResult> {
   const doc = store.getState().doc;
+  if (input.mode === 'scene') {
+    const assetId = input.source?.assetId ?? doc.tracks.flatMap((t) => t.clips).find((c) => c.id === input.source?.clipId)?.assetId;
+    if (!assetId) return { ok: false, summary: 'scene observation requires source.assetId or source.clipId', images: [] };
+    const r = await inspectScene(store, { assetId, timeS: (input.at ?? 0) / 1e6, view: input.view, camera: input.camera, objectId: input.objectId }, !input.metricsOnly);
+    if (!r.ok) return { ok: false, summary: r.message, images: [] };
+    const images: ObserveResult['images'] = [];
+    if (r.blob) {
+      const bytes = new Uint8Array(await r.blob.arrayBuffer());
+      let binary = '';
+      for (let i = 0; i < bytes.length; i += 8192) binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
+      images.push({ base64: btoa(binary), mediaType: 'image/png' });
+    }
+    return { ok: true, summary: `Scene ${assetId}, revision ${r.revision}, ${r.timeS}s, ${input.view ?? 'perspective'} view`,
+      images, data: { assetId, revision: r.revision, timeS: r.timeS, camera: input.camera, objects: r.objects } };
+  }
   if (!doc.tracks.length && !doc.assets.length) return { ok: false, summary: 'The project is empty; there is nothing to observe.', images: [] };
   const frameDur = (1e6 * doc.fpsDen) / doc.fpsNum;
   const snap = (t: number) => Math.max(0, Math.round(t / frameDur) * frameDur);

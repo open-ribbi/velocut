@@ -9,6 +9,8 @@ import { InspectorPanel } from './ui/InspectorPanel';
 import { AssetPanel } from './ui/AssetPanel';
 import { AgentConsole } from './ui/AgentConsole';
 import { HistoryPanel } from './ui/HistoryPanel';
+import { DirectorPanel } from './ui/DirectorPanel';
+import { directorController } from './services/director-session';
 import { ResizeHandle } from './ui/ResizeHandle';
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
@@ -52,6 +54,10 @@ export function App({ container }: { container: Container }) {
   const observer = useMemo(() => container.resolve(TOKENS.Observer), [container]);
   const tts = useMemo(() => container.resolve(TOKENS.Tts), [container]);
   const state = useStore(store);
+  const director = useMemo(() => directorController(store), [store]);
+  const session = useSyncExternalStore(director.subscribe, director.getSnapshot, director.getSnapshot);
+  const directorAsset = session ? state.doc.assets.find((a) => a.id === session.assetId) : undefined;
+  useEffect(() => { if (session && !directorAsset) director.update({ open: false }); }, [session, directorAsset, director]);
 
   // Resizable panels — widths/height persisted per browser.
   const [assetW, setAssetW] = useState(() => storedNum('velocut.assetW', 200));
@@ -65,6 +71,12 @@ export function App({ container }: { container: Container }) {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement)?.isContentEditable) return;
+      if (director.getSnapshot() && (e.code === 'Space' || e.key === 'Escape' || e.key === 'Delete' || e.key === 'Backspace' || e.key.toLowerCase() === 's')) {
+        e.preventDefault();
+        if (e.code === 'Space') director.update({ playing: !director.getSnapshot()!.playing });
+        if (e.key === 'Escape') director.update({ open: false });
+        return;
+      }
       if (e.code === 'Space') {
         e.preventDefault();
         playback.toggle();
@@ -84,7 +96,7 @@ export function App({ container }: { container: Container }) {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [store, playback]);
+  }, [store, playback, director]);
 
   return (
     <div className="app">
@@ -93,6 +105,7 @@ export function App({ container }: { container: Container }) {
         playback={playback}
         media={media}
         state={state}
+        codex={container.resolve(TOKENS.CodexConnection)}
       />
       <div className="main-row">
         <AssetPanel store={store} media={media} state={state} width={assetW} />
@@ -105,6 +118,7 @@ export function App({ container }: { container: Container }) {
       <TimelinePanel store={store} state={state} media={media} height={timelineH} />
       <AgentConsole store={store} state={state} media={media} transcriber={transcriber} observer={observer} tts={tts} />
       <HistoryPanel store={store} state={state} />
+      {session && directorAsset && <DirectorPanel key={session.assetId} store={store} asset={directorAsset} session={session} onClose={() => director.update({ open: false })} />}
       {state.lastError && (
         <div className="error-toast" onClick={store.clearError}>
           {state.lastError}

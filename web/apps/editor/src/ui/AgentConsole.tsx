@@ -1,3 +1,4 @@
+import { directorSession, type DirectorSessionOptions } from '../services/director-session';
 // ui/AgentConsole.tsx — chat with the editing agent.
 //
 // Natural language in, edits out: each turn runs the @velocut/agent-sdk
@@ -8,14 +9,14 @@
 import { useEffect, useRef, useState } from 'react';
 import type Anthropic from '@anthropic-ai/sdk';
 import { runAgentTurn, type AgentEvent } from '@velocut/agent-sdk';
-import { type MediaLibrary, type Transcriber, type Observer, type TextToSpeech, type ShotAnalysis, effectPromptDoc } from '@velocut/render-sdk';
+import { type MediaLibrary, type Transcriber, type Observer, type TextToSpeech, type ShotAnalysis, validateMotionSpec, effectPromptDoc } from '@velocut/render-sdk';
 import type { Store, UiState } from '../state/store';
 import { captionAsset } from '../services/caption';
 import { observeForAgent } from '../services/observe';
 import { synthesizeNarration } from '../services/tts';
 import { runAgentScript } from '../services/script';
 import { createMotionClip, type MotionClipOptions } from '../services/motion';
-import { createSceneClip, type SceneClipOptions } from '../services/scene';
+import { dispatchSceneAware, checkSpecCommand, importSceneModel, type SceneModelImportOptions, editScene, arrangeScene, type SceneArrangeOptions, inspectScene, type SceneEditOptions, createSceneClip, type SceneClipOptions } from '../services/scene';
 import { loadSceneManifest, scenePromptDoc } from '@velocut/scene-sdk';
 import { searchWeb } from '../services/search';
 import {
@@ -252,6 +253,12 @@ export function AgentConsole({
       // the dev app injects a streaming transport (an Anthropic client → /llm-proxy).
       const injected = (window as never as Record<string, unknown>).__velocutAgentTransport;
       const injectedStream = (window as never as Record<string, unknown>).__velocutAgentStream;
+      const agentDispatch = (cmd: import('@velocut/protocol').Command) => {
+        const err = checkSpecCommand(store, cmd as Parameters<typeof checkSpecCommand>[1], validateMotionSpec);
+        if (err) return { ok: false as const, error: { code: 'invalidSpec', message: err } };
+        return dispatchSceneAware(store, cmd, (c) => store.dispatch(c,
+          { kind: 'ai', peerId: store.getLocalUser().peerId, name: 'AI', model: cfg.model }, text));
+      };
       history.current = await runAgentTurn({
         apiKey: cfg.apiKey,
         // undefined = the SDK's official default; anything else is a relay.
@@ -266,8 +273,7 @@ export function AgentConsole({
         host: {
           // Attribute every edit this turn to the AI (with the model + the
           // prompt that triggered it) on the history board.
-          dispatch: (cmd) =>
-            store.dispatch(cmd, { kind: 'ai', peerId: store.getLocalUser().peerId, name: 'AI', model: cfg.model }, text),
+          dispatch: agentDispatch,
           document: () => store.getState().doc,
           evaluate: store.evaluate,
           caption: (o) => captionAsset(store, media, transcriber, o),
@@ -280,8 +286,7 @@ export function AgentConsole({
           runScript: (code) =>
             runAgentScript(
               {
-                apply: (cmd) =>
-                  store.dispatch(cmd as never, { kind: 'ai', peerId: store.getLocalUser().peerId, name: 'AI', model: cfg.model }, text),
+                apply: (cmd) => agentDispatch(cmd as never),
                 tts: (o) => synthesizeNarration(store, media, tts, o),
                 observe: async (input) => {
                   const r = await observeForAgent(store, observer, input);
@@ -291,7 +296,16 @@ export function AgentConsole({
                 document: () => store.getState().doc,
                 seek: (t) => store.seek(t),
                 motionClip: (o) => createMotionClip(store, media, o as MotionClipOptions),
-                sceneClip: (o) => createSceneClip(store, media, o as SceneClipOptions),
+                sceneClip: (o) => createSceneClip(store, media, o as SceneClipOptions, (cmd) =>
+                  store.dispatch(cmd, { kind: 'ai', peerId: store.getLocalUser().peerId, name: 'AI', model: cfg.model }, text)),
+                sceneImportModel: (o) => importSceneModel(store, o as SceneModelImportOptions, (cmd) =>
+                  store.dispatch(cmd, { kind: 'ai', peerId: store.getLocalUser().peerId, name: 'AI', model: cfg.model }, text)),
+                sceneArrange: (o) => arrangeScene(store, o as SceneArrangeOptions, (cmd) =>
+                  store.dispatch(cmd, { kind: 'ai', peerId: store.getLocalUser().peerId, name: 'AI', model: cfg.model }, text)),
+                sceneEdit: (o) => editScene(store, o as SceneEditOptions, (cmd) =>
+                  store.dispatch(cmd, { kind: 'ai', peerId: store.getLocalUser().peerId, name: 'AI', model: cfg.model }, text)),
+                directorSession: (o) => Promise.resolve(directorSession(store, o as DirectorSessionOptions)),
+                sceneInspect: (o) => inspectScene(store, o as { assetId: string; timeS?: number }),
                 sceneAssets: async () => {
                   const manifest = await loadSceneManifest();
                   return { doc: scenePromptDoc(manifest), manifest };

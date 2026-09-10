@@ -7,6 +7,7 @@ import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
   testDir: './e2e',
+  globalSetup: './e2e/global-setup.ts',
   timeout: 60_000,
   // Cold CI runners re-transform every module through the Vite dev server on
   // a reload; the app takes well over the 5s default to re-bootstrap.

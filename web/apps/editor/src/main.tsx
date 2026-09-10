@@ -1,3 +1,6 @@
+import { createCodexHost } from './services/codex-host';
+import { createCodexConnection } from './services/codex-connection';
+import { directorSession, type DirectorSessionOptions } from './services/director-session';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import Anthropic from '@anthropic-ai/sdk';
@@ -13,7 +16,7 @@ import { observeForAgent, type ObserveInput } from './services/observe';
 import { synthesizeNarration } from './services/tts';
 import { runAgentScript } from './services/script';
 import { createMotionClip, syncMotionAsset, migrateLegacyMotionSpecs, type MotionClipOptions } from './services/motion';
-import { checkSpecCommand, createSceneClip, pruneSceneRenderers, syncSceneAsset, type SceneClipOptions } from './services/scene';
+import { bindSceneAuthoring, importSceneModel, type SceneModelImportOptions, editScene, arrangeScene, type SceneArrangeOptions, inspectScene, type SceneEditOptions, dispatchSceneAware, checkSpecCommand, createSceneClip, pruneSceneRenderers, syncSceneAsset, type SceneClipOptions } from './services/scene';
 import { loadSceneManifest, scenePromptDoc } from '@velocut/scene-sdk';
 import { searchWeb } from './services/search';
 import { generateVideoClip, describeVideoGenChannels, sandboxVideoGen, type VideoGenClipOptions } from './services/videogen';
@@ -229,13 +232,22 @@ async function bootstrap() {
   const guardedDispatch = (cmd: Command) => {
     const specErr = checkSpecCommand(store, cmd as Parameters<typeof checkSpecCommand>[1], validateMotionSpec);
     if (specErr) return { ok: false, error: { code: 'invalidSpec', message: specErr } } as ReturnType<typeof store.dispatch>;
-    return store.dispatch(cmd);
+    return dispatchSceneAware(store, cmd);
   };
 
   // Agent API — the same dispatch path the UI uses. An external agent (or
   // you, in DevTools) can edit the project with plain JSON commands:
   //   velocut.apply({type:'splitClip', clipId:'clip_2', atUs:1500000})
+  bindSceneAuthoring(store, media);
+  const codexConnection = createCodexConnection(createCodexHost(store, media, container.resolve(TOKENS.Observer), project));
+  container.registerValue(TOKENS.CodexConnection, codexConnection);
   (window as any).velocut = {
+    codex: codexConnection,
+    directorSession: (o?: DirectorSessionOptions) => directorSession(store, o),
+    sceneImportModel: (o: SceneModelImportOptions) => importSceneModel(store, o),
+    sceneArrange: (o: SceneArrangeOptions) => arrangeScene(store, o),
+    sceneEdit: (o: SceneEditOptions) => editScene(store, o),
+    sceneInspect: (o: { assetId: string; timeS?: number }) => inspectScene(store, o),
     apply: (cmd: Command | string) =>
       guardedDispatch(typeof cmd === 'string' ? JSON.parse(cmd) : cmd),
     undo: () => store.undo(),
@@ -288,6 +300,11 @@ async function bootstrap() {
           seek: (t: number) => store.seek(t),
           motionClip: (o) => createMotionClip(store, media, o as MotionClipOptions),
           sceneClip: (o) => createSceneClip(store, media, o as SceneClipOptions),
+          sceneImportModel: (o) => importSceneModel(store, o as SceneModelImportOptions),
+          sceneArrange: (o) => arrangeScene(store, o as SceneArrangeOptions),
+          sceneEdit: (o) => editScene(store, o as SceneEditOptions),
+          directorSession: (o) => Promise.resolve(directorSession(store, o as DirectorSessionOptions)),
+          sceneInspect: (o) => inspectScene(store, o as { assetId: string; timeS?: number }),
           sceneAssets: async () => {
             const manifest = await loadSceneManifest();
             return { doc: scenePromptDoc(manifest), manifest };
@@ -353,6 +370,7 @@ async function bootstrap() {
     };
   }
 
+  codexConnection.initialize();
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
       <App container={container} />

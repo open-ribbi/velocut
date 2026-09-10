@@ -122,6 +122,7 @@
     "env/void": { "label": "Void (no floor)", "builtin": true, "license": "generated" }
   },
   "lighting": {
+    "none": { "label": "Custom lights only" },
     "day": { "label": "Day" },
     "night": { "label": "Night" },
     "indoor": { "label": "Indoor" }
@@ -134,6 +135,8 @@
     "prop/torus": { "label": "Torus (flat ring)", "builtin": true, "license": "generated" },
     "prop/hemisphere": { "label": "Hemisphere (dome)", "builtin": true, "license": "generated" },
     "prop/lathe": { "label": "Lathe (revolved profile)", "builtin": true, "license": "generated" },
+    "prop/mesh": { "label": "Mesh (editable triangles)", "builtin": true, "license": "generated" },
+    "prop/tube": { "label": "Tube (3D path sweep)", "builtin": true, "license": "generated" },
     "prop/extrude": { "label": "Extrude (flat outline)", "builtin": true, "license": "generated" }
   }
 }

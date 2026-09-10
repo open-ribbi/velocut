@@ -463,7 +463,7 @@ html, body, #root {
 .director-close:hover { background: #3a1d1d; color: #ff9a9a; }
 .director-body { flex: 1; display: flex; min-height: 0; }
 .director-canvas { flex: 1; width: 100%; height: 100%; min-width: 0; display: block; cursor: grab; }
-.director-side { width: 264px; padding: 10px; border-left: 1px solid #232a36; overflow-y: auto; }
+.director-side { width: 300px; flex-shrink: 0; padding: 10px; border-left: 1px solid #232a36; overflow-y: auto; }
 .director-key { display: inline-block; margin: 2px; font-size: 11px; padding: 3px 8px; border-radius: 5px; background: #1a1d23; color: #cfd6e2; }
 .director-key.active { background: #2b3242; color: #fff; }
 .director-hint { margin-top: 10px; line-height: 1.5; }
@@ -486,3 +486,17 @@ html, body, #root {
 .scene-object-open:hover { background: #232a36; }
 .scene-object-id { font-weight: 600; }
 .scene-object-model { color: #8b93a3; font-size: 11px; }
+
+.director-selcard .prop-label { width: 76px; }
+.director-selcard .scene-json { min-height: 90px; }
+.director-selcard input:not([type="checkbox"]), .director-selcard select { min-width: 0; }
+.director-head { flex-wrap: wrap; }
+
+/* The paired external agent is visible and can be disconnected at any time. */
+.codex-connection { position: relative; }
+.codex-status.connected { color: #82d6a0; }
+.codex-status.error { color: #f6a982; }
+.codex-popover { position: absolute; top: 36px; left: 0; z-index: 90; width: 310px; padding: 14px; background: #151a22; border: 1px solid #394151; border-radius: 8px; box-shadow: 0 8px 24px #0008; white-space: normal; }
+.codex-popover p { font-size: 12px; line-height: 1.5; color: #aeb9ca; overflow-wrap: anywhere; }
+.codex-popover input { width: 100%; box-sizing: border-box; margin-bottom: 8px; }
+.codex-popover button { margin-right: 6px; }

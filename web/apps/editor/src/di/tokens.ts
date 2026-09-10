@@ -4,6 +4,7 @@
 // a main ⇄ App import cycle makes HMR re-evaluate the entry on every App
 // hot-swap (double createRoot, fresh token identities → "DI: no provider").
 
+import type { CodexConnection } from '../services/codex-connection';
 import { token } from './container';
 import type { ICoreEngine } from '../services/engine';
 import {
@@ -19,6 +20,7 @@ import type { Store } from '../state/store';
 import type { FontLibrary } from '../services/fonts';
 
 export const TOKENS = {
+  CodexConnection: token<CodexConnection>('CodexConnection'),
   Engine: token<ICoreEngine>('Engine'),
   Store: token<Store>('Store'),
   Media: token<MediaLibrary>('Media'),

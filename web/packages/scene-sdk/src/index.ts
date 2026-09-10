@@ -9,6 +9,11 @@
 export {
   validateSceneSpec,
   type SceneSpec,
+  type SceneModel,
+  type SceneLight,
+  type SceneGroup,
+  type SceneTransform,
+  type SceneMaterial,
   type SceneCamera,
   type SceneCharacter,
   type SceneProp,
@@ -36,3 +41,11 @@ export {
   type StageCharacter,
   type StageProp,
 } from './stage.ts';
+
+export { applySceneEdits, normalizeSceneSpec, nextSceneId, sceneObjects, type SceneEdit, type SceneObjectKind, type SceneObject } from './authoring.ts';
+
+export { validateViewCamera, type SceneViewCamera, constructionCamera, inspectStage, SCENE_VIEWS, type SceneView } from './inspection.ts';
+
+export { ASSEMBLY_DEFAULTS, assemblyParts, type AssemblyRecipe, type AssemblyTemplate } from './assemblies.ts';
+
+export { withImportedModels, validateGlb, parseSceneModel, loadImportedModel, MAX_MODEL_BYTES, type SceneResources } from './models.ts';

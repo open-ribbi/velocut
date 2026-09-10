@@ -5,6 +5,7 @@
 // state. Keyframes reuse the MotionSpec grammar ({t, v, ease} with GSAP ease
 // names) so agents learn ONE animation vocabulary.
 
+import { validateAssembly, type AssemblyRecipe } from './assemblies.ts';
 import type { Animatable } from '@velocut/render-sdk';
 import { MANNEQUIN_JOINTS, POSE_PRESETS, type MannequinJoint } from './mannequin.ts';
 
@@ -34,7 +35,46 @@ export interface SceneAction {
  *  is `{x:0.2, y:3, z:0.2}`. */
 export type Scale3 = number | { x?: number; y?: number; z?: number };
 
-export interface SceneCharacter {
+/** Local transform relative to parentId (a group); root coordinates are meters.
+ * Euler rotations use XYZ order and degrees. Every rotation axis is animatable. */
+export interface SceneTransform {
+  name?: string;
+  parentId?: string;
+  position?: Vec3A;
+  rotationX?: Animatable;
+  rotationY?: Animatable;
+  rotationZ?: Animatable;
+  scale?: Scale3;
+}
+
+export interface SceneGroup extends SceneTransform {
+  id: string;
+  assembly?: AssemblyRecipe;
+}
+
+export interface SceneLight extends SceneTransform {
+  id: string;
+  type: 'point' | 'spot' | 'directional' | 'ambient';
+  color?: string;
+  intensity?: Animatable;
+  distance?: number;
+  decay?: number;
+  /** Spot half-angle, degrees. Directional/spot lights point down local -Z. */
+  angle?: number;
+  penumbra?: number;
+  shadow?: boolean;
+}
+
+export interface SceneMaterial {
+  roughness?: number;
+  metalness?: number;
+  opacity?: number;
+  emissive?: string;
+  emissiveIntensity?: number;
+  side?: 'front' | 'double';
+}
+
+export interface SceneCharacter extends SceneTransform {
   /** Spec-local id, referenced by camera lookAt. */
   id: string;
   /** Registry model id (e.g. 'char/robot'). */
@@ -85,7 +125,20 @@ export interface PropPhysics {
   startAt?: number;
 }
 
-export interface SceneProp {
+export interface SceneProp extends SceneTransform {
+  material?: SceneMaterial;
+  /** Explicit editable triangle mesh (local meters, counter-clockwise faces). */
+  vertices?: [number, number, number][];
+  faces?: [number, number, number][];
+  uvs?: [number, number][];
+  /** Circular sweep along a 3D Catmull-Rom path, meters (prop/tube). */
+  path?: [number, number, number][];
+  radius?: number;
+  closed?: boolean;
+  /** Interior cutouts in an extruded outline; each loop is in local XY. */
+  holes?: [number, number][][];
+  /** Rounded extrusion edges, meters (0 disables bevel). */
+  bevel?: number;
   id?: string;
   /** Registry prop id (e.g. 'prop/cube') — built-in geometry in v1. */
   model: string;
@@ -133,6 +186,16 @@ export interface SceneShot {
   camera: SceneCamera;
 }
 
+export interface SceneModel {
+  /** Immutable GLB bytes in the owning project's storage. */
+  src: string;
+  label: string;
+  heightM: number;
+  clips: Record<string, ManifestClip>;
+  bones?: Record<string, string>;
+  morphs?: string[];
+}
+
 export interface SceneSpec {
   version: 1;
   durationUs: number;
@@ -141,7 +204,10 @@ export interface SceneSpec {
   fps?: number;
   /** Registry environment id (default 'env/stage'). */
   environment?: string;
-  lighting?: 'day' | 'night' | 'indoor';
+  lighting?: 'day' | 'night' | 'indoor' | 'none';
+  lights?: SceneLight[];
+  models?: Record<string, SceneModel>;
+  groups?: SceneGroup[];
   characters?: SceneCharacter[];
   props?: SceneProp[];
   camera?: SceneCamera;
@@ -237,6 +303,7 @@ function checkPropPhysics(p: SceneProp): string | null {
   if (typeof raw === 'object' && !Object.keys(raw).every((k) => PHYSICS_KEYS.includes(k))) {
     return `prop physics takes only { ${PHYSICS_KEYS.join(', ')} }`;
   }
+  if (p.parentId) return 'prop: physics requires a world-root object (group transforms are not baked)';
   if (p.attachTo) return 'prop: physics and attachTo cannot combine (bone-parented props are not simulated)';
   if (ph.mass != null && !(fin(ph.mass) && ph.mass > 0)) return 'prop physics.mass must be > 0 (kg)';
   if (ph.restitution != null && !(fin(ph.restitution) && ph.restitution >= 0 && ph.restitution <= 1)) {
@@ -254,7 +321,7 @@ function checkPropPhysics(p: SceneProp): string | null {
     // The simulation owns a dynamic body's motion (and a fixed body doesn't
     // move at all) — keyframed transforms would silently disagree with the
     // bake. Loud rule: constants only; keyframes belong to kinematic.
-    const keyed = Array.isArray(p.rotationY) || (p.position != null && [p.position.x, p.position.y, p.position.z].some(Array.isArray));
+    const keyed = [p.rotationX, p.rotationY, p.rotationZ].some(Array.isArray) || (p.position != null && [p.position.x, p.position.y, p.position.z].some(Array.isArray));
     if (keyed) {
       return `prop physics '${ph.type}': position/rotationY must be constants (the simulation drives motion — use physics.velocity/startAt, or type 'kinematic' for a keyframe-driven collider)`;
     }
@@ -273,6 +340,20 @@ export function validateSceneSpec(spec: unknown): string | null {
   if (s.fps != null && !(fin(s.fps) && s.fps >= 1 && s.fps <= 120)) return 'spec.fps must be 1..120';
   if (s.width != null && !(fin(s.width) && s.width >= 16 && s.width <= 8192)) return 'spec.width must be 16..8192';
   if (s.height != null && !(fin(s.height) && s.height >= 16 && s.height <= 8192)) return 'spec.height must be 16..8192';
+  if (s.models != null) {
+    if (typeof s.models !== 'object' || Array.isArray(s.models) || Object.keys(s.models).length > 64) return 'models must be a registry with at most 64 entries';
+    for (const [id, m] of Object.entries(s.models)) {
+      if (!/^model\/[a-zA-Z0-9_-]+$/.test(id)) return 'imported model ids must start with model/';
+      if (!m || typeof m !== 'object' || !/^opfs:\/\/scene-model-[a-f0-9]{64}\.glb$/.test(m.src)) return 'model src must be a content-addressed project GLB';
+      if (typeof m.label !== 'string' || m.label.length > 256 || !fin(m.heightM) || m.heightM < 0 || m.heightM > 1e6) return 'invalid model label or height';
+      if (!m.clips || typeof m.clips !== 'object' || Array.isArray(m.clips) || Object.keys(m.clips).length > 200) return 'invalid model animation registry';
+      for (const [name, clip] of Object.entries(m.clips)) {
+        if (!name || !clip || typeof clip !== 'object' || (clip.loop != null && typeof clip.loop !== 'boolean')) return 'invalid model animation clip';
+      }
+      if (m.bones != null && (typeof m.bones !== 'object' || Array.isArray(m.bones) || Object.values(m.bones).some((name) => typeof name !== 'string'))) return 'invalid model bone slots';
+      if (m.morphs != null && (!Array.isArray(m.morphs) || !m.morphs.every((name) => typeof name === 'string'))) return 'invalid model morph names';
+    }
+  }
   if (s.characters != null) {
     if (!Array.isArray(s.characters) || s.characters.length > 8) return 'spec.characters must be an array of at most 8';
     const seen = new Set<string>();
@@ -367,6 +448,30 @@ export function validateSceneSpec(spec: unknown): string | null {
           return 'prop/extrude: depth must be a positive number (meters)';
         }
       }
+      if (p.model === 'prop/mesh') {
+        if (!Array.isArray(p.vertices) || p.vertices.length < 3 || p.vertices.length > 4096 || !p.vertices.every(isVel3)) return 'mesh vertices must contain 3..4096 finite triples';
+        if (!Array.isArray(p.faces) || !p.faces.length || p.faces.length > 8192) return 'mesh faces must contain 1..8192 index triples';
+        for (const f of p.faces) {
+          if (!Array.isArray(f) || f.length !== 3 || !f.every((i) => Number.isInteger(i) && i >= 0 && i < p.vertices!.length) || new Set(f).size !== 3) return 'mesh faces need three distinct valid vertex indices';
+          const [a,b,c] = f.map((i) => p.vertices![i]);
+          const u = b.map((v,i) => v-a[i]), v = c.map((n,i) => n-a[i]);
+          const area = Math.hypot(u[1]*v[2]-u[2]*v[1], u[2]*v[0]-u[0]*v[2], u[0]*v[1]-u[1]*v[0]);
+          if (!Number.isFinite(area) || area < 1e-12) return 'mesh contains a degenerate triangle';
+        }
+        if (p.uvs != null && (!Array.isArray(p.uvs) || p.uvs.length !== p.vertices.length || !p.uvs.every((uv) => Array.isArray(uv) && uv.length === 2 && uv.every(fin)))) return 'mesh uvs must provide a finite pair per vertex';
+      } else if (p.vertices != null || p.faces != null || p.uvs != null) return 'vertices/faces/uvs only apply to prop/mesh';
+      if (p.model === 'prop/tube') {
+        if (!Array.isArray(p.path) || p.path.length < 2 || p.path.length > 64 || !p.path.every(isVel3)) return 'prop/tube needs path: [[x,y,z],…] (2..64 points)';
+        if (p.path.some((pt, i) => i > 0 && pt.every((v, a) => v === p.path![i - 1][a]))) return 'tube path cannot have consecutive identical points';
+        if (p.radius != null && !(fin(p.radius) && p.radius > 0 && p.radius <= 100)) return 'tube radius must be >0 and <=100';
+        if (p.closed != null && typeof p.closed !== 'boolean') return 'tube closed must be boolean';
+        if (p.closed && p.path.length < 3) return 'closed tube needs at least 3 points';
+      } else if (p.path != null || p.radius != null || p.closed != null) return 'path/radius/closed only apply to prop/tube';
+      if (p.holes != null || p.bevel != null) {
+        if (p.model !== 'prop/extrude') return 'holes/bevel only apply to prop/extrude';
+        if (p.holes != null && (!Array.isArray(p.holes) || p.holes.length > 16 || !p.holes.every((h) => isPointList(h) && h.length >= 3))) return 'extrude holes must contain up to 16 polygons (3..64 points each)';
+        if (p.bevel != null && !(fin(p.bevel) && p.bevel >= 0 && p.bevel <= 1)) return 'extrude bevel must be 0..1 meters';
+      }
       if (p.points != null && p.model !== 'prop/lathe' && p.model !== 'prop/extrude') {
         return `prop '${p.model}' does not take points (only prop/lathe and prop/extrude do)`;
       }
@@ -432,6 +537,77 @@ export function validateSceneSpec(spec: unknown): string | null {
     if (sawPoint && charTarget != null) {
       return 'shots cannot mix point lookAt and character tracking (expansion needs one mode)';
     }
+  }
+  // Validate the shared authoring vocabulary after the legacy shape checks.
+  if (s.groups != null && (!Array.isArray(s.groups) || s.groups.length > 100)) return 'groups must be an array of at most 100';
+  if (s.lights != null && (!Array.isArray(s.lights) || s.lights.length > 16)) return 'lights must be an array of at most 16';
+  for (const light of s.lights ?? []) {
+    if (!light || !light.id || !['point', 'spot', 'directional', 'ambient'].includes(light.type)) return 'light requires an id and a valid type';
+    if (light.color != null && !/^#[a-f0-9]{6}$/i.test(light.color)) return 'light color must be #RRGGBB';
+    if (light.intensity != null && (!isAnimatable(light.intensity) || (Array.isArray(light.intensity) ? light.intensity.map((k) => k.v) : [light.intensity]).some((v) => v < 0 || v > 100000))) return 'light intensity must be 0..100000 (constant or keyframed)';
+    for (const [key, max] of [['distance', 10000], ['decay', 5], ['penumbra', 1]] as const) {
+      const v = light[key]; if (v != null && !(fin(v) && v >= 0 && v <= max)) return `invalid light ${key}`;
+    }
+    if (light.angle != null && !(fin(light.angle) && light.angle > 0 && light.angle < 90)) return 'spot angle must be >0 and <90 degrees';
+    if (light.type !== 'spot' && (light.angle != null || light.penumbra != null)) return 'angle/penumbra only apply to spot lights';
+    if (light.type !== 'spot' && light.type !== 'point' && (light.distance != null || light.decay != null)) return 'distance/decay only apply to point/spot lights';
+    if (light.shadow != null && typeof light.shadow !== 'boolean') return 'light shadow must be boolean';
+  }
+  const all = [...(s.characters ?? []), ...(s.props ?? []), ...(s.groups ?? []), ...(s.lights ?? [])];
+  const ids = new Set<string>();
+  for (const o of all) {
+    if (!o || typeof o !== 'object') return 'scene objects must be objects';
+    if (o.id != null) {
+      if (typeof o.id !== 'string' || !o.id.trim()) return 'object id must be a non-empty string';
+      if (ids.has(o.id)) return `duplicate object id '${o.id}'`;
+      ids.add(o.id);
+    }
+    if (o.name != null && typeof o.name !== 'string') return 'object name must be a string';
+    if (o.parentId != null && (typeof o.parentId !== 'string' || !o.parentId)) return 'parentId must be a group id';
+    if (o.position != null && !isVec3A(o.position)) return 'object: invalid position';
+    if (o.scale != null && !isScale3(o.scale)) return 'object: invalid scale';
+    const scales = typeof o.scale === 'number' ? [o.scale] : Object.values(o.scale ?? {});
+    if (scales.some((n) => n <= 0)) return 'object scale must be positive';
+    for (const axis of ['rotationX', 'rotationY', 'rotationZ'] as const) {
+      if (o[axis] != null && !isAnimatable(o[axis])) return `object: invalid ${axis}`;
+    }
+  }
+  const groups = new Map((s.groups ?? []).map((g) => [g.id, g]));
+  for (const g of s.groups ?? []) {
+    if (!g.id) return 'every group needs a string id';
+    if (g.assembly) { const err = validateAssembly(g.assembly); if (err) return err; }
+  }
+  for (const o of all) {
+    const ancestors = new Set<string>(o.id ? [o.id] : []);
+    let parent = o.parentId;
+    while (parent) {
+      if (ancestors.has(parent)) return `group cycle at '${parent}'`;
+      ancestors.add(parent);
+      const g = groups.get(parent);
+      if (!g) return `unknown parent group '${parent}'`;
+      parent = g.parentId;
+    }
+  }
+  for (const p of s.props ?? []) {
+    if (p.parentId && p.attachTo) return 'prop: parentId and attachTo cannot combine';
+    const m = p.material;
+    if (m != null) {
+      if (typeof m !== 'object' || Array.isArray(m)) return 'material must be an object';
+      if (!Object.keys(m).every((k) => ['roughness', 'metalness', 'opacity', 'emissive', 'emissiveIntensity', 'side'].includes(k))) return 'unknown material field';
+      for (const k of ['roughness', 'metalness', 'opacity'] as const) {
+        if (m[k] != null && !(fin(m[k]) && m[k] >= 0 && m[k] <= 1)) return `material.${k} must be 0..1`;
+      }
+      if (m.emissive != null && (typeof m.emissive !== 'string' || !/^#[0-9a-f]{6}$/i.test(m.emissive))) return 'material.emissive must be #RRGGBB';
+      if (m.emissiveIntensity != null && !(fin(m.emissiveIntensity) && m.emissiveIntensity >= 0 && m.emissiveIntensity <= 100)) return 'material.emissiveIntensity must be 0..100';
+      if (m.side != null && !['front', 'double'].includes(m.side)) return 'material.side must be front or double';
+    }
+  }
+  const characterIds = new Set((s.characters ?? []).map((c) => c.id));
+  for (const c of s.characters ?? []) {
+    if (typeof c.gaze === 'object' && !characterIds.has(c.gaze.character)) return `unknown gaze character '${c.gaze.character}'`;
+  }
+  for (const cam of [s.camera, ...(s.shots ?? []).map((shot) => shot.camera)]) {
+    if (cam?.lookAt && 'character' in cam.lookAt && !characterIds.has(cam.lookAt.character)) return `unknown camera character '${cam.lookAt.character}'`;
   }
   return null;
 }

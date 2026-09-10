@@ -60,35 +60,42 @@ const scale3 = (s: SceneProp['scale']): [number, number, number] => {
  *  shape allows; otherwise a convex hull of the scaled mesh vertices (torus,
  *  hemisphere, lathe, extrude — note a hull fills concavities: a torus
  *  collides as a solid puck). */
-function colliderDescFor(R: Rapier, p: SceneProp, mesh: THREE.Mesh) {
+function colliderDescFor(R: Rapier, p: SceneProp, mesh: THREE.Object3D) {
   const [sx, sy, sz] = scale3(p.scale);
   if (p.model === 'prop/cube') return R.ColliderDesc.cuboid(0.5 * sx, 0.5 * sy, 0.5 * sz);
   if (p.model === 'prop/sphere' && sx === sy && sy === sz) return R.ColliderDesc.ball(0.5 * sx);
   if (p.model === 'prop/pillar' && sx === sz) return R.ColliderDesc.cylinder(1 * sy, 0.3 * sx);
   if (p.model === 'prop/cone' && sx === sz) return R.ColliderDesc.cone(0.5 * sy, 0.5 * sx);
-  const pos = mesh.geometry.getAttribute('position');
-  const pts = new Float32Array(pos.count * 3);
-  for (let i = 0; i < pos.count; i++) {
-    pts[i * 3] = pos.getX(i) * sx;
-    pts[i * 3 + 1] = pos.getY(i) * sy;
-    pts[i * 3 + 2] = pos.getZ(i) * sz;
-  }
-  const hull = R.ColliderDesc.convexHull(pts);
-  if (hull) return hull;
-  // Degenerate geometry (shouldn't happen for built-ins): bounding box.
-  mesh.geometry.computeBoundingBox();
-  const bb = mesh.geometry.boundingBox!;
-  return R.ColliderDesc.cuboid(
-    (Math.max(1e-3, bb.max.x - bb.min.x) / 2) * sx,
-    (Math.max(1e-3, bb.max.y - bb.min.y) / 2) * sy,
-    (Math.max(1e-3, bb.max.z - bb.min.z) / 2) * sz,
-  );
+  mesh.updateWorldMatrix(true, true);
+  const inverse = mesh.matrixWorld.clone().invert();
+  const points: number[] = [];
+  mesh.traverse((node) => {
+    const geometry = (node as THREE.Mesh).geometry;
+    const pos = geometry?.getAttribute('position');
+    if (!pos) return;
+    const e = inverse.clone().multiply(node.matrixWorld).elements;
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+      points.push((e[0]*x+e[4]*y+e[8]*z+e[12])*sx,
+        (e[1]*x+e[5]*y+e[9]*z+e[13])*sy, (e[2]*x+e[6]*y+e[10]*z+e[14])*sz);
+    }
+  });
+  const hull = points.length ? R.ColliderDesc.convexHull(new Float32Array(points)) : null;
+  if (!hull) throw new Error(`prop '${p.id ?? p.model}' has no non-degenerate collision geometry`);
+  return hull;
 }
 
-const yawQuat = (deg: number): { x: number; y: number; z: number; w: number } => {
-  const h = (deg * Math.PI) / 360;
-  return { x: 0, y: Math.sin(h), z: 0, w: Math.cos(h) };
-};
+// XYZ Euler → quaternion, matching Three.js Object3D.rotation exactly.
+function rotationQuat(p: SceneProp, t: number) {
+  const h = Math.PI / 360;
+  const x = sampleAnimatable(p.rotationX, t, 0) * h;
+  const y = sampleAnimatable(p.rotationY, t, 0) * h;
+  const z = sampleAnimatable(p.rotationZ, t, 0) * h;
+  const c1 = Math.cos(x), c2 = Math.cos(y), c3 = Math.cos(z);
+  const s1 = Math.sin(x), s2 = Math.sin(y), s3 = Math.sin(z);
+  return { x: s1*c2*c3+c1*s2*s3, y: c1*s2*c3-s1*c2*s3,
+    z: c1*c2*s3+s1*s2*c3, w: c1*c2*c3-s1*s2*s3 };
+}
 
 /**
  * Run the full simulation for a spec's physics props and return per-prop
@@ -98,7 +105,7 @@ const yawQuat = (deg: number): { x: number; y: number; z: number; w: number } =>
  */
 export async function bakePhysics(
   spec: SceneSpec,
-  targets: Array<{ spec: SceneProp; mesh: THREE.Mesh }>,
+  targets: Array<{ spec: SceneProp; mesh: THREE.Object3D }>,
 ): Promise<Array<BakeTrack | null>> {
   const R = await loadRapier();
   const g = spec.physics?.gravity ?? 9.81;
@@ -131,7 +138,6 @@ export async function bakePhysics(
         continue;
       }
       const [x, y, z] = sampleVec3(p.position, 0, 0, 0.5, 0);
-      const rotY = sampleAnimatable(p.rotationY, 0, 0);
       const held = phys.type === 'dynamic' && (phys.startAt ?? 0) > 0;
       const desc =
         phys.type === 'fixed'
@@ -139,7 +145,7 @@ export async function bakePhysics(
           : phys.type === 'kinematic' || held
             ? R.RigidBodyDesc.kinematicPositionBased()
             : R.RigidBodyDesc.dynamic();
-      desc.setTranslation(x, y, z).setRotation(yawQuat(rotY));
+      desc.setTranslation(x, y, z).setRotation(rotationQuat(p, 0));
       if (phys.type === 'dynamic' && !held) {
         if (phys.velocity) desc.setLinvel(...phys.velocity);
         if (phys.angularVelocity) {
@@ -179,7 +185,7 @@ export async function bakePhysics(
       for (const k of kinematics) {
         const [kx, ky, kz] = sampleVec3(k.spec.position, tNext, 0, 0.5, 0);
         k.body.setNextKinematicTranslation({ x: kx, y: ky, z: kz });
-        k.body.setNextKinematicRotation(yawQuat(sampleAnimatable(k.spec.rotationY, tNext, 0)));
+        k.body.setNextKinematicRotation(rotationQuat(k.spec, tNext));
       }
       // startAt: the body holds its pose kinematically, then goes live with
       // its initial velocities — timed beats ("the wall collapses at 3s").

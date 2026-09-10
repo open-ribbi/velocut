@@ -15,33 +15,40 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Asset } from '@velocut/protocol';
 import {
+  normalizeSceneSpec,
+  nextSceneId,
+  withImportedModels,
   loadSceneManifest,
   validateSceneSpec,
   type SceneAssetManifest,
   type SceneSpec,
 } from '@velocut/scene-sdk';
 import type { Store } from '../state/store';
-import { DirectorPanel, type Sel } from './DirectorPanel';
+import { directorSession } from '../services/director-session';
+import { editScene, replaceSceneSpec } from '../services/scene';
+import type { Sel } from './DirectorPanel';
 import { AnimatableField, Vec3Row } from './SceneFields';
 
 /** Deep-clone + mutate + dispatch: one edit = one setAssetSpec node. */
 function useSpecEditor(store: Store, asset: Asset) {
   const spec = useMemo<SceneSpec | null>(() => {
     try {
-      return asset.spec ? (JSON.parse(asset.spec) as SceneSpec) : null;
+      return asset.spec ? (normalizeSceneSpec(JSON.parse(asset.spec) as SceneSpec)) : null;
     } catch {
       return null;
     }
   }, [asset.spec]);
 
-  const patch = (mutate: (draft: SceneSpec) => void): string | null => {
+  const patch = async (mutate: (draft: SceneSpec) => void): Promise<string | null> => {
     if (!spec) return 'invalid spec';
+    const before = store.getState();
+    if (before.doc.assets.find((a) => a.id === asset.id)?.spec !== asset.spec) return 'Scene changed; try the edit again.';
     const draft = structuredClone(spec);
     mutate(draft);
     const err = validateSceneSpec(draft);
     if (err) return err;
-    const r = store.dispatch({ type: 'setAssetSpec', assetId: asset.id, spec: JSON.stringify(draft) });
-    return r.ok ? null : r.error.message;
+    const r = await replaceSceneSpec(store, asset.id, draft, before.revision);
+    return r.ok ? null : r.message;
   };
   return { spec, patch };
 }
@@ -49,10 +56,10 @@ function useSpecEditor(store: Store, asset: Asset) {
 export function SceneInspector({ store, asset }: { store: Store; asset: Asset }) {
   const { spec, patch } = useSpecEditor(store, asset);
   const [tab, setTab] = useState<'form' | 'json'>('form');
-  const [manifest, setManifest] = useState<SceneAssetManifest | null>(null);
+  const [baseManifest, setManifest] = useState<SceneAssetManifest | null>(null);
+  const manifest = baseManifest && spec ? withImportedModels(baseManifest, spec) : baseManifest;
   const [jsonDraft, setJsonDraft] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [director, setDirector] = useState<{ open: boolean; sel: Sel | null }>({ open: false, sel: null });
 
   useEffect(() => {
     let alive = true;
@@ -73,10 +80,10 @@ export function SceneInspector({ store, asset }: { store: Store; asset: Asset })
     );
   }
 
-  const run = (mutate: (draft: SceneSpec) => void) => setError(patch(mutate));
+  const run = async (mutate: (draft: SceneSpec) => void) => setError(await patch(mutate));
   const characterModels = Object.keys(manifest?.characters ?? {});
   const propModels = Object.keys(manifest?.props ?? {});
-  const openDirector = (sel: Sel | null) => setDirector({ open: true, sel });
+  const openDirector = (sel: Sel | null) => directorSession(store, { assetId: asset.id, objectId: sel?.id ?? null, open: true });
 
   return (
     <div className="prop-group scene-inspector">
@@ -101,9 +108,7 @@ export function SceneInspector({ store, asset }: { store: Store; asset: Asset })
       <button className="fx-add director-open" onClick={() => openDirector(null)}>
         🎬 Open Director (stage view)
       </button>
-      {director.open && (
-        <DirectorPanel store={store} asset={asset} initialSel={director.sel} onClose={() => setDirector({ open: false, sel: null })} />
-      )}
+
 
       {tab === 'json' ? (
         <>
@@ -115,13 +120,13 @@ export function SceneInspector({ store, asset }: { store: Store; asset: Asset })
           />
           <button
             className="fx-add"
-            onClick={() => {
+            onClick={async () => {
               try {
                 const parsed = JSON.parse(jsonDraft ?? '') as SceneSpec;
                 const err = validateSceneSpec(parsed);
                 if (err) return setError(err);
-                const r = store.dispatch({ type: 'setAssetSpec', assetId: asset.id, spec: JSON.stringify(parsed) });
-                setError(r.ok ? null : r.error.message);
+                const r = await replaceSceneSpec(store, asset.id, parsed, store.getState().revision);
+                setError(r.ok ? null : r.message);
               } catch (e) {
                 setError('JSON parse error: ' + (e instanceof Error ? e.message : String(e)));
               }
@@ -148,7 +153,7 @@ export function SceneInspector({ store, asset }: { store: Store; asset: Asset })
           <div className="prop-row">
             <span className="prop-label">Lighting</span>
             <select value={spec.lighting ?? 'day'} onChange={(e) => run((d) => (d.lighting = e.target.value as SceneSpec['lighting']))}>
-              {['day', 'night', 'indoor'].map((l) => (
+              {['day', 'night', 'indoor', 'none'].map((l) => (
                 <option key={l} value={l}>
                   {l}
                 </option>
@@ -159,17 +164,17 @@ export function SceneInspector({ store, asset }: { store: Store; asset: Asset })
           {/* Object roster — per-object editing happens in the Director,
               beside the object itself. A row click opens it pre-selected. */}
           <div className="group-title">Characters</div>
-          {(spec.characters ?? []).map((c, ci) => (
+          {(spec.characters ?? []).map((c) => (
             <div className="prop-row scene-object-row" key={c.id}>
               <button
                 className="scene-object-open"
                 title="Edit on the stage (opens the Director with this object selected)"
-                onClick={() => openDirector({ kind: 'character', index: ci })}
+                onClick={() => openDirector({ kind: 'character', id: c.id })}
               >
                 <span className="scene-object-id">{c.id}</span>
                 <span className="scene-object-model">{manifest?.characters[c.model]?.label ?? c.model}</span>
               </button>
-              <button className="fx-remove" title="Remove" onClick={() => run((d) => d.characters!.splice(ci, 1))}>
+              <button className="fx-remove" title="Remove" onClick={async () => { const r = await editScene(store, { assetId: asset.id, edits: [{ type: 'remove', id: c.id, cascade: true }] }); setError(r.ok ? null : r.message); }}>
                 ×
               </button>
             </div>
@@ -179,8 +184,7 @@ export function SceneInspector({ store, asset }: { store: Store; asset: Asset })
             onClick={() =>
               run((d) => {
                 const model = characterModels[0] ?? 'char/mannequin';
-                const n = (d.characters?.length ?? 0) + 1;
-                const c: NonNullable<SceneSpec['characters']>[number] = { id: `char${n}`, model, position: { x: 0, z: 0 } };
+                const c: NonNullable<SceneSpec['characters']>[number] = { id: nextSceneId(d, 'char'), model, position: { x: 0, z: 0 } };
                 if (manifest?.characters[model]?.file.startsWith('builtin:')) c.pose = 'standing';
                 else {
                   const first = Object.keys(manifest?.characters[model]?.clips ?? {})[0];
@@ -194,22 +198,22 @@ export function SceneInspector({ store, asset }: { store: Store; asset: Asset })
           </button>
 
           <div className="group-title">Props</div>
-          {(spec.props ?? []).map((p, pi) => (
-            <div className="prop-row scene-object-row" key={pi}>
+          {(spec.props ?? []).map((p) => (
+            <div className="prop-row scene-object-row" key={p.id}>
               <button
                 className="scene-object-open"
                 title="Edit on the stage (opens the Director with this object selected)"
-                onClick={() => openDirector({ kind: 'prop', index: pi })}
+                onClick={() => openDirector({ kind: 'prop', id: p.id! })}
               >
                 <span className="scene-object-id">{manifest?.props[p.model]?.label ?? p.model}</span>
                 {p.attachTo && <span className="scene-object-model">on {p.attachTo.character}</span>}
               </button>
-              <button className="fx-remove" title="Remove" onClick={() => run((d) => d.props!.splice(pi, 1))}>
+              <button className="fx-remove" title="Remove" onClick={async () => { const r = await editScene(store, { assetId: asset.id, edits: [{ type: 'remove', id: p.id!, cascade: true }] }); setError(r.ok ? null : r.message); }}>
                 ×
               </button>
             </div>
           ))}
-          <button className="fx-add" onClick={() => run((d) => (d.props ??= []).push({ model: propModels[0] ?? 'prop/cube', position: { x: 2, z: -1 } }))}>
+          <button className="fx-add" onClick={() => run((d) => (d.props ??= []).push({ id: nextSceneId(d, 'prop'), model: propModels[0] ?? 'prop/cube', position: { x: 2, z: -1 } }))}>
             + Prop
           </button>
 

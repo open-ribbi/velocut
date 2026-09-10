@@ -15,7 +15,10 @@ import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { resolveActions, type ClipMeta } from './actions.ts';
 import { buildMannequin, MANNEQUIN_JOINTS, POSE_PRESETS, type MannequinJoint } from './mannequin.ts';
 import { bakePhysics, samplePhysicsTrack, type BakeTrack } from './physics.ts';
-import type { SceneAssetManifest, SceneSpec, Scale3, Vec3A } from './types.ts';
+import { loadImportedModel, type SceneResources } from './models.ts';
+import { normalizeSceneSpec } from './authoring.ts';
+import { validateSceneSpec } from './types.ts';
+import type { SceneAssetManifest, SceneSpec, Scale3, Vec3A, SceneTransform, SceneGroup, SceneLight } from './types.ts';
 
 /** Apply a uniform or per-axis scale (missing axes stay 1). */
 function applyScale(root: THREE.Object3D, scale: Scale3): void {
@@ -92,11 +95,20 @@ export interface StageProp {
   bake?: BakeTrack;
 }
 
+/** Full local Euler rotation, shared with physics sampling. */
+export function applyRotation(root: THREE.Object3D, spec: SceneTransform, t: number): void {
+  const D = Math.PI / 180;
+  root.rotation.set(sampleAnimatable(spec.rotationX, t, 0) * D,
+    sampleAnimatable(spec.rotationY, t, 0) * D, sampleAnimatable(spec.rotationZ, t, 0) * D, 'XYZ');
+}
+
 export interface Stage {
   three: typeof THREE;
   scene: THREE.Scene;
   characters: StageCharacter[];
   props: StageProp[];
+  groups: Array<{ root: THREE.Group; spec: SceneGroup }>;
+  lights: Array<{ root: THREE.Group; spec: SceneLight; light: THREE.Light }>;
   /** Pose every character/prop for time t (seconds) — pure w.r.t. prior calls.
    *  Pass the shot camera's position so `gaze: 'camera'` heads can aim at it. */
   poseAt(t: number, opts?: { cameraPos?: [number, number, number] }): void;
@@ -105,7 +117,10 @@ export interface Stage {
 }
 
 /** Build the world (environment, lights, characters, props) for a spec. */
-export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_ASSET_BASE): Promise<Stage> {
+export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_ASSET_BASE, resources?: SceneResources): Promise<Stage> {
+  const error = validateSceneSpec(spec);
+  if (error) throw new Error(error);
+  spec = normalizeSceneSpec(spec);
   const three = await import('three');
   const [{ GLTFLoader }, SkeletonUtils] = await Promise.all([
     import('three/examples/jsm/loaders/GLTFLoader.js'),
@@ -113,6 +128,12 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
   ]);
 
   const scene = new three.Scene();
+  const groups = (spec.groups ?? []).map((g) => ({ spec: g, root: new three.Group() }));
+  const parents = new Map(groups.map((g) => [g.spec.id, g.root]));
+  for (const g of groups) {
+    g.root.name = g.spec.id;
+    (g.spec.parentId ? parents.get(g.spec.parentId)! : scene).add(g.root);
+  }
 
   // ------------------------------------------------- environment presets
   // Unknown names fail the build (not a silent default): the same typo-must-
@@ -123,6 +144,7 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
   }
   const lighting = spec.lighting ?? 'day';
   const palettes: Record<string, { bg: number; ground: number; ambient: number; ambientI: number; key: number; keyI: number }> = {
+    none: { bg: 0x101318, ground: 0x666666, ambient: 0xffffff, ambientI: 0, key: 0xffffff, keyI: 0 },
     day: { bg: 0xbfd4e6, ground: 0x9aa48f, ambient: 0xffffff, ambientI: 0.7, key: 0xfff2d9, keyI: 2.4 },
     night: { bg: 0x0b1020, ground: 0x1d2433, ambient: 0x334466, ambientI: 0.5, key: 0x9db8ff, keyI: 1.4 },
     indoor: { bg: 0x2b2723, ground: 0x54483c, ambient: 0xfff1e0, ambientI: 0.9, key: 0xffe8c4, keyI: 1.6 },
@@ -151,7 +173,8 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
 
   const key = new three.DirectionalLight(pal.key, pal.keyI);
   key.position.set(5, 8, 4);
-  key.castShadow = true;
+  key.castShadow = pal.keyI > 0;
+  key.visible = pal.keyI > 0;
   key.shadow.mapSize.set(2048, 2048);
   key.shadow.camera.left = -12;
   key.shadow.camera.right = 12;
@@ -160,8 +183,34 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
   scene.add(key);
   scene.add(new three.AmbientLight(pal.ambient, pal.ambientI));
 
+  const lights = (spec.lights ?? []).map((s) => {
+    const light = s.type === 'point' ? new three.PointLight() : s.type === 'spot' ? new three.SpotLight() :
+      s.type === 'directional' ? new three.DirectionalLight() : new three.AmbientLight();
+    light.color.set(s.color ?? '#ffffff');
+    const root = new three.Group(); root.name = s.id; root.add(light);
+    if (light instanceof three.SpotLight || light instanceof three.DirectionalLight) {
+      light.target.position.set(0, 0, -1); root.add(light.target);
+    }
+    if (light instanceof three.PointLight || light instanceof three.SpotLight) {
+      light.distance = s.distance ?? 0; light.decay = s.decay ?? 2;
+    }
+    if (light instanceof three.SpotLight) {
+      light.angle = (s.angle ?? 45) * Math.PI / 180; light.penumbra = s.penumbra ?? 0.2;
+    }
+    if ('shadow' in light) {
+      light.castShadow = s.shadow ?? false;
+      (light as THREE.PointLight).shadow.mapSize.set(512, 512);
+    }
+    (s.parentId ? parents.get(s.parentId)! : scene).add(root);
+    return { root, spec: s, light };
+  });
+
   // ------------------------------------------------------------ characters
-  const manifest = await loadSceneManifest(assetBase);
+  const builtinManifest = await loadSceneManifest(assetBase);
+  const manifest: SceneAssetManifest = { ...builtinManifest, characters: { ...builtinManifest.characters } };
+  for (const [id, model] of Object.entries(spec.models ?? {})) {
+    manifest.characters[id] = { ...model, file: model.src, license: 'user imported' };
+  }
   const characters: StageCharacter[] = [];
   for (const c of spec.characters ?? []) {
     const entry = manifest.characters[c.model];
@@ -189,14 +238,18 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
       });
       continue;
     }
-    const url = `${assetBase}/${entry.file}`;
-    let g = gltfCache.get(url);
-    if (!g) {
-      g = new GLTFLoader().loadAsync(url);
-      g.catch(() => gltfCache.delete(url));
-      gltfCache.set(url, g);
+    let gltf: GLTF;
+    if (spec.models?.[c.model]) gltf = await loadImportedModel(spec.models[c.model].src, resources);
+    else {
+      const url = `${assetBase}/${entry.file}`;
+      let g = gltfCache.get(url);
+      if (!g) {
+        g = new GLTFLoader().loadAsync(url);
+        g.catch(() => gltfCache.delete(url));
+        gltfCache.set(url, g);
+      }
+      gltf = await g;
     }
-    const gltf = await g;
     const inner = SkeletonUtils.clone(gltf.scene);
     inner.traverse((o) => {
       o.castShadow = true;
@@ -260,7 +313,7 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
       // Blender exports prefix clips with the armature ("CharacterArmature|
       // Walk") — register under the bare name so the agent vocabulary stays
       // clean and portable across rigs.
-      const name = clip.name.split('|').pop()!;
+      const name = spec.models?.[c.model] ? clip.name : clip.name.split('|').pop()!;
       if (!entry.clips[name]) continue; // only registry-listed clips
       actions.set(name, mixer.clipAction(clip));
       clips[name] = { duration: clip.duration, loop: entry.clips[name].loop ?? true };
@@ -292,10 +345,50 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
   // ----------------------------------------------------------------- props
   const props: StageProp[] = [];
   for (const p of spec.props ?? []) {
+    let mesh: THREE.Object3D;
+    const imported = spec.models?.[p.model];
+    if (imported) {
+      const gltf = await loadImportedModel(imported.src, resources);
+      mesh = new three.Group();
+      const inner = SkeletonUtils.clone(gltf.scene);
+      mesh.add(inner);
+      inner.traverse((o) => {
+        const part = o as THREE.Mesh;
+        if (!part.isMesh) return;
+        part.castShadow = true; part.receiveShadow = true;
+        const remap = (original: THREE.Material) => {
+          if (!p.color && !p.material) return original;
+          const material = original.clone() as THREE.MeshStandardMaterial;
+          if (p.color && material.color) material.color.set(p.color);
+          const m = p.material;
+          if (m?.roughness != null) material.roughness = m.roughness;
+          if (m?.metalness != null) material.metalness = m.metalness;
+          if (m?.opacity != null) { material.opacity = m.opacity; material.transparent = m.opacity < 1; }
+          if (m?.emissive != null && material.emissive) material.emissive.set(m.emissive);
+          if (m?.emissiveIntensity != null) material.emissiveIntensity = m.emissiveIntensity;
+          if (m?.side != null) material.side = m.side === 'double' ? three.DoubleSide : three.FrontSide;
+          return material;
+        };
+        part.material = Array.isArray(part.material) ? part.material.map(remap) : remap(part.material);
+      });
+    } else {
     const color = new three.Color(p.color ?? '#8fa3bf');
-    const mat = new three.MeshStandardMaterial({ color, roughness: 0.6 });
+    const m = p.material;
+    const mat = new three.MeshStandardMaterial({ color, roughness: m?.roughness ?? 0.6,
+      metalness: m?.metalness ?? 0, opacity: m?.opacity ?? 1, transparent: (m?.opacity ?? 1) < 1,
+      emissive: m?.emissive ?? '#000000', emissiveIntensity: m?.emissiveIntensity ?? 1,
+      side: m?.side === 'double' ? three.DoubleSide : three.FrontSide });
     let geo: THREE.BufferGeometry;
-    if (p.model === 'prop/sphere') geo = new three.SphereGeometry(0.5, 32, 16);
+    if (p.model === 'prop/mesh' && p.vertices && p.faces) {
+      geo = new three.BufferGeometry();
+      geo.setAttribute('position', new three.Float32BufferAttribute(p.vertices.flat(), 3));
+      geo.setIndex(p.faces.flat());
+      if (p.uvs) geo.setAttribute('uv', new three.Float32BufferAttribute(p.uvs.flat(), 2));
+      geo.computeVertexNormals();
+    } else if (p.model === 'prop/tube' && p.path) {
+      const curve = new three.CatmullRomCurve3(p.path.map((pt) => new three.Vector3(...pt)), p.closed ?? false, 'centripetal');
+      geo = new three.TubeGeometry(curve, Math.min(256, Math.max(16, p.path.length * 8)), p.radius ?? 0.05, 12, p.closed ?? false);
+    } else if (p.model === 'prop/sphere') geo = new three.SphereGeometry(0.5, 32, 16);
     else if (p.model === 'prop/pillar') geo = new three.CylinderGeometry(0.3, 0.3, 2, 24);
     else if (p.model === 'prop/cone') geo = new three.ConeGeometry(0.5, 1, 24);
     else if (p.model === 'prop/torus') {
@@ -306,25 +399,33 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
     } else if (p.model === 'prop/lathe' && p.points) {
       // Revolve a [radius, y] profile around Y — vases, cups, lampshades.
       geo = new three.LatheGeometry(p.points.map(([r, y]) => new three.Vector2(Math.max(0, r), y)), 32);
-      mat.side = three.DoubleSide; // open profiles expose the inside wall
+      if (!m?.side) mat.side = three.DoubleSide; // open profiles expose the inside wall
     } else if (p.model === 'prop/extrude' && p.points) {
       // Extrude a closed [x, y] outline along Z — arrows, stars, signs.
       const shape = new three.Shape();
       shape.moveTo(p.points[0][0], p.points[0][1]);
       for (let i = 1; i < p.points.length; i++) shape.lineTo(p.points[i][0], p.points[i][1]);
       shape.closePath();
-      geo = new three.ExtrudeGeometry(shape, { depth: p.depth ?? 0.1, bevelEnabled: false });
+      for (const outline of p.holes ?? []) {
+        const hole = new three.Path();
+        hole.moveTo(...outline[0]);
+        for (const pt of outline.slice(1)) hole.lineTo(...pt);
+        hole.closePath(); shape.holes.push(hole);
+      }
+      const bevel = p.bevel ?? 0;
+      geo = new three.ExtrudeGeometry(shape, { depth: p.depth ?? 0.1, bevelEnabled: bevel > 0, bevelSize: bevel, bevelThickness: bevel, bevelSegments: 3 });
       // Center the extrusion on its local origin so rotationY spins in place.
       geo.translate(0, 0, -(p.depth ?? 0.1) / 2);
     } else if (p.model === 'prop/cube') geo = new three.BoxGeometry(1, 1, 1);
     else {
       throw new Error(
-        `unknown prop model '${p.model}' (available: prop/cube, prop/sphere, prop/pillar, prop/cone, prop/torus, prop/hemisphere, prop/lathe, prop/extrude)`,
+        `unknown prop model '${p.model}' (available: prop/cube, prop/sphere, prop/pillar, prop/cone, prop/torus, prop/hemisphere, prop/lathe, prop/extrude, prop/tube, prop/mesh)`,
       );
     }
-    const mesh: THREE.Mesh = new three.Mesh(geo, mat);
+    mesh = new three.Mesh(geo, mat);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
+    }
 
     if (p.attachTo) {
       // Parent to a character's bone (semantic slot → rig bone name from the
@@ -359,12 +460,17 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
   if ((spec.props ?? []).some((p) => p.physics != null)) {
     const tracks = await bakePhysics(
       spec,
-      props.map((p) => ({ spec: p.spec, mesh: p.root as THREE.Mesh })),
+      props.map((p) => ({ spec: p.spec, mesh: p.root })),
     );
     props.forEach((p, i) => {
       const track = tracks[i];
       if (track) p.bake = track;
     });
+  }
+
+  for (const e of [...characters, ...props]) {
+    e.root.name = e.spec.id!;
+    if (e.spec.parentId) parents.get(e.spec.parentId)!.add(e.root);
   }
 
   /** Max head turn away from the body's facing (radians ≈ ±70°). */
@@ -378,7 +484,7 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
    *  world Y axis, which is safe for ANY rig's bone axes — no head tilt), and
    *  clamped relative to the body so the head never spins. Applied AFTER the
    *  animation pose, still a pure function of (t, target). */
-  function aimHead(c: StageCharacter, t: number, target: THREE.Vector3): void {
+  function aimHead(c: StageCharacter, target: THREE.Vector3): void {
     if (!c.head) return;
     c.root.updateWorldMatrix(true, true);
     const headPos = c.head.getWorldPosition(tmpV.clone());
@@ -386,7 +492,8 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
     const dz = target.z - headPos.z;
     if (dx * dx + dz * dz < 1e-6) return;
     const desiredYaw = Math.atan2(dx, dz);
-    const bodyYaw = (sampleAnimatable(c.spec.rotationY, t, 0) * Math.PI) / 180 + c.yawRad;
+    const forward = new three.Vector3(0, 0, 1).applyQuaternion(c.root.getWorldQuaternion(new three.Quaternion()));
+    const bodyYaw = Math.atan2(forward.x, forward.z) + c.yawRad;
     // Shortest signed difference, clamped to the neck's range.
     let extra = desiredYaw - bodyYaw;
     extra = Math.atan2(Math.sin(extra), Math.cos(extra));
@@ -398,10 +505,20 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
   }
 
   function poseAt(t: number, opts?: { cameraPos?: [number, number, number] }): void {
+    for (const g of groups) {
+      g.root.position.set(...sampleVec3(g.spec.position, t, 0, 0, 0));
+      applyRotation(g.root, g.spec, t);
+      applyScale(g.root, g.spec.scale ?? 1);
+    }
+    for (const l of lights) {
+      l.root.position.set(...sampleVec3(l.spec.position, t, 0, 0, 0));
+      applyRotation(l.root, l.spec, t); applyScale(l.root, l.spec.scale ?? 1);
+      l.light.intensity = sampleAnimatable(l.spec.intensity, t, l.spec.type === 'ambient' ? 0.5 : l.spec.type === 'directional' ? 3 : 100);
+    }
     for (const c of characters) {
       const [x, y, z] = sampleVec3(c.spec.position, t, 0, 0, 0);
       c.root.position.set(x, y, z);
-      c.root.rotation.y = (sampleAnimatable(c.spec.rotationY, t, 0) * Math.PI) / 180;
+      applyRotation(c.root, c.spec, t);
       if (c.spec.scale != null) applyScale(c.root, c.spec.scale);
 
       // Poseable figure: every joint fully re-set from preset + overrides —
@@ -470,12 +587,12 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
       const gaze = c.spec.gaze;
       if (!gaze) continue;
       if (gaze === 'camera') {
-        if (opts?.cameraPos) aimHead(c, t, tmpV.set(...opts.cameraPos));
+        if (opts?.cameraPos) aimHead(c, tmpV.set(...opts.cameraPos));
       } else {
         const other = characters.find((o) => o.spec.id === gaze.character);
         if (other && other !== c) {
-          const [ox, oy, oz] = sampleVec3(other.spec.position, t, 0, 0, 0);
-          aimHead(c, t, tmpV.set(ox, oy + other.heightM * 0.9, oz));
+          other.root.updateWorldMatrix(true, false);
+          aimHead(c, other.root.localToWorld(new three.Vector3(0, other.heightM * 0.9, 0)));
         }
       }
     }
@@ -486,7 +603,7 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
         const k = p.attachComp;
         const [x, y, z] = sampleVec3(p.spec.position, t, 0, 0, 0);
         p.root.position.set(x * k, y * k, z * k);
-        p.root.rotation.y = (sampleAnimatable(p.spec.rotationY, t, 0) * Math.PI) / 180;
+        applyRotation(p.root, p.spec, t);
         applyScale(p.root, p.spec.scale ?? 1);
         p.root.scale.multiplyScalar(k);
         continue;
@@ -500,15 +617,31 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
       }
       const [x, y, z] = sampleVec3(p.spec.position, t, 0, 0.5, 0);
       p.root.position.set(x, y, z);
-      p.root.rotation.y = (sampleAnimatable(p.spec.rotationY, t, 0) * Math.PI) / 180;
+      applyRotation(p.root, p.spec, t);
       if (p.spec.scale != null) applyScale(p.root, p.spec.scale);
     }
   }
 
   function characterPosition(id: string, t: number): [number, number, number] | null {
     const c = characters.find((x) => x.spec.id === id);
-    return c ? sampleVec3(c.spec.position, t, 0, 0, 0) : null;
+    if (!c) return null;
+    const point = new three.Vector3(...sampleVec3(c.spec.position, t, 0, 0, 0));
+    if (c.mannequinJoints) {
+      const pose = c.spec.pose;
+      const preset = typeof pose === 'string' ? pose : pose?.preset;
+      point.y += (preset ? POSE_PRESETS[preset] : undefined)?.rootY ?? 0;
+    }
+    let parentId = c.spec.parentId;
+    while (parentId) {
+      const group = groups.find((g) => g.spec.id === parentId)!.spec;
+      const dummy = new three.Object3D();
+      dummy.position.set(...sampleVec3(group.position, t, 0, 0, 0));
+      applyRotation(dummy, group, t); applyScale(dummy, group.scale ?? 1); dummy.updateMatrix();
+      point.applyMatrix4(dummy.matrix);
+      parentId = group.parentId;
+    }
+    return point.toArray() as [number, number, number];
   }
 
-  return { three, scene, characters, props, poseAt, characterPosition };
+  return { three, scene, characters, props, groups, lights, poseAt, characterPosition };
 }

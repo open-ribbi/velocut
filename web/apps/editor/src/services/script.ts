@@ -53,6 +53,11 @@ export interface ScriptApi {
   /** Discover the 3D asset registry (character models + their animation clips,
    *  environments, lighting, props) — the grounded vocabulary for sceneClip. */
   sceneAssets(): Promise<unknown>;
+  sceneEdit(opts: unknown): Promise<unknown>;
+  sceneArrange(opts: unknown): Promise<unknown>;
+  sceneImportModel(opts: unknown): Promise<unknown>;
+  sceneInspect(opts: unknown): Promise<unknown>;
+  directorSession(opts?: unknown): Promise<unknown>;
   /** Generate an AI video clip via a CONFIGURED channel and land it on the
    *  timeline. The sandbox may name a channel id + model + prompt only — the
    *  host resolves endpoint/key from configuration, and reference-URL options
@@ -77,7 +82,7 @@ export interface ScriptApi {
 /** RPC method names the sandbox may call. motionClip is included: it now takes a
  *  declarative JSON spec (no functions), so it structured-clones cleanly and the
  *  host renders it with a fixed interpreter — no eval. */
-const RPC_METHODS = ['apply', 'tts', 'observe', 'evaluate', 'document', 'seek', 'motionClip', 'sceneClip', 'sceneAssets', 'videoGen', 'videoGenChannels', 'uploadFrame', 'uploadClip', 'uploadAsset'] as const;
+const RPC_METHODS = ['apply', 'tts', 'observe', 'evaluate', 'document', 'seek', 'motionClip', 'sceneClip', 'sceneAssets', 'sceneEdit', 'sceneArrange', 'sceneImportModel', 'sceneInspect', 'directorSession', 'videoGen', 'videoGenChannels', 'uploadFrame', 'uploadClip', 'uploadAsset'] as const;
 
 // Wall-clock cap on SANDBOX-side compute: kills runaway loops / stuck awaits.
 // Time spent inside a host RPC doesn't count (the clock pauses while the host
