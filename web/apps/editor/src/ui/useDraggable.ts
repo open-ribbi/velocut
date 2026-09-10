@@ -45,7 +45,9 @@ const anchorStyle = (p: { left: number; top: number }): CSSProperties => ({
 export function useFloatingDock(storageKey: string, open: boolean, onOpen: () => void) {
   const fabRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState<{ left: number; top: number } | null>(() => readStored(storageKey));
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(() =>
+    readStored(storageKey),
+  );
   const [panelStyle, setPanelStyle] = useState<CSSProperties | undefined>(undefined);
   const [resizeTick, setResizeTick] = useState(0);
 
@@ -61,7 +63,7 @@ export function useFloatingDock(storageKey: string, open: boolean, onOpen: () =>
   // threshold fires onOpen (bubble); the panel header always drags (ignoring its
   // own controls). Updates the shared anchor `pos`.
   const beginDrag = (el: HTMLElement | null, e: ReactPointerEvent, tapToOpen: boolean) => {
-    if (e.button !== 0 || !el) return;
+    if (window.innerWidth <= 960 || e.button !== 0 || !el) return;
     if (!tapToOpen && (e.target as HTMLElement).closest(INTERACTIVE)) return;
     const r = el.getBoundingClientRect();
     const offX = e.clientX - r.left;
@@ -138,5 +140,12 @@ export function useFloatingDock(storageKey: string, open: boolean, onOpen: () =>
   // The bubble always sits at the raw anchor.
   const fabStyle: CSSProperties | undefined = pos ? anchorStyle(pos) : undefined;
 
-  return { fabRef, panelRef, fabStyle, panelStyle, onFabPointerDown, onPanelDragStart };
+  return {
+    fabRef,
+    panelRef,
+    fabStyle,
+    panelStyle,
+    onFabPointerDown,
+    onPanelDragStart,
+  };
 }

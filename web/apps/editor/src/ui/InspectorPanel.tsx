@@ -3,6 +3,7 @@ import type { Property, Transform, TextPayload } from '@velocut/protocol';
 import type { Store, UiState } from '../state/store';
 import { EFFECT_REGISTRY, TRANSITIONS } from '@velocut/render-sdk';
 import type { FontLibrary } from '../services/fonts';
+import { Icon } from './primitives/Icon';
 import { SceneInspector } from './SceneInspector';
 
 export function InspectorPanel({
@@ -29,7 +30,11 @@ export function InspectorPanel({
     return (
       <div className="inspector-panel" style={width ? { width } : undefined}>
         <div className="panel-title">Properties</div>
-        <div className="empty-hint">Select a clip to view its properties</div>
+        <div className="selection-empty">
+          <Icon name="inspector" size={28} />
+          <strong>Make a selection</strong>
+          <p>Select a clip in the timeline to adjust its look, timing, and motion.</p>
+        </div>
       </div>
     );
   }
@@ -52,7 +57,11 @@ export function InspectorPanel({
   };
 
   const patchText = (patch: Partial<TextPayload>) =>
-    store.dispatch({ type: 'setText', clipId: clip.id, text: { ...clip.text!, ...patch } });
+    store.dispatch({
+      type: 'setText',
+      clipId: clip.id,
+      text: { ...clip.text!, ...patch },
+    });
 
   const num = (v: number) => Math.round(v * 100) / 100;
 
@@ -63,7 +72,11 @@ export function InspectorPanel({
         type="number"
         step={step}
         value={num(value)}
-        onChange={(e) => setTransform({ [property]: Number(e.target.value) } as Partial<Transform>)}
+        onChange={(e) =>
+          setTransform({
+            [property]: Number(e.target.value),
+          } as Partial<Transform>)
+        }
       />
       <button
         className="kf-btn"
@@ -103,7 +116,11 @@ export function InspectorPanel({
               max={4}
               value={num(clip.volume)}
               onChange={(e) =>
-                store.dispatch({ type: 'setClipVolume', clipId: clip.id, volume: Number(e.target.value) })
+                store.dispatch({
+                  type: 'setClipVolume',
+                  clipId: clip.id,
+                  volume: Number(e.target.value),
+                })
               }
             />
             <button
@@ -165,7 +182,11 @@ export function InspectorPanel({
               e.target.value = '';
               if (!file) return;
               const family = await fonts.import(file);
-              store.dispatch({ type: 'setText', clipId: clip.id, text: { ...clip.text!, fontFamily: family } });
+              store.dispatch({
+                type: 'setText',
+                clipId: clip.id,
+                text: { ...clip.text!, fontFamily: family },
+              });
             }}
           />
           <div className="prop-row">
@@ -202,7 +223,10 @@ export function InspectorPanel({
             </button>
             <button
               className="style-btn"
-              style={{ fontStyle: 'italic', opacity: clip.text.italic ? 1 : 0.5 }}
+              style={{
+                fontStyle: 'italic',
+                opacity: clip.text.italic ? 1 : 0.5,
+              }}
               title="Italic"
               onClick={() => patchText({ italic: !clip.text!.italic })}
             >
@@ -223,7 +247,10 @@ export function InspectorPanel({
               type="color"
               value={clip.text.strokeColor ?? '#000000'}
               onChange={(e) =>
-                patchText({ strokeColor: e.target.value, strokeWidth: clip.text!.strokeWidth ?? 4 })
+                patchText({
+                  strokeColor: e.target.value,
+                  strokeWidth: clip.text!.strokeWidth ?? 4,
+                })
               }
             />
             <input
@@ -233,7 +260,11 @@ export function InspectorPanel({
               value={clip.text.strokeWidth ?? 0}
               onChange={(e) => patchText({ strokeWidth: Number(e.target.value) })}
             />
-            <button className="kf-btn" title="Clear stroke" onClick={() => patchText({ strokeColor: null, strokeWidth: null })}>
+            <button
+              className="kf-btn"
+              title="Clear stroke"
+              onClick={() => patchText({ strokeColor: null, strokeWidth: null })}
+            >
               ×
             </button>
           </div>
@@ -258,7 +289,11 @@ export function InspectorPanel({
               value={clip.text.shadowBlur ?? 0}
               onChange={(e) => patchText({ shadowBlur: Number(e.target.value) })}
             />
-            <button className="kf-btn" title="Clear shadow" onClick={() => patchText({ shadowColor: null })}>
+            <button
+              className="kf-btn"
+              title="Clear shadow"
+              onClick={() => patchText({ shadowColor: null })}
+            >
               ×
             </button>
           </div>
@@ -268,7 +303,10 @@ export function InspectorPanel({
               type="color"
               value={clip.text.backgroundColor ?? '#000000'}
               onChange={(e) =>
-                patchText({ backgroundColor: e.target.value, backgroundOpacity: clip.text!.backgroundOpacity ?? 0.5 })
+                patchText({
+                  backgroundColor: e.target.value,
+                  backgroundOpacity: clip.text!.backgroundOpacity ?? 0.5,
+                })
               }
             />
             <input
@@ -280,7 +318,11 @@ export function InspectorPanel({
               value={clip.text.backgroundOpacity ?? 1}
               onChange={(e) => patchText({ backgroundOpacity: Number(e.target.value) })}
             />
-            <button className="kf-btn" title="Clear background" onClick={() => patchText({ backgroundColor: null })}>
+            <button
+              className="kf-btn"
+              title="Clear background"
+              onClick={() => patchText({ backgroundColor: null })}
+            >
               ×
             </button>
           </div>
@@ -297,8 +339,13 @@ export function InspectorPanel({
                 <span>{schema?.label ?? fx.effect}</span>
                 <button
                   className="fx-remove"
+                  aria-label={`Remove ${schema?.label ?? fx.effect} effect`}
                   onClick={() =>
-                    store.dispatch({ type: 'removeEffect', clipId: clip.id, effectId: fx.id })
+                    store.dispatch({
+                      type: 'removeEffect',
+                      clipId: clip.id,
+                      effectId: fx.id,
+                    })
                   }
                 >
                   ×
@@ -318,7 +365,10 @@ export function InspectorPanel({
                         type: 'setEffectParams',
                         clipId: clip.id,
                         effectId: fx.id,
-                        params: { ...fx.params, [p.key]: Number(e.target.value) },
+                        params: {
+                          ...fx.params,
+                          [p.key]: Number(e.target.value),
+                        },
                       })
                     }
                   />
@@ -337,7 +387,12 @@ export function InspectorPanel({
                 const defaults = Object.fromEntries(
                   EFFECT_REGISTRY[name].params.map((p) => [p.key, p.default]),
                 );
-                store.dispatch({ type: 'addEffect', clipId: clip.id, effect: name, params: defaults });
+                store.dispatch({
+                  type: 'addEffect',
+                  clipId: clip.id,
+                  effect: name,
+                  params: defaults,
+                });
               }}
             >
               + {EFFECT_REGISTRY[name].label}
@@ -356,7 +411,10 @@ export function InspectorPanel({
                 type: 'setTransition',
                 clipId: clip.id,
                 transition: e.target.value
-                  ? { kind: e.target.value, durationUs: clip.transition?.durationUs ?? 500000 }
+                  ? {
+                      kind: e.target.value,
+                      durationUs: clip.transition?.durationUs ?? 500000,
+                    }
                   : null,
               })
             }
@@ -395,13 +453,16 @@ export function InspectorPanel({
       <div className="prop-group">
         <div className="group-title">Keyframes</div>
         {Object.entries(clip.keyframes).length === 0 && (
-          <div className="empty-hint">Click ◆ next to a property to add a keyframe at the playhead</div>
+          <div className="empty-hint">
+            Click ◆ next to a property to add a keyframe at the playhead
+          </div>
         )}
         {Object.entries(clip.keyframes).map(([prop, kfs]) => (
           <div key={prop} className="kf-list">
             <span className="prop-label">{prop}</span>
             {(kfs ?? []).map((k) => (
-              <span
+              <button
+                aria-label={`Remove ${prop} keyframe at ${(k.timeUs / 1e6).toFixed(2)} seconds`}
                 key={k.timeUs}
                 className="kf-chip"
                 title="Click to delete"
@@ -415,7 +476,7 @@ export function InspectorPanel({
                 }
               >
                 {(k.timeUs / 1e6).toFixed(2)}s={num(k.value)}
-              </span>
+              </button>
             ))}
           </div>
         ))}

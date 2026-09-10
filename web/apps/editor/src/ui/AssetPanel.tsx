@@ -1,13 +1,19 @@
+import { Icon, type IconName } from './primitives/Icon';
 import { useEffect, useState } from 'react';
 import type { Store, UiState } from '../state/store';
 import type { MediaLibrary } from '@velocut/render-sdk';
-import type { Envelope, TrackKind } from '@velocut/protocol';
+import type { Asset, Envelope, TrackKind } from '@velocut/protocol';
 import { referenceToAgent } from '../services/reference';
 import { ASSET_MIME, setDraggedAsset } from '../services/dnd';
 
-const ICON: Record<string, string> = { video: '🎬', image: '🖼', audio: '🎵' };
+const ICON: Record<string, IconName> = {
+  video: 'video',
+  image: 'image',
+  audio: 'audio',
+};
 
-const sameSet = (a: Set<string>, b: Set<string>) => a.size === b.size && [...a].every((x) => b.has(x));
+const sameSet = (a: Set<string>, b: Set<string>) =>
+  a.size === b.size && [...a].every((x) => b.has(x));
 
 /** Tooltip for an asset the document references but whose media isn't loaded. */
 function unloadedHint(src: string): string {
@@ -25,7 +31,11 @@ function unloadedHint(src: string): string {
  * lands within a second or two, so an asset is flagged only after several
  * consecutive misses — a still-loading asset never flashes a false warning.
  */
-function useUnloadedAssets(media: MediaLibrary, assetKey: string, assets: readonly { id: string; src: string }[]): Set<string> {
+function useUnloadedAssets(
+  media: MediaLibrary,
+  assetKey: string,
+  assets: readonly { id: string; src: string }[],
+): Set<string> {
   const [unloaded, setUnloaded] = useState<Set<string>>(new Set());
   useEffect(() => {
     const misses = new Map<string, number>();
@@ -53,7 +63,27 @@ function useUnloadedAssets(media: MediaLibrary, assetKey: string, assets: readon
   return unloaded;
 }
 
-export function AssetPanel({ store, media, state, width }: { store: Store; media: MediaLibrary; state: UiState; width?: number }) {
+export function AssetPanel({
+  store,
+  media,
+  state,
+  width,
+  onNewScene,
+  onImport,
+  creating,
+}: {
+  store: Store;
+  media: MediaLibrary;
+  state: UiState;
+  width?: number;
+  onNewScene: () => void;
+  onImport: () => void;
+  creating?: boolean;
+}) {
+  const [query, setQuery] = useState('');
+  const visibleAssets = state.doc.assets.filter((a) =>
+    a.name.toLowerCase().includes(query.toLowerCase()),
+  );
   const assetKey = state.doc.assets.map((a) => `${a.id}:${a.src}`).join('|');
   const unloaded = useUnloadedAssets(media, assetKey, state.doc.assets);
   /** Select the first clip an envelope created (so it's immediately editable). */
@@ -66,7 +96,11 @@ export function AssetPanel({ store, media, state, width }: { store: Store; media
   const addTextLayer = () => {
     const doc = state.doc;
     const textTrack = doc.tracks.find((t) => t.kind === 'text' && !t.locked);
-    const text = { content: 'Double-click to edit text', fontSize: 72, color: '#ffffff' };
+    const text = {
+      content: 'Double-click to edit text',
+      fontSize: 72,
+      color: '#ffffff',
+    };
     if (!textTrack) {
       const trackId = `track_${doc.nextId}`;
       selectNewClip(
@@ -74,7 +108,13 @@ export function AssetPanel({ store, media, state, width }: { store: Store; media
           type: 'batch',
           commands: [
             { type: 'addTrack', kind: 'text', name: 'Text' },
-            { type: 'addTextClip', trackId, startUs: state.playheadUs, durationUs: 3_000_000, text },
+            {
+              type: 'addTextClip',
+              trackId,
+              startUs: state.playheadUs,
+              durationUs: 3_000_000,
+              text,
+            },
           ],
         }),
       );
@@ -91,53 +131,152 @@ export function AssetPanel({ store, media, state, width }: { store: Store; media
     }
   };
 
+  const insertAsset = (asset: Asset) => {
+    const doc = store.getState().doc;
+    const kind = asset.kind === 'audio' ? 'audio' : 'video';
+    const startUs = store.getState().playheadUs;
+    const durationUs = asset.kind === 'image' ? 3_000_000 : asset.durationUs;
+    const track = doc.tracks.find(
+      (t) =>
+        t.kind === kind &&
+        !t.locked &&
+        !t.clips.some(
+          (c) => c.startUs < startUs + durationUs && c.startUs + c.durationUs > startUs,
+        ),
+    );
+    const clip = {
+      type: 'addClip' as const,
+      trackId: track?.id ?? `track_${doc.nextId}`,
+      assetId: asset.id,
+      startUs,
+      durationUs,
+    };
+    selectNewClip(
+      store.dispatch(
+        track
+          ? clip
+          : {
+              type: 'batch',
+              commands: [
+                {
+                  type: 'addTrack',
+                  kind,
+                  name: kind === 'audio' ? 'Audio' : 'Video',
+                },
+                clip,
+              ],
+            },
+      ),
+    );
+  };
+
   const addTrack = (kind: TrackKind, name: string) =>
-    store.dispatch({ type: 'addTrack', kind, name, index: kind === 'video' ? 0 : undefined });
+    store.dispatch({
+      type: 'addTrack',
+      kind,
+      name,
+      index: kind === 'video' ? 0 : undefined,
+    });
 
   return (
     <div className="asset-panel" style={width ? { width } : undefined}>
-      <div className="panel-title">Assets</div>
+      <div className="panel-title">
+        Library <span className="count-badge">{state.doc.assets.length}</span>
+      </div>
+      <label className="search-field">
+        <Icon name="search" size={15} />
+        <input
+          aria-label="Search media"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search your media"
+        />
+      </label>
       {state.doc.assets.length === 0 && (
-        <div className="empty-hint">Import video / images / audio to start editing</div>
-      )}
-      {state.doc.assets.map((a) => (
-        <div
-          key={a.id}
-          className="asset-item"
-          draggable
-          title="Drag onto a timeline track to place it"
-          onDragStart={(e) => {
-            e.dataTransfer.setData(ASSET_MIME, a.id);
-            e.dataTransfer.effectAllowed = 'copy';
-            // Mirror the payload for the timeline's dragover ghost (dataTransfer
-            // data is unreadable until drop).
-            setDraggedAsset({ id: a.id, kind: a.kind, durationUs: a.durationUs, width: a.width, height: a.height });
-          }}
-          onDragEnd={() => setDraggedAsset(null)}
-        >
-          <span className={`asset-kind asset-${a.kind}`}>{ICON[a.kind] ?? '📄'}</span>
-          <span className="asset-name">{a.name}</span>
-          <button
-            className="asset-ref"
-            title="Reference in agent chat"
-            onClick={(e) => {
-              e.stopPropagation();
-              referenceToAgent({ id: a.id, name: a.name });
-            }}
-          >
-            ＠
+        <div className="library-empty">
+          <Icon name="folder" size={30} />
+          <strong>Your material lives here</strong>
+          <p>Video, images, audio and the scenes you create.</p>
+          <button className="subtle-button" onClick={onImport}>
+            Browse files
+            <Icon name="upload" size={14} />
           </button>
-          {unloaded.has(a.id) && (
-            <span className="asset-warn" title={unloadedHint(a.src)} onClick={(e) => e.stopPropagation()}>
-              !
-            </span>
-          )}
-          {a.durationUs > 0 && <span className="asset-dur">{(a.durationUs / 1e6).toFixed(1)}s</span>}
         </div>
-      ))}
+      )}
+      <div className="asset-list">
+        {visibleAssets.map((a) => (
+          <div
+            key={a.id}
+            className="asset-item"
+            draggable
+            title="Drag onto a timeline track to place it"
+            onDragStart={(e) => {
+              e.dataTransfer.setData(ASSET_MIME, a.id);
+              e.dataTransfer.effectAllowed = 'copy';
+              // Mirror the payload for the timeline's dragover ghost (dataTransfer
+              // data is unreadable until drop).
+              setDraggedAsset({
+                id: a.id,
+                kind: a.kind,
+                durationUs: a.durationUs,
+                width: a.width,
+                height: a.height,
+              });
+            }}
+            onDragEnd={() => setDraggedAsset(null)}
+          >
+            <button
+              className="asset-insert"
+              aria-label={`Insert ${a.name} at playhead`}
+              title="Insert at playhead"
+              onClick={() => insertAsset(a)}
+            >
+              <Icon name="plus" size={14} />
+            </button>
+            <span className={`asset-kind asset-${a.kind}`}>
+              <Icon
+                name={a.src.startsWith('scene://') ? 'cube' : (ICON[a.kind] ?? 'media')}
+                size={18}
+              />
+            </span>
+            <span className="asset-name">
+              {a.name}
+              <small>{a.src.startsWith('scene://') ? '3D scene' : a.kind}</small>
+            </span>
+            <button
+              className="asset-ref"
+              title="Reference in agent chat"
+              onClick={(e) => {
+                e.stopPropagation();
+                referenceToAgent({ id: a.id, name: a.name });
+              }}
+            >
+              <Icon name="sparkles" size={14} />
+            </button>
+            {unloaded.has(a.id) && (
+              <span
+                className="asset-warn"
+                title={unloadedHint(a.src)}
+                onClick={(e) => e.stopPropagation()}
+              >
+                !
+              </span>
+            )}
+            {a.durationUs > 0 && (
+              <span className="asset-dur">{(a.durationUs / 1e6).toFixed(1)}s</span>
+            )}
+          </div>
+        ))}
+      </div>
+      {query && !visibleAssets.length && <p className="empty-hint">No media matches “{query}”.</p>}
       <div className="panel-foot">
+        <button className="add-text-btn" disabled={creating} onClick={onNewScene}>
+          <Icon name="cube" size={16} />
+          New 3D scene
+        </button>
         <button className="add-text-btn" onClick={addTextLayer}>
-          + Text Layer
+          <Icon name="text" size={16} />
+          Text layer
         </button>
         <div className="add-track-row">
           <span className="add-track-label">Add Track</span>

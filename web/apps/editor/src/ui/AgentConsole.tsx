@@ -1,3 +1,4 @@
+import { Icon } from './primitives/Icon';
 import { directorSession, type DirectorSessionOptions } from '../services/director-session';
 // ui/AgentConsole.tsx — chat with the editing agent.
 //
@@ -9,14 +10,34 @@ import { directorSession, type DirectorSessionOptions } from '../services/direct
 import { useEffect, useRef, useState } from 'react';
 import type Anthropic from '@anthropic-ai/sdk';
 import { runAgentTurn, type AgentEvent } from '@velocut/agent-sdk';
-import { type MediaLibrary, type Transcriber, type Observer, type TextToSpeech, type ShotAnalysis, validateMotionSpec, effectPromptDoc } from '@velocut/render-sdk';
+import {
+  type MediaLibrary,
+  type Transcriber,
+  type Observer,
+  type TextToSpeech,
+  type ShotAnalysis,
+  validateMotionSpec,
+  effectPromptDoc,
+} from '@velocut/render-sdk';
 import type { Store, UiState } from '../state/store';
 import { captionAsset } from '../services/caption';
 import { observeForAgent } from '../services/observe';
 import { synthesizeNarration } from '../services/tts';
 import { runAgentScript } from '../services/script';
 import { createMotionClip, type MotionClipOptions } from '../services/motion';
-import { dispatchSceneAware, checkSpecCommand, importSceneModel, type SceneModelImportOptions, editScene, arrangeScene, type SceneArrangeOptions, inspectScene, type SceneEditOptions, createSceneClip, type SceneClipOptions } from '../services/scene';
+import {
+  dispatchSceneAware,
+  checkSpecCommand,
+  importSceneModel,
+  type SceneModelImportOptions,
+  editScene,
+  arrangeScene,
+  type SceneArrangeOptions,
+  inspectScene,
+  type SceneEditOptions,
+  createSceneClip,
+  type SceneClipOptions,
+} from '../services/scene';
 import { loadSceneManifest, scenePromptDoc } from '@velocut/scene-sdk';
 import { searchWeb } from '../services/search';
 import {
@@ -37,7 +58,13 @@ import {
   type VideoGenChannel,
   type VideoGenConfig,
 } from '../services/videogen';
-import { loadUploadConfig, saveUploadConfig, testUploadStorage, sandboxUploads, type UploadConfig } from '../services/upload';
+import {
+  loadUploadConfig,
+  saveUploadConfig,
+  testUploadStorage,
+  sandboxUploads,
+  type UploadConfig,
+} from '../services/upload';
 import { importMediaFiles } from '../services/import';
 import { onAgentReference, referenceToken } from '../services/reference';
 import { videoGenProviders, uploaderKinds } from '@velocut/render-sdk';
@@ -62,9 +89,9 @@ function applyJump(input: unknown): { clipId?: string; atUs?: number } | undefin
   const cmd = (input as { command?: Record<string, unknown> })?.command;
   if (!cmd || cmd.type === 'batch') return undefined;
   const clipId = typeof cmd.clipId === 'string' ? cmd.clipId : undefined;
-  const atUs = ['atUs', 'startUs', 'toUs']
-    .map((k) => cmd[k])
-    .find((v) => typeof v === 'number') as number | undefined;
+  const atUs = ['atUs', 'startUs', 'toUs'].map((k) => cmd[k]).find((v) => typeof v === 'number') as
+    | number
+    | undefined;
   return clipId == null && atUs == null ? undefined : { clipId, atUs };
 }
 
@@ -76,11 +103,21 @@ function ObserveViz({ mode, data }: { mode: string; data: unknown }) {
   const W = 280;
   const H = 44;
   if (mode === 'shots') {
-    const d = data as { diffCurve?: number[]; threshold?: number; shots?: { startUs: number }[]; fromUs?: number; toUs?: number };
+    const d = data as {
+      diffCurve?: number[];
+      threshold?: number;
+      shots?: { startUs: number }[];
+      fromUs?: number;
+      toUs?: number;
+    };
     const curve = d.diffCurve ?? [];
     if (curve.length < 2) return null;
     const max = Math.max(0.001, ...curve, d.threshold ?? 0);
-    const pts = curve.map((v, i) => `${((i / (curve.length - 1)) * W).toFixed(1)},${(H - (v / max) * H).toFixed(1)}`).join(' ');
+    const pts = curve
+      .map(
+        (v, i) => `${((i / (curve.length - 1)) * W).toFixed(1)},${(H - (v / max) * H).toFixed(1)}`,
+      )
+      .join(' ');
     const span = (d.toUs ?? 0) - (d.fromUs ?? 0) || 1;
     const cuts = (d.shots ?? []).slice(1).map((s) => ((s.startUs - (d.fromUs ?? 0)) / span) * W);
     const thY = d.threshold != null ? H - (d.threshold / max) * H : null;
@@ -95,12 +132,29 @@ function ObserveViz({ mode, data }: { mode: string; data: unknown }) {
     );
   }
   if (mode === 'audio') {
-    const d = data as { loudness?: number[]; silences?: { startUs: number; endUs: number }[]; peaks?: { atUs: number }[]; fromUs?: number; toUs?: number };
+    const d = data as {
+      loudness?: number[];
+      silences?: { startUs: number; endUs: number }[];
+      peaks?: { atUs: number }[];
+      fromUs?: number;
+      toUs?: number;
+    };
     const curve = d.loudness ?? [];
     const span = (d.toUs ?? 0) - (d.fromUs ?? 0) || 1;
     const norm = (db: number) => Math.max(0, Math.min(1, (db + 60) / 60)); // -60..0 dBFS → 0..1
-    const pts = curve.length >= 2 ? curve.map((v, i) => `${((i / (curve.length - 1)) * W).toFixed(1)},${(H - norm(v) * H).toFixed(1)}`).join(' ') : '';
-    const bands = (d.silences ?? []).map((s) => ({ x: ((s.startUs - (d.fromUs ?? 0)) / span) * W, w: ((s.endUs - s.startUs) / span) * W }));
+    const pts =
+      curve.length >= 2
+        ? curve
+            .map(
+              (v, i) =>
+                `${((i / (curve.length - 1)) * W).toFixed(1)},${(H - norm(v) * H).toFixed(1)}`,
+            )
+            .join(' ')
+        : '';
+    const bands = (d.silences ?? []).map((s) => ({
+      x: ((s.startUs - (d.fromUs ?? 0)) / span) * W,
+      w: ((s.endUs - s.startUs) / span) * W,
+    }));
     const peaks = (d.peaks ?? []).map((p) => ((p.atUs - (d.fromUs ?? 0)) / span) * W);
     if (!pts && !bands.length) return null;
     return (
@@ -116,11 +170,18 @@ function ObserveViz({ mode, data }: { mode: string; data: unknown }) {
     );
   }
   if (mode === 'scan') {
-    const d = data as { windows?: { atUs: number; sceneScore: number; silent: boolean }[] };
+    const d = data as {
+      windows?: { atUs: number; sceneScore: number; silent: boolean }[];
+    };
     const ws = d.windows ?? [];
     if (ws.length < 2) return null;
     const max = Math.max(1, ...ws.map((w) => w.sceneScore));
-    const pts = ws.map((w, i) => `${((i / (ws.length - 1)) * W).toFixed(1)},${(H - (w.sceneScore / max) * H).toFixed(1)}`).join(' ');
+    const pts = ws
+      .map(
+        (w, i) =>
+          `${((i / (ws.length - 1)) * W).toFixed(1)},${(H - (w.sceneScore / max) * H).toFixed(1)}`,
+      )
+      .join(' ');
     const sil = ws.map((w, i) => (w.silent ? (i / (ws.length - 1)) * W : -1)).filter((x) => x >= 0);
     return (
       <svg className="obs-viz" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img">
@@ -190,6 +251,8 @@ export function AgentConsole({
   transcriber,
   observer,
   tts,
+  open,
+  onOpenChange: setOpen,
 }: {
   store: Store;
   state: UiState;
@@ -197,8 +260,9 @@ export function AgentConsole({
   transcriber: Transcriber;
   observer: Observer;
   tts: TextToSpeech;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }) {
-  const [open, setOpen] = useState(false);
   const [cfg, setCfg] = useState<LlmConfig>(loadLlmConfig);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [input, setInput] = useState('');
@@ -213,7 +277,8 @@ export function AgentConsole({
   const scrollDown = () => requestAnimationFrame(() => listRef.current?.scrollTo({ top: 1e9 }));
 
   /** Append a reference token to the draft, keeping it space-delimited. */
-  const appendRef = (token: string) => setInput((v) => (v && !/\s$/.test(v) ? `${v} ${token} ` : `${v}${token} `));
+  const appendRef = (token: string) =>
+    setInput((v) => (v && !/\s$/.test(v) ? `${v} ${token} ` : `${v}${token} `));
 
   // Timeline clips / asset rows publish "reference in agent chat" → open the
   // console and drop the id token (clip_N / asset_N — the ids the agent's
@@ -235,7 +300,13 @@ export function AgentConsole({
       const imported = await importMediaFiles(store, media, files);
       for (const a of imported) appendRef(referenceToken({ id: a.assetId, name: a.name }));
       if (!imported.length)
-        setItems((l) => [...l, { role: 'error', text: 'Nothing importable — paste/drop video, image or audio files.' }]);
+        setItems((l) => [
+          ...l,
+          {
+            role: 'error',
+            text: 'Nothing importable — paste/drop video, image or audio files.',
+          },
+        ]);
     } finally {
       setImporting((n) => n - 1);
     }
@@ -254,10 +325,28 @@ export function AgentConsole({
       const injected = (window as never as Record<string, unknown>).__velocutAgentTransport;
       const injectedStream = (window as never as Record<string, unknown>).__velocutAgentStream;
       const agentDispatch = (cmd: import('@velocut/protocol').Command) => {
-        const err = checkSpecCommand(store, cmd as Parameters<typeof checkSpecCommand>[1], validateMotionSpec);
-        if (err) return { ok: false as const, error: { code: 'invalidSpec', message: err } };
-        return dispatchSceneAware(store, cmd, (c) => store.dispatch(c,
-          { kind: 'ai', peerId: store.getLocalUser().peerId, name: 'AI', model: cfg.model }, text));
+        const err = checkSpecCommand(
+          store,
+          cmd as Parameters<typeof checkSpecCommand>[1],
+          validateMotionSpec,
+        );
+        if (err)
+          return {
+            ok: false as const,
+            error: { code: 'invalidSpec', message: err },
+          };
+        return dispatchSceneAware(store, cmd, (c) =>
+          store.dispatch(
+            c,
+            {
+              kind: 'ai',
+              peerId: store.getLocalUser().peerId,
+              name: 'AI',
+              model: cfg.model,
+            },
+            text,
+          ),
+        );
       };
       history.current = await runAgentTurn({
         apiKey: cfg.apiKey,
@@ -296,15 +385,60 @@ export function AgentConsole({
                 document: () => store.getState().doc,
                 seek: (t) => store.seek(t),
                 motionClip: (o) => createMotionClip(store, media, o as MotionClipOptions),
-                sceneClip: (o) => createSceneClip(store, media, o as SceneClipOptions, (cmd) =>
-                  store.dispatch(cmd, { kind: 'ai', peerId: store.getLocalUser().peerId, name: 'AI', model: cfg.model }, text)),
-                sceneImportModel: (o) => importSceneModel(store, o as SceneModelImportOptions, (cmd) =>
-                  store.dispatch(cmd, { kind: 'ai', peerId: store.getLocalUser().peerId, name: 'AI', model: cfg.model }, text)),
-                sceneArrange: (o) => arrangeScene(store, o as SceneArrangeOptions, (cmd) =>
-                  store.dispatch(cmd, { kind: 'ai', peerId: store.getLocalUser().peerId, name: 'AI', model: cfg.model }, text)),
-                sceneEdit: (o) => editScene(store, o as SceneEditOptions, (cmd) =>
-                  store.dispatch(cmd, { kind: 'ai', peerId: store.getLocalUser().peerId, name: 'AI', model: cfg.model }, text)),
-                directorSession: (o) => Promise.resolve(directorSession(store, o as DirectorSessionOptions)),
+                sceneClip: (o) =>
+                  createSceneClip(store, media, o as SceneClipOptions, (cmd) =>
+                    store.dispatch(
+                      cmd,
+                      {
+                        kind: 'ai',
+                        peerId: store.getLocalUser().peerId,
+                        name: 'AI',
+                        model: cfg.model,
+                      },
+                      text,
+                    ),
+                  ),
+                sceneImportModel: (o) =>
+                  importSceneModel(store, o as SceneModelImportOptions, (cmd) =>
+                    store.dispatch(
+                      cmd,
+                      {
+                        kind: 'ai',
+                        peerId: store.getLocalUser().peerId,
+                        name: 'AI',
+                        model: cfg.model,
+                      },
+                      text,
+                    ),
+                  ),
+                sceneArrange: (o) =>
+                  arrangeScene(store, o as SceneArrangeOptions, (cmd) =>
+                    store.dispatch(
+                      cmd,
+                      {
+                        kind: 'ai',
+                        peerId: store.getLocalUser().peerId,
+                        name: 'AI',
+                        model: cfg.model,
+                      },
+                      text,
+                    ),
+                  ),
+                sceneEdit: (o) =>
+                  editScene(store, o as SceneEditOptions, (cmd) =>
+                    store.dispatch(
+                      cmd,
+                      {
+                        kind: 'ai',
+                        peerId: store.getLocalUser().peerId,
+                        name: 'AI',
+                        model: cfg.model,
+                      },
+                      text,
+                    ),
+                  ),
+                directorSession: (o) =>
+                  Promise.resolve(directorSession(store, o as DirectorSessionOptions)),
                 sceneInspect: (o) => inspectScene(store, o as { assetId: string; timeS?: number }),
                 sceneAssets: async () => {
                   const manifest = await loadSceneManifest();
@@ -327,7 +461,13 @@ export function AgentConsole({
           // A shots observation carries the full segmentation — hand it to the
           // store so the timeline can draw the cut boundaries (#2b). A
           // ShotAnalysis is recognisable by {assetId, shots[]}.
-          if (e.kind === 'tool' && e.name === 'velocut_observe' && e.ok && e.data && typeof e.data === 'object') {
+          if (
+            e.kind === 'tool' &&
+            e.name === 'velocut_observe' &&
+            e.ok &&
+            e.data &&
+            typeof e.data === 'object'
+          ) {
             const d = e.data as { assetId?: unknown; shots?: unknown };
             if (typeof d.assetId === 'string' && Array.isArray(d.shots)) {
               store.setShots(d.assetId, e.data as ShotAnalysis);
@@ -359,11 +499,19 @@ export function AgentConsole({
               case 'toolStart':
                 return [...l, { role: 'tool', text: `${e.name} …`, ok: undefined }];
               case 'tool': {
-                const card: ChatItem = { role: 'tool', text: toolSummary(e), ok: e.ok };
+                const card: ChatItem = {
+                  role: 'tool',
+                  text: toolSummary(e),
+                  ok: e.ok,
+                };
                 // Glass-box observe: carry the images & curve the agent saw (#1).
                 if (e.name === 'velocut_observe') {
                   if (e.images?.length) card.images = e.images;
-                  if (e.data != null) card.obs = { mode: (e.input as { mode?: string })?.mode ?? 'frame', data: e.data };
+                  if (e.data != null)
+                    card.obs = {
+                      mode: (e.input as { mode?: string })?.mode ?? 'frame',
+                      data: e.data,
+                    };
                 } else if (e.name === 'velocut_apply' && e.ok) {
                   // Navigable edit: clicking the card jumps to where it landed (#2a).
                   card.jump = applyJump(e.input);
@@ -395,30 +543,27 @@ export function AgentConsole({
     }
   };
 
-  if (!open) {
-    return (
-      <button
-        ref={dock.fabRef}
-        className="agent-fab"
-        style={dock.fabStyle}
-        onPointerDown={dock.onFabPointerDown}
-        title="Drag to move · Click to open the AI editing assistant"
-      >
-        ⌘ Agent
-      </button>
-    );
-  }
+  if (!open) return null;
 
   // A dev proxy transport (streaming or non-streaming) substitutes for a key.
   const w = window as never as Record<string, unknown>;
-  const hasTransport = typeof w.__velocutAgentTransport === 'function' || typeof w.__velocutAgentStream === 'function';
+  const hasTransport =
+    typeof w.__velocutAgentTransport === 'function' || typeof w.__velocutAgentStream === 'function';
   if (settingsOpen || (!cfg.apiKey && !hasTransport)) {
     return (
       <div className="agent-console" ref={dock.panelRef} style={dock.panelStyle}>
         <div className="agent-head" onPointerDown={dock.onPanelDragStart}>
-          <span className="drag-grip" title="Drag to move">⠿</span>
+          <span className="drag-grip" title="Drag to move">
+            <Icon name="grip" size={16} />
+          </span>
           <span className="agent-title">AI Assistant — Provider Settings</span>
-          <button onClick={() => setOpen(false)}>×</button>
+          <button
+            className="icon-button"
+            aria-label="Close assistant"
+            onClick={() => setOpen(false)}
+          >
+            <Icon name="close" />
+          </button>
         </div>
         <LlmSettings
           cfg={cfg}
@@ -452,7 +597,9 @@ export function AgentConsole({
       }}
     >
       <div className="agent-head" onPointerDown={dock.onPanelDragStart}>
-        <span className="drag-grip" title="Drag to move">⠿</span>
+        <span className="drag-grip" title="Drag to move">
+          <Icon name="grip" size={16} />
+        </span>
         <span className="agent-title">AI Editing Assistant</span>
         <select
           value={cfg.model}
@@ -466,15 +613,21 @@ export function AgentConsole({
             <option key={m}>{m}</option>
           ))}
         </select>
-        <button title="Provider settings (endpoint, key, models)" onClick={() => setSettingsOpen(true)}>
-          ⚙
+        <button
+          title="Provider settings (endpoint, key, models)"
+          onClick={() => setSettingsOpen(true)}
+        >
+          <Icon name="settings" size={16} />
         </button>
-        <button onClick={() => setOpen(false)}>×</button>
+        <button className="icon-button" aria-label="Close assistant" onClick={() => setOpen(false)}>
+          <Icon name="close" />
+        </button>
       </div>
       <div className="agent-chat" ref={listRef}>
         {items.length === 0 && (
           <div className="agent-hint">
-            Try: "Split at the playhead and mute the second half" · "Add a 2-second title at the start, fading in" · "Move the subtitles to the bottom of the frame"
+            Try: "Split at the playhead and mute the second half" · "Add a 2-second title at the
+            start, fading in" · "Move the subtitles to the bottom of the frame"
           </div>
         )}
         {items.map((m, i) => {
@@ -500,7 +653,7 @@ export function AgentConsole({
                 }
               >
                 <div className="chat-tool-line">
-                  ⚙ {m.text}
+                  <Icon name="settings" size={13} /> {m.text}
                   {jump && <span className="chat-jump-arrow"> ↩</span>}
                 </div>
                 {m.images?.map((img, k) => {
@@ -524,12 +677,15 @@ export function AgentConsole({
           }
           return (
             <div key={i} className={`chat-${m.role}`}>
-              {m.role === 'thinking' ? `💭 ${m.text}` : m.text}
+              {m.role === 'thinking' && <span className="thinking-label">Reasoning</span>}
+              {m.text}
             </div>
           );
         })}
         {/* The dots show only until the first streamed token arrives. */}
-        {busy && items[items.length - 1]?.role === 'user' && <div className="chat-busy">Thinking…</div>}
+        {busy && items[items.length - 1]?.role === 'user' && (
+          <div className="chat-busy">Thinking…</div>
+        )}
         {importing > 0 && <div className="chat-busy">Importing media…</div>}
       </div>
       <div className="agent-input-row">
@@ -552,7 +708,8 @@ export function AgentConsole({
           }}
         />
         <button className="primary" disabled={busy || !input.trim()} onClick={() => void send()}>
-          Send
+          <Icon name="send" size={18} />
+          <span className="sr-only">Send</span>
         </button>
       </div>
       {lightbox && (
@@ -573,7 +730,11 @@ function VideoGenSettings() {
   const [draft, setDraft] = useState<VideoGenChannel | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null); // null = adding
   const [keyDraft, setKeyDraft] = useState('');
-  const [test, setTest] = useState<{ busy: boolean; ok?: boolean; message?: string }>({ busy: false });
+  const [test, setTest] = useState<{
+    busy: boolean;
+    ok?: boolean;
+    message?: string;
+  }>({ busy: false });
   const kinds = videoGenProviders();
 
   const persist = (channels: VideoGenChannel[]) => {
@@ -596,7 +757,8 @@ function VideoGenSettings() {
       baseUrl: draft.baseUrl.trim().replace(/\/+$/, ''),
       apiKey: keyDraft.trim() || draft.apiKey,
       models,
-      defaultModel: draft.defaultModel && models.includes(draft.defaultModel) ? draft.defaultModel : models[0],
+      defaultModel:
+        draft.defaultModel && models.includes(draft.defaultModel) ? draft.defaultModel : models[0],
     };
   };
 
@@ -618,7 +780,10 @@ function VideoGenSettings() {
         {kinds.length > 1 && (
           <label className="llm-row">
             <span>Protocol</span>
-            <select value={draft.kind} onChange={(e) => setDraft({ ...draft, kind: e.target.value })}>
+            <select
+              value={draft.kind}
+              onChange={(e) => setDraft({ ...draft, kind: e.target.value })}
+            >
               {kinds.map((k) => (
                 <option key={k.id} value={k.id}>
                   {k.label}
@@ -643,7 +808,10 @@ function VideoGenSettings() {
             onClick={() => {
               const host = draft.baseUrl.match(/^https?:\/\/([^/]+)/)?.[1];
               if (host && !draft.baseUrl.includes('/videogen-proxy/')) {
-                setDraft({ ...draft, baseUrl: `${location.origin}/videogen-proxy/${host}` });
+                setDraft({
+                  ...draft,
+                  baseUrl: `${location.origin}/videogen-proxy/${host}`,
+                });
               }
             }}
           >
@@ -655,7 +823,9 @@ function VideoGenSettings() {
           <input
             type="password"
             value={keyDraft}
-            placeholder={draft.apiKey ? '•••••••• (saved — type to replace)' : 'the key your provider issued'}
+            placeholder={
+              draft.apiKey ? '•••••••• (saved — type to replace)' : 'the key your provider issued'
+            }
             onChange={(e) => setKeyDraft(e.target.value)}
           />
         </label>
@@ -664,20 +834,30 @@ function VideoGenSettings() {
           <input
             value={draft.models.join(', ')}
             placeholder="model ids, comma-separated (as your provider names them)"
-            onChange={(e) => setDraft({ ...draft, models: e.target.value.split(',').map((s) => s.trim()) })}
+            onChange={(e) =>
+              setDraft({
+                ...draft,
+                models: e.target.value.split(',').map((s) => s.trim()),
+              })
+            }
           />
         </label>
         {d.models.length > 1 && (
           <label className="llm-row">
             <span>Default model</span>
-            <select value={d.defaultModel} onChange={(e) => setDraft({ ...draft, defaultModel: e.target.value })}>
+            <select
+              value={d.defaultModel}
+              onChange={(e) => setDraft({ ...draft, defaultModel: e.target.value })}
+            >
               {d.models.map((m) => (
                 <option key={m}>{m}</option>
               ))}
             </select>
           </label>
         )}
-        {idTaken && <div className="llm-test llm-test-fail">A channel with id '{d.id}' already exists.</div>}
+        {idTaken && (
+          <div className="llm-test llm-test-fail">A channel with id '{d.id}' already exists.</div>
+        )}
         <div className="llm-actions">
           <button
             disabled={!d.baseUrl || !d.apiKey || test.busy}
@@ -693,7 +873,11 @@ function VideoGenSettings() {
             className="primary"
             disabled={!valid}
             onClick={() => {
-              persist(editingId ? cfg.channels.map((c) => (c.id === editingId ? d : c)) : [...cfg.channels, d]);
+              persist(
+                editingId
+                  ? cfg.channels.map((c) => (c.id === editingId ? d : c))
+                  : [...cfg.channels, d],
+              );
               closeEditor();
             }}
           >
@@ -701,7 +885,11 @@ function VideoGenSettings() {
           </button>
           <button onClick={closeEditor}>Cancel</button>
         </div>
-        {test.message && <div className={`llm-test ${test.ok ? 'llm-test-ok' : 'llm-test-fail'}`}>{test.message}</div>}
+        {test.message && (
+          <div className={`llm-test ${test.ok ? 'llm-test-ok' : 'llm-test-fail'}`}>
+            {test.message}
+          </div>
+        )}
       </div>
     );
   }
@@ -710,8 +898,9 @@ function VideoGenSettings() {
     <div className="videogen-settings">
       <h4>Video generation channels</h4>
       <p>
-        BYOK channels for AI video generation (velocut.videoGen / the agent). A channel is an endpoint + key +
-        model list; keys stay in this browser. Generation costs the channel's credits.
+        BYOK channels for AI video generation (velocut.videoGen / the agent). A channel is an
+        endpoint + key + model list; keys stay in this browser. Generation costs the channel's
+        credits.
       </p>
       {cfg.channels.map((c) => (
         <div className="llm-row videogen-channel" key={c.id}>
@@ -728,7 +917,10 @@ function VideoGenSettings() {
           >
             Edit
           </button>
-          <button title={`Remove channel ${c.id}`} onClick={() => persist(cfg.channels.filter((x) => x.id !== c.id))}>
+          <button
+            title={`Remove channel ${c.id}`}
+            onClick={() => persist(cfg.channels.filter((x) => x.id !== c.id))}
+          >
             ×
           </button>
         </div>
@@ -736,7 +928,13 @@ function VideoGenSettings() {
       <div className="llm-actions">
         <button
           onClick={() => {
-            setDraft({ id: '', kind: kinds[0]?.id ?? 'task-api', baseUrl: '', apiKey: '', models: [] });
+            setDraft({
+              id: '',
+              kind: kinds[0]?.id ?? 'task-api',
+              baseUrl: '',
+              apiKey: '',
+              models: [],
+            });
             setEditingId(null);
           }}
         >
@@ -749,19 +947,43 @@ function VideoGenSettings() {
 
 /** Per-kind field descriptors for the upload storage form. Secrets are never
  *  echoed back (blank = keep the saved value), same rule as the LLM key. */
-const UPLOAD_FIELDS: Record<string, Array<{ key: string; label: string; secret?: boolean; placeholder?: string }>> = {
+const UPLOAD_FIELDS: Record<
+  string,
+  Array<{ key: string; label: string; secret?: boolean; placeholder?: string }>
+> = {
   s3: [
-    { key: 'endpoint', label: 'Endpoint', placeholder: 'https://s3.example.com (or the bucket domain)' },
-    { key: 'bucket', label: 'Bucket', placeholder: 'bucket name (empty if the endpoint IS the bucket)' },
+    {
+      key: 'endpoint',
+      label: 'Endpoint',
+      placeholder: 'https://s3.example.com (or the bucket domain)',
+    },
+    {
+      key: 'bucket',
+      label: 'Bucket',
+      placeholder: 'bucket name (empty if the endpoint IS the bucket)',
+    },
     { key: 'region', label: 'Region', placeholder: 'auto' },
     { key: 'accessKeyId', label: 'Access key' },
     { key: 'secretAccessKey', label: 'Secret key', secret: true },
     { key: 'prefix', label: 'Key prefix', placeholder: 'velocut/ (optional)' },
-    { key: 'publicBase', label: 'Public base', placeholder: 'public read URL base (blank → presigned GET, 7 days)' },
+    {
+      key: 'publicBase',
+      label: 'Public base',
+      placeholder: 'public read URL base (blank → presigned GET, 7 days)',
+    },
   ],
   relay: [
-    { key: 'endpoint', label: 'Endpoint', placeholder: 'https://your-relay.example/upload' },
-    { key: 'authToken', label: 'Auth token', secret: true, placeholder: 'optional bearer token' },
+    {
+      key: 'endpoint',
+      label: 'Endpoint',
+      placeholder: 'https://your-relay.example/upload',
+    },
+    {
+      key: 'authToken',
+      label: 'Auth token',
+      secret: true,
+      placeholder: 'optional bearer token',
+    },
   ],
 };
 const UPLOAD_SECRETS = ['secretAccessKey', 'authToken'];
@@ -773,18 +995,27 @@ function UploadSettings() {
   const kinds = uploaderKinds();
   const [saved, setSaved] = useState<UploadConfig | null>(loadUploadConfig);
   const [draft, setDraft] = useState<UploadConfig | null>(null);
-  const [test, setTest] = useState<{ busy: boolean; ok?: boolean; message?: string }>({ busy: false });
+  const [test, setTest] = useState<{
+    busy: boolean;
+    ok?: boolean;
+    message?: string;
+  }>({ busy: false });
 
   const openEditor = () => {
     const base = saved ?? { kind: kinds[0]?.id ?? 's3', config: {} };
     setDraft({
       kind: base.kind,
-      config: Object.fromEntries(Object.entries(base.config).filter(([k]) => !UPLOAD_SECRETS.includes(k))),
+      config: Object.fromEntries(
+        Object.entries(base.config).filter(([k]) => !UPLOAD_SECRETS.includes(k)),
+      ),
     });
     setTest({ busy: false });
   };
   const finalDraft = (): UploadConfig => {
-    const merged: UploadConfig = { kind: draft!.kind, config: { ...draft!.config } };
+    const merged: UploadConfig = {
+      kind: draft!.kind,
+      config: { ...draft!.config },
+    };
     for (const [k, v] of Object.entries(merged.config)) {
       if (typeof v === 'string' && !v.trim()) delete merged.config[k];
     }
@@ -805,13 +1036,17 @@ function UploadSettings() {
       <div className="videogen-settings">
         <h4>Upload storage</h4>
         <p>
-          Where conditioning media (frames, previz clips) is uploaded so video providers can fetch it by URL.
-          Credentials stay in this browser; the store must allow browser (CORS) PUT from this origin.
+          Where conditioning media (frames, previz clips) is uploaded so video providers can fetch
+          it by URL. Credentials stay in this browser; the store must allow browser (CORS) PUT from
+          this origin.
         </p>
         {kinds.length > 1 && (
           <label className="llm-row">
             <span>Protocol</span>
-            <select value={draft.kind} onChange={(e) => setDraft({ kind: e.target.value, config: {} })}>
+            <select
+              value={draft.kind}
+              onChange={(e) => setDraft({ kind: e.target.value, config: {} })}
+            >
               {kinds.map((k) => (
                 <option key={k.id} value={k.id}>
                   {k.label}
@@ -831,7 +1066,12 @@ function UploadSettings() {
                   ? '•••••••• (saved — type to replace)'
                   : f.placeholder
               }
-              onChange={(e) => setDraft({ ...draft, config: { ...draft.config, [f.key]: e.target.value } })}
+              onChange={(e) =>
+                setDraft({
+                  ...draft,
+                  config: { ...draft.config, [f.key]: e.target.value },
+                })
+              }
             />
           </label>
         ))}
@@ -860,7 +1100,11 @@ function UploadSettings() {
           </button>
           <button onClick={() => setDraft(null)}>Cancel</button>
         </div>
-        {test.message && <div className={`llm-test ${test.ok ? 'llm-test-ok' : 'llm-test-fail'}`}>{test.message}</div>}
+        {test.message && (
+          <div className={`llm-test ${test.ok ? 'llm-test-ok' : 'llm-test-fail'}`}>
+            {test.message}
+          </div>
+        )}
       </div>
     );
   }
@@ -886,7 +1130,9 @@ function UploadSettings() {
           </button>
         </div>
       ) : (
-        <p>Not configured — frame/clip uploads (video-gen reference conditioning) are unavailable.</p>
+        <p>
+          Not configured — frame/clip uploads (video-gen reference conditioning) are unavailable.
+        </p>
       )}
       {!saved && (
         <div className="llm-actions">
@@ -918,7 +1164,11 @@ function LlmSettings({
   const [model, setModel] = useState(cfg.model);
   const [customModels, setCustomModels] = useState(cfg.customModels);
   const [newModel, setNewModel] = useState('');
-  const [testState, setTestState] = useState<{ busy: boolean; message?: string; ok?: boolean }>({ busy: false });
+  const [testState, setTestState] = useState<{
+    busy: boolean;
+    message?: string;
+    ok?: boolean;
+  }>({ busy: false });
 
   const draft = (): LlmConfig => ({
     baseUrl: baseUrl.trim().replace(/\/+$/, '') || OFFICIAL_BASE_URL,
@@ -1032,7 +1282,9 @@ function LlmSettings({
         {canClose && <button onClick={onClose}>Cancel</button>}
       </div>
       {testState.message && (
-        <div className={`llm-test ${testState.ok ? 'llm-test-ok' : 'llm-test-fail'}`}>{testState.message}</div>
+        <div className={`llm-test ${testState.ok ? 'llm-test-ok' : 'llm-test-fail'}`}>
+          {testState.message}
+        </div>
       )}
     </div>
   );

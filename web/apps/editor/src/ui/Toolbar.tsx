@@ -1,6 +1,8 @@
+import { Icon } from './primitives/Icon';
+import { Dialog } from './primitives/Dialog';
 import { CodexPanel } from './CodexPanel';
 import type { CodexConnection } from '../services/codex-connection';
-import { useRef, useState } from 'react';
+import { useRef, useState, type RefObject } from 'react';
 import type { Store, UiState } from '../state/store';
 import {
   type MediaLibrary,
@@ -28,7 +30,11 @@ const QUALITY_BPP: Record<Exclude<ExportQuality, 'custom'>, number> = {
   high: 0.12,
   ultra: 0.2,
 };
-const CODEC_LABEL: Record<VideoCodecFamily, string> = { avc: 'H.264', hevc: 'H.265', av1: 'AV1' };
+const CODEC_LABEL: Record<VideoCodecFamily, string> = {
+  avc: 'H.264',
+  hevc: 'H.265',
+  av1: 'AV1',
+};
 
 export function Toolbar({
   store,
@@ -36,15 +42,28 @@ export function Toolbar({
   media,
   state,
   codex,
+  importInputRef,
+  directorActive = false,
+  onEdit,
+  onDirector,
 }: {
   store: Store;
   playback: Playback;
   media: MediaLibrary;
   state: UiState;
   codex?: CodexConnection;
+  importInputRef: RefObject<HTMLInputElement>;
+  directorActive?: boolean;
+  onEdit: () => void;
+  onDirector: () => void;
 }) {
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [exportPct, setExportPct] = useState<{ frac: number; label: string } | null>(null);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const fileRef = importInputRef;
+  const [exportPct, setExportPct] = useState<{
+    frac: number;
+    label: string;
+  } | null>(null);
   const exportAbort = useRef<AbortController | null>(null);
   // Export codec/quality — persisted per browser; plumbed into Exporter.export.
   const [exportCodec, setExportCodec] = useState<VideoCodecFamily>(
@@ -85,8 +104,11 @@ export function Toolbar({
     const videoBitrate =
       exportQuality === 'custom'
         ? Math.max(1_000_000, Math.round(customMbps * 1e6))
-        : Math.round(doc.width * doc.height * (doc.fpsNum / doc.fpsDen) * QUALITY_BPP[exportQuality]);
+        : Math.round(
+            doc.width * doc.height * (doc.fpsNum / doc.fpsDen) * QUALITY_BPP[exportQuality],
+          );
 
+    setExportError(null);
     const abort = new AbortController();
     exportAbort.current = abort;
     setExportPct({ frac: 0, label: 'Preparing' });
@@ -111,7 +133,8 @@ export function Toolbar({
       a.click();
       URL.revokeObjectURL(url);
     } catch (e) {
-      if ((e as Error)?.name !== 'AbortError') console.error('[velocut] export failed', e);
+      if ((e as Error)?.name !== 'AbortError')
+        setExportError(e instanceof Error ? e.message : String(e));
     } finally {
       setExportPct(null);
       exportAbort.current = null;
@@ -125,11 +148,124 @@ export function Toolbar({
     : null;
 
   return (
-    <div className="toolbar">
-      <span className="brand">Velocut</span>
-      <ProjectMenu />
-      {codex && <CodexPanel connection={codex} />}
-      <button onClick={() => fileRef.current?.click()}>Import Media</button>
+    <header className="toolbar">
+      <div className="project-bar">
+        <div className="brand">
+          <span className="brand-mark" aria-hidden="true">
+            <i />
+            <i />
+            <i />
+          </span>
+          <span>
+            velocut<small>STUDIO</small>
+          </span>
+        </div>
+        <span className="header-divider" />
+        <ProjectMenu />
+        <div className="workspace-modes" role="tablist" aria-label="Workspace">
+          <button role="tab" aria-selected={!directorActive} onClick={onEdit}>
+            <Icon name="timeline" size={16} />
+            <span>Edit</span>
+          </button>
+          <button role="tab" aria-selected={directorActive} onClick={onDirector}>
+            <Icon name="cube" size={16} />
+            <span>Director</span>
+          </button>
+        </div>
+        <span className="spacer" />
+        {codex && <CodexPanel connection={codex} />}
+        <button
+          className="primary export-trigger"
+          aria-label="Export"
+          onClick={() => setExportOpen(true)}
+        >
+          <Icon name="download" size={16} />
+          <span className="button-label">Export</span>
+        </button>
+      </div>
+      <div className={'edit-bar' + (directorActive ? ' director-active' : '')}>
+        <div className="tool-group">
+          <button
+            className="import-trigger"
+            aria-label="Import Media"
+            onClick={() => fileRef.current?.click()}
+          >
+            <Icon name="upload" size={16} />
+            <span>Import Media</span>
+          </button>
+          <button
+            className="icon-button"
+            disabled={!state.canUndo}
+            onClick={() => store.undo()}
+            title="Undo · ⌘Z"
+            aria-label="Undo"
+          >
+            <Icon name="undo" />
+          </button>
+          <button
+            className="icon-button"
+            disabled={!state.canRedo}
+            onClick={() => store.redo()}
+            title="Redo · ⇧⌘Z"
+            aria-label="Redo"
+          >
+            <Icon name="redo" />
+          </button>
+        </div>
+        {!directorActive && (
+          <>
+            <span className="header-divider" />
+            <div className="tool-group">
+              <button
+                className="icon-button play-button"
+                aria-label={state.playing ? 'Pause' : 'Play'}
+                onClick={() => playback.toggle()}
+                title="Play / pause · Space"
+              >
+                <Icon name={state.playing ? 'pause' : 'play'} />
+              </button>
+              <button
+                className="icon-button"
+                onClick={() => splitAtPlayhead(store)}
+                title="Split at playhead · S"
+                aria-label="Split"
+              >
+                <Icon name="cut" />
+              </button>
+            </div>
+            <span className="timecode">
+              {fmtTime(state.playheadUs)}
+              <span> / {fmtTime(state.durationUs)}</span>
+            </span>
+            {selected && (
+              <label className="speed-label">
+                <span>Speed</span>
+                <select
+                  aria-label="Clip speed"
+                  value={String(selected.speed)}
+                  onChange={(e) =>
+                    store.dispatch({
+                      type: 'setClipSpeed',
+                      clipId: selected.id,
+                      speed: Number(e.target.value),
+                    })
+                  }
+                >
+                  {[0.25, 0.5, 1, 1.5, 2, 4].map((v) => (
+                    <option key={v} value={v}>
+                      {v}×
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+          </>
+        )}
+        <span className="spacer" />
+        <span className="toolbar-hint">
+          {directorActive ? 'Scene workspace' : 'Your story, frame by frame'}
+        </span>
+      </div>
       <input
         ref={fileRef}
         type="file"
@@ -137,121 +273,120 @@ export function Toolbar({
         multiple
         hidden
         onChange={(e) => {
-          // Copy before resetting: clearing value empties the live FileList.
           const files = Array.from(e.target.files ?? []);
-          e.target.value = ''; // allow re-importing the same file
+          e.target.value = '';
           importFiles(files);
         }}
       />
-      <span className="divider" />
-      <button onClick={() => playback.toggle()}>{state.playing ? '⏸ Pause' : '▶ Play'}</button>
-      <button onClick={() => splitAtPlayhead(store)} title="Shortcut: S">
-        ✂ Split
-      </button>
-      <button disabled={!state.canUndo} onClick={() => store.undo()} title="Cmd/Ctrl+Z">
-        ↩ Undo
-      </button>
-      <button disabled={!state.canRedo} onClick={() => store.redo()} title="Cmd/Ctrl+Shift+Z">
-        ↪ Redo
-      </button>
-      {selected && (
-        <>
-          <span className="divider" />
-          <label className="speed-label">
-            Speed
-            <select
-              value={String(selected.speed)}
-              onChange={(e) =>
-                store.dispatch({
-                  type: 'setClipSpeed',
-                  clipId: selected.id,
-                  speed: Number(e.target.value),
-                })
-              }
-            >
-              {[0.25, 0.5, 1, 1.5, 2, 4].map((v) => (
-                <option key={v} value={v}>
-                  {v}x
-                </option>
-              ))}
-            </select>
-          </label>
-        </>
-      )}
-      <span className="spacer" />
-      <select
-        className="export-opt"
-        value={exportCodec}
-        disabled={!!exportPct}
-        title="Export codec (H.265/AV1 need less bitrate at the same quality and support beyond 4K; some platform encoders may fall back to H.264)"
-        onChange={(e) => {
-          const v = e.target.value as VideoCodecFamily;
-          setExportCodec(v);
-          localStorage.setItem('velocut.exportCodec', v);
+      <Dialog
+        open={exportOpen}
+        title="Export film"
+        className="export-dialog"
+        onClose={() => {
+          if (exportPct) exportAbort.current?.abort();
+          setExportOpen(false);
         }}
       >
-        {(['avc', 'hevc', 'av1'] as VideoCodecFamily[]).map((c) => (
-          <option key={c} value={c}>
-            {CODEC_LABEL[c]}
-          </option>
-        ))}
-      </select>
-      <select
-        className="export-opt"
-        value={exportQuality}
-        disabled={!!exportPct}
-        title="Export quality (sets the target bitrate)"
-        onChange={(e) => {
-          const v = e.target.value as ExportQuality;
-          setExportQuality(v);
-          localStorage.setItem('velocut.exportQuality', v);
-        }}
-      >
-        <option value="standard">Standard</option>
-        <option value="high">High</option>
-        <option value="ultra">Ultra</option>
-        <option value="custom">Custom</option>
-      </select>
-      {exportQuality === 'custom' && (
-        <input
-          className="export-mbps"
-          type="number"
-          min={1}
-          max={2000}
-          value={customMbps}
-          disabled={!!exportPct}
-          title="Target bitrate (Mbps)"
-          onChange={(e) => {
-            const v = Math.max(1, Math.min(2000, Number(e.target.value) || 1));
-            setCustomMbps(v);
-            localStorage.setItem('velocut.exportMbps', String(v));
-          }}
-        />
-      )}
-      <button onClick={runExport} disabled={!!exportPct || state.durationUs <= 0} title="Export MP4">
-        ⬇ Export
-      </button>
-      <span className="timecode">
-        {fmtTime(state.playheadUs)} / {fmtTime(state.durationUs)}
-      </span>
-      <span className={`engine-badge engine-${state.engineKind}`}>
-        engine: {state.engineKind === 'wasm' ? 'Rust/WASM' : 'TS fallback'}
-      </span>
-
-      {exportPct && (
-        <div className="export-modal">
-          <div className="export-card">
-            <div className="export-title">Exporting — {exportPct.label}</div>
-            <div className="export-bar">
-              <div className="export-fill" style={{ width: `${Math.round(exportPct.frac * 100)}%` }} />
-            </div>
-            <div className="export-pct">{Math.round(exportPct.frac * 100)}%</div>
-            <button className="export-cancel" onClick={() => exportAbort.current?.abort()}>
-              Cancel
-            </button>
+        <p className="dialog-description">Create an MP4 of your timeline, ready to share.</p>
+        <div className="export-summary">
+          <Icon name="video" size={28} />
+          <div>
+            <strong>{state.doc.name}</strong>
+            <span>
+              {state.doc.width} × {state.doc.height} · {state.doc.fpsNum / state.doc.fpsDen} fps ·{' '}
+              {fmtTime(state.durationUs)}
+            </span>
           </div>
         </div>
-      )}
-    </div>
+        <label className="form-field">
+          <span>Format</span>
+          <select
+            className="export-opt"
+            aria-label="Export codec"
+            value={exportCodec}
+            disabled={!!exportPct}
+            onChange={(e) => {
+              const v = e.target.value as VideoCodecFamily;
+              setExportCodec(v);
+              localStorage.setItem('velocut.exportCodec', v);
+            }}
+          >
+            {(['avc', 'hevc', 'av1'] as VideoCodecFamily[]).map((c) => (
+              <option key={c} value={c}>
+                {CODEC_LABEL[c]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="form-field">
+          <span>Quality</span>
+          <select
+            className="export-opt"
+            aria-label="Export quality"
+            value={exportQuality}
+            disabled={!!exportPct}
+            onChange={(e) => {
+              const v = e.target.value as ExportQuality;
+              setExportQuality(v);
+              localStorage.setItem('velocut.exportQuality', v);
+            }}
+          >
+            <option value="standard">Standard</option>
+            <option value="high">High</option>
+            <option value="ultra">Ultra</option>
+            <option value="custom">Custom bitrate</option>
+          </select>
+        </label>
+        {exportQuality === 'custom' && (
+          <label className="form-field">
+            <span>Bitrate · Mbps</span>
+            <input
+              className="export-mbps"
+              type="number"
+              aria-label="Target bitrate"
+              min={1}
+              max={2000}
+              value={customMbps}
+              disabled={!!exportPct}
+              onChange={(e) => {
+                const v = Math.max(1, Math.min(2000, Number(e.target.value) || 1));
+                setCustomMbps(v);
+                localStorage.setItem('velocut.exportMbps', String(v));
+              }}
+            />
+          </label>
+        )}
+        {exportError && (
+          <p className="scene-error" role="alert">
+            {exportError}
+          </p>
+        )}
+        {exportPct ? (
+          <div className="export-progress" role="status">
+            <div className="export-title">{exportPct.label}</div>
+            <div className="export-bar">
+              <div
+                className="export-fill"
+                style={{ width: `${Math.round(exportPct.frac * 100)}%` }}
+              />
+            </div>
+            <div className="export-pct">{Math.round(exportPct.frac * 100)}%</div>
+            <button onClick={() => exportAbort.current?.abort()}>Cancel export</button>
+          </div>
+        ) : (
+          <button
+            className="primary full-width"
+            onClick={runExport}
+            disabled={state.durationUs <= 0}
+          >
+            <Icon name="download" />
+            Export MP4
+          </button>
+        )}
+        {state.durationUs <= 0 && (
+          <p className="empty-hint">Add a clip to your timeline to export.</p>
+        )}
+      </Dialog>
+    </header>
   );
 }

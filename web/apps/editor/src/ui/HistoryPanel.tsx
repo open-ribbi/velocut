@@ -1,3 +1,4 @@
+import { Icon } from './primitives/Icon';
 // ui/HistoryPanel.tsx — the branching history board.
 //
 // Renders the edit tree (state/history.ts): a flat vertical spine that indents
@@ -6,7 +7,7 @@
 // (loads its snapshot) — editing afterwards spawns a new branch, so nothing is
 // ever lost.
 
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import type { Store, UiState } from '../state/store';
 import type { HistoryNode } from '../state/history';
 import { useFloatingDock } from './useDraggable';
@@ -29,32 +30,30 @@ function actorLabel(n: HistoryNode): string {
   return n.actor.kind === 'ai' ? 'AI' : n.actor.name;
 }
 
-export function HistoryPanel({ store, state }: { store: Store; state: UiState }) {
-  const [open, setOpen] = useState(false);
+export function HistoryPanel({
+  store,
+  state,
+  open,
+  onOpenChange: setOpen,
+}: {
+  store: Store;
+  state: UiState;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
   const listRef = useRef<HTMLDivElement>(null);
   const dock = useFloatingDock('velocut.histDockPos', open, () => setOpen(true));
   // On expand, jump to the latest (bottom) edit instead of the root.
   useEffect(() => {
-    if (open) requestAnimationFrame(() => listRef.current?.scrollTo({ top: listRef.current.scrollHeight }));
+    if (open)
+      requestAnimationFrame(() => listRef.current?.scrollTo({ top: listRef.current.scrollHeight }));
   }, [open]);
   // state.historyRev in deps via the parent re-render; read the live tree.
   void state.historyRev;
   const tree = store.getHistory();
   const headId = tree.head.id;
 
-  if (!open) {
-    return (
-      <button
-        ref={dock.fabRef}
-        className="hist-fab"
-        style={dock.fabStyle}
-        onPointerDown={dock.onFabPointerDown}
-        title="Drag to move · Click to open the history board"
-      >
-        🕘 History
-      </button>
-    );
-  }
+  if (!open) return null;
 
   const headPath = new Set(tree.pathToHead().map((n) => n.id));
   const root = tree.getNode(tree.rootNodeId)!;
@@ -67,6 +66,15 @@ export function HistoryPanel({ store, state }: { store: Store; state: UiState })
     const row = (
       <div
         key={node.id}
+        role="button"
+        tabIndex={0}
+        aria-current={isHead ? 'step' : undefined}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            if (!isHead) store.jumpTo(node.id);
+          }
+        }}
         className={`hist-node ${actorClass(node)}${isHead ? ' hist-head' : ''}${onHeadPath ? ' hist-onpath' : ''}`}
         title={node.prompt ? `"${node.prompt}"` : node.command ? node.label : ''}
         onClick={() => {
@@ -90,7 +98,9 @@ export function HistoryPanel({ store, state }: { store: Store; state: UiState })
       children = renderChain(kids[0]);
     } else if (kids.length > 1) {
       // Order the branch leading to HEAD first so the current line reads top-down.
-      const ordered = [...kids].sort((a, b) => (headPath.has(b.id) ? 1 : 0) - (headPath.has(a.id) ? 1 : 0));
+      const ordered = [...kids].sort(
+        (a, b) => (headPath.has(b.id) ? 1 : 0) - (headPath.has(a.id) ? 1 : 0),
+      );
       children = (
         <div className="hist-branches">
           {ordered.map((k) => (
@@ -112,12 +122,18 @@ export function HistoryPanel({ store, state }: { store: Store; state: UiState })
   return (
     <div className="hist-panel" ref={dock.panelRef} style={dock.panelStyle}>
       <div className="hist-head-bar" onPointerDown={dock.onPanelDragStart}>
-        <span className="drag-grip" title="Drag to move">⠿</span>
+        <span className="drag-grip" title="Drag to move">
+          <Icon name="grip" size={16} />
+        </span>
         <span>History</span>
-        <span className="hist-hint">Drag the title to move · Click any node to restore that state · Editing after going back starts a new branch</span>
-        <button onClick={() => setOpen(false)}>×</button>
+        <span className="hist-hint">Every edit, safely within reach</span>
+        <button className="icon-button" aria-label="Close history" onClick={() => setOpen(false)}>
+          <Icon name="close" />
+        </button>
       </div>
-      <div className="hist-list" ref={listRef}>{renderChain(root)}</div>
+      <div className="hist-list" ref={listRef}>
+        {renderChain(root)}
+      </div>
     </div>
   );
 }

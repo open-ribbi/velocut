@@ -16,7 +16,13 @@
 // correct under letterboxing / DPR.
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { PreviewRenderer, Playback, MediaLibrary, InkRect, TextLayout } from '@velocut/render-sdk';
+import type {
+  PreviewRenderer,
+  Playback,
+  MediaLibrary,
+  InkRect,
+  TextLayout,
+} from '@velocut/render-sdk';
 import type { Store, UiState } from '../state/store';
 import type { TextPayload, Transform } from '@velocut/protocol';
 
@@ -43,10 +49,28 @@ interface LayerBox {
 }
 
 type Gesture =
-  | { kind: 'move'; clipId: string; startX: number; startY: number; orig: Transform; moved: boolean }
-  | { kind: 'scale'; clipId: string; cx: number; cy: number; startDist: number; orig: Transform; moved: boolean };
+  | {
+      kind: 'move';
+      clipId: string;
+      startX: number;
+      startY: number;
+      orig: Transform;
+      moved: boolean;
+    }
+  | {
+      kind: 'scale';
+      clipId: string;
+      cx: number;
+      cy: number;
+      startDist: number;
+      orig: Transform;
+      moved: boolean;
+    };
 
-function snap1(value: number, targets: { v: number; guide: number }[]): { v: number; guide: number | null } {
+function snap1(
+  value: number,
+  targets: { v: number; guide: number }[],
+): { v: number; guide: number | null } {
   for (const t of targets) if (Math.abs(value - t.v) < SNAP) return { v: t.v, guide: t.guide };
   return { v: value, guide: null };
 }
@@ -93,6 +117,8 @@ export function PreviewPanel({
   playback: Playback;
   state: UiState;
 }) {
+  const stageRef = useRef<HTMLDivElement>(null);
+  const [stageSize, setStageSize] = useState({ width: 1, height: 1 });
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const sinkRef = useRef<HTMLTextAreaElement>(null);
@@ -104,8 +130,14 @@ export function PreviewPanel({
   const clickTrain = useRef({ t: 0, x: 0, y: 0, count: 0 });
   const composing = useRef(false);
   const [ghost, setGhost] = useState<Partial<Transform> | null>(null);
-  const [guides, setGuides] = useState<{ x: number | null; y: number | null }>({ x: null, y: null });
-  const [editing, setEditing] = useState<{ clipId: string; text: TextPayload } | null>(null);
+  const [guides, setGuides] = useState<{ x: number | null; y: number | null }>({
+    x: null,
+    y: null,
+  });
+  const [editing, setEditing] = useState<{
+    clipId: string;
+    text: TextPayload;
+  } | null>(null);
   const [value, setValue] = useState('');
   const [sel, setSel] = useState({ start: 0, end: 0 });
   const [rect, setRect] = useState({ w: 1, h: 1 });
@@ -154,6 +186,27 @@ export function PreviewPanel({
     };
   }, []);
 
+  useLayoutEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    const resize = () => {
+      const css = getComputedStyle(stage);
+      setStageSize({
+        width: Math.max(
+          1,
+          stage.clientWidth - parseFloat(css.paddingLeft) - parseFloat(css.paddingRight),
+        ),
+        height: Math.max(
+          1,
+          stage.clientHeight - parseFloat(css.paddingTop) - parseFloat(css.paddingBottom),
+        ),
+      });
+    };
+    const observer = new ResizeObserver(resize);
+    observer.observe(stage);
+    resize();
+    return () => observer.disconnect();
+  }, []);
   const docW = state.doc.width;
   const docH = state.doc.height;
   const k = rect.w / docW; // uniform: canvas preserves aspect
@@ -247,7 +300,10 @@ export function PreviewPanel({
     // Invert from the actual top of line 0 (= the layout's pad, which grows
     // with stroke/shadow/background styling) — not a hardcoded constant.
     const top0 = layout.lines[0]?.top ?? TEXT_PAD;
-    const li = Math.max(0, Math.min(layout.lines.length - 1, Math.floor((localY - top0) / layout.lineHeight)));
+    const li = Math.max(
+      0,
+      Math.min(layout.lines.length - 1, Math.floor((localY - top0) / layout.lineHeight)),
+    );
     const line = layout.lines[li];
     const within = localX - line.left;
     let col = 0;
@@ -270,7 +326,8 @@ export function PreviewPanel({
     const p = toDoc(e);
     const s = screenPt(e);
     const prev = clickTrain.current;
-    const clicks = e.timeStamp - prev.t < 500 && Math.hypot(s.x - prev.x, s.y - prev.y) < 6 ? prev.count + 1 : 1;
+    const clicks =
+      e.timeStamp - prev.t < 500 && Math.hypot(s.x - prev.x, s.y - prev.y) < 6 ? prev.count + 1 : 1;
     clickTrain.current = { t: e.timeStamp, x: s.x, y: s.y, count: clicks };
     if (editing && editGeom) {
       const inside =
@@ -308,7 +365,14 @@ export function PreviewPanel({
       return;
     }
     store.select(hit.clipId);
-    gesture.current = { kind: 'move', clipId: hit.clipId, startX: p.x, startY: p.y, orig: hit.transform, moved: false };
+    gesture.current = {
+      kind: 'move',
+      clipId: hit.clipId,
+      startX: p.x,
+      startY: p.y,
+      orig: hit.transform,
+      moved: false,
+    };
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   };
 
@@ -371,7 +435,10 @@ export function PreviewPanel({
       setGhost(next);
     } else {
       const ratio = Math.max(0.05, Math.hypot(p.x - g.cx, p.y - g.cy) / g.startDist);
-      const next = { scaleX: g.orig.scaleX * ratio, scaleY: g.orig.scaleY * ratio };
+      const next = {
+        scaleX: g.orig.scaleX * ratio,
+        scaleY: g.orig.scaleY * ratio,
+      };
       renderer.setOverride(g.clipId, next);
       setGhost(next);
     }
@@ -389,7 +456,11 @@ export function PreviewPanel({
     renderer.setOverride(g.clipId, null);
     setGuides({ x: null, y: null });
     if (g.moved && ghost) {
-      store.dispatch({ type: 'setTransform', clipId: g.clipId, transform: { ...g.orig, ...ghost } });
+      store.dispatch({
+        type: 'setTransform',
+        clipId: g.clipId,
+        transform: { ...g.orig, ...ghost },
+      });
     }
     setGhost(null);
     playback.invalidate();
@@ -435,7 +506,8 @@ export function PreviewPanel({
     };
     const onSelChange = () => {
       const el = sinkRef.current;
-      if (el && document.activeElement === el) setSel({ start: el.selectionStart, end: el.selectionEnd });
+      if (el && document.activeElement === el)
+        setSel({ start: el.selectionStart, end: el.selectionEnd });
     };
     document.addEventListener('pointerdown', onDocDown, true);
     document.addEventListener('selectionchange', onSelChange);
@@ -455,11 +527,13 @@ export function PreviewPanel({
     const el = sinkRef.current;
     if (!el || !editing) return;
     setValue(el.value);
-    renderer.setTextOverride(editing.clipId, { ...editing.text, content: el.value });
+    renderer.setTextOverride(editing.clipId, {
+      ...editing.text,
+      content: el.value,
+    });
     playback.invalidate();
     setSel({ start: el.selectionStart, end: el.selectionEnd });
   };
-
 
   const commitEdit = () => {
     if (!editing) return;
@@ -467,7 +541,11 @@ export function PreviewPanel({
     const content = el?.value ?? value;
     renderer.setTextOverride(editing.clipId, null);
     if (content !== editing.text.content) {
-      store.dispatch({ type: 'setText', clipId: editing.clipId, text: { ...editing.text, content } });
+      store.dispatch({
+        type: 'setText',
+        clipId: editing.clipId,
+        text: { ...editing.text, content },
+      });
     }
     setEditing(null);
     editDrag.current = null;
@@ -489,7 +567,8 @@ export function PreviewPanel({
   // Rotation must still pivot on the frame center (the layer's true origin),
   // hence the explicit transformOrigin.
   const screenBox = (b: LayerBox) => {
-    const g = ghost && gesture.current?.clipId === b.clipId ? { ...b.transform, ...ghost } : b.transform;
+    const g =
+      ghost && gesture.current?.clipId === b.clipId ? { ...b.transform, ...ghost } : b.transform;
     const w = (b.w / b.transform.scaleX) * g.scaleX;
     const h = (b.h / b.transform.scaleY) * g.scaleY;
     const cx = docW / 2 + g.x;
@@ -498,7 +577,13 @@ export function PreviewPanel({
     const top = (cy - h / 2 + (b.ink?.top ?? 0) * g.scaleY) * k;
     const width = (b.ink ? b.ink.width * g.scaleX : w) * k;
     const height = (b.ink ? b.ink.height * g.scaleY : h) * k;
-    return { left, top, width, height, transformOrigin: `${cx * k - left}px ${cy * k - top}px` };
+    return {
+      left,
+      top,
+      width,
+      height,
+      transformOrigin: `${cx * k - left}px ${cy * k - top}px`,
+    };
   };
 
   // Caret + selection rectangles (overlay coords), from the shared layout.
@@ -545,11 +630,17 @@ export function PreviewPanel({
 
   return (
     <div className="preview-panel">
-      <div className="preview-stage">
+      <div className="preview-stage" ref={stageRef}>
         {error ? (
           <div className="preview-error">{error}</div>
         ) : (
-          <div className="preview-wrap">
+          <div
+            className="preview-wrap"
+            style={{
+              width: Math.max(1, Math.min(stageSize.width, (stageSize.height * docW) / docH)),
+              aspectRatio: `${docW} / ${docH}`,
+            }}
+          >
             <canvas ref={canvasRef} className="preview-canvas" />
             <div
               className="preview-overlay"
@@ -559,13 +650,20 @@ export function PreviewPanel({
               onPointerUp={onPointerUp}
               onDoubleClick={onDoubleClick}
             >
-              {guides.x != null && <div className="snap-guide guide-v" style={{ left: guides.x * k }} />}
-              {guides.y != null && <div className="snap-guide guide-h" style={{ top: guides.y * k }} />}
+              {guides.x != null && (
+                <div className="snap-guide guide-v" style={{ left: guides.x * k }} />
+              )}
+              {guides.y != null && (
+                <div className="snap-guide guide-h" style={{ top: guides.y * k }} />
+              )}
 
               {selected && !editing && (
                 <div
                   className="select-box"
-                  style={{ ...screenBox(selected), transform: `rotate(${selected.rotation}deg)` }}
+                  style={{
+                    ...screenBox(selected),
+                    transform: `rotate(${selected.rotation}deg)`,
+                  }}
                 >
                   {(['nw', 'ne', 'sw', 'se'] as const).map((corner) => (
                     <div
@@ -586,7 +684,11 @@ export function PreviewPanel({
                   {caretRect && (
                     <div
                       className="edit-caret"
-                      style={{ left: caretRect.left, top: caretRect.top, height: caretRect.height }}
+                      style={{
+                        left: caretRect.left,
+                        top: caretRect.top,
+                        height: caretRect.height,
+                      }}
                     />
                   )}
                   <textarea

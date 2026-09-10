@@ -136,8 +136,10 @@ test('imported model colliders bake deterministically and project storage does n
   expect(result.a.objects[0].bounds.min[1]).toBeCloseTo(0, 1);
   expect(result.b.objects[0].position[1]).toBeCloseTo(3);
   expect(result.a.objects).toEqual(result.c.objects);
-  page.once('dialog', (dialog) => void dialog.accept('Isolated model project'));
-  await page.locator('.project-current').click(); await page.getByRole('button', { name: '+ New Project' }).click();
+  await page.locator('.project-current').click();
+  await page.getByRole('button', { name: 'New Project', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Project name' }).fill('Isolated model project');
+  await page.getByRole('button', { name: 'Create project', exact: true }).click();
   await expect(page.locator('.project-current')).toContainText('Isolated model project');
   await page.waitForFunction(() => (window as any).velocut?.sceneClip);
   const isolated = await page.evaluate(async (spec) => (window as any).velocut.sceneClip({ spec }), result.spec);

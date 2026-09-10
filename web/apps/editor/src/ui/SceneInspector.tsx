@@ -1,3 +1,4 @@
+import { Icon } from './primitives/Icon';
 // SceneInspector — scene-level manual editing for 3D scene clips.
 //
 // The human half of "agent-first, human-adjustable": every control edits the
@@ -33,7 +34,7 @@ import { AnimatableField, Vec3Row } from './SceneFields';
 function useSpecEditor(store: Store, asset: Asset) {
   const spec = useMemo<SceneSpec | null>(() => {
     try {
-      return asset.spec ? (normalizeSceneSpec(JSON.parse(asset.spec) as SceneSpec)) : null;
+      return asset.spec ? normalizeSceneSpec(JSON.parse(asset.spec) as SceneSpec) : null;
     } catch {
       return null;
     }
@@ -42,7 +43,8 @@ function useSpecEditor(store: Store, asset: Asset) {
   const patch = async (mutate: (draft: SceneSpec) => void): Promise<string | null> => {
     if (!spec) return 'invalid spec';
     const before = store.getState();
-    if (before.doc.assets.find((a) => a.id === asset.id)?.spec !== asset.spec) return 'Scene changed; try the edit again.';
+    if (before.doc.assets.find((a) => a.id === asset.id)?.spec !== asset.spec)
+      return 'Scene changed; try the edit again.';
     const draft = structuredClone(spec);
     mutate(draft);
     const err = validateSceneSpec(draft);
@@ -83,7 +85,12 @@ export function SceneInspector({ store, asset }: { store: Store; asset: Asset })
   const run = async (mutate: (draft: SceneSpec) => void) => setError(await patch(mutate));
   const characterModels = Object.keys(manifest?.characters ?? {});
   const propModels = Object.keys(manifest?.props ?? {});
-  const openDirector = (sel: Sel | null) => directorSession(store, { assetId: asset.id, objectId: sel?.id ?? null, open: true });
+  const openDirector = (sel: Sel | null) =>
+    directorSession(store, {
+      assetId: asset.id,
+      objectId: sel?.id ?? null,
+      open: true,
+    });
 
   return (
     <div className="prop-group scene-inspector">
@@ -106,9 +113,9 @@ export function SceneInspector({ store, asset }: { store: Store; asset: Asset })
       </div>
       {error && <div className="scene-error">{error}</div>}
       <button className="fx-add director-open" onClick={() => openDirector(null)}>
-        🎬 Open Director (stage view)
+        <Icon name="cube" size={16} />
+        Open Director
       </button>
-
 
       {tab === 'json' ? (
         <>
@@ -125,7 +132,12 @@ export function SceneInspector({ store, asset }: { store: Store; asset: Asset })
                 const parsed = JSON.parse(jsonDraft ?? '') as SceneSpec;
                 const err = validateSceneSpec(parsed);
                 if (err) return setError(err);
-                const r = await replaceSceneSpec(store, asset.id, parsed, store.getState().revision);
+                const r = await replaceSceneSpec(
+                  store,
+                  asset.id,
+                  parsed,
+                  store.getState().revision,
+                );
                 setError(r.ok ? null : r.message);
               } catch (e) {
                 setError('JSON parse error: ' + (e instanceof Error ? e.message : String(e)));
@@ -143,7 +155,11 @@ export function SceneInspector({ store, asset }: { store: Store; asset: Asset })
               value={spec.environment ?? 'env/stage'}
               onChange={(e) => run((d) => (d.environment = e.target.value))}
             >
-              {Object.entries(manifest?.environments ?? { 'env/stage': { label: 'Plain stage' } }).map(([id, e]) => (
+              {Object.entries(
+                manifest?.environments ?? {
+                  'env/stage': { label: 'Plain stage' },
+                },
+              ).map(([id, e]) => (
                 <option key={id} value={id}>
                   {e.label ?? id}
                 </option>
@@ -152,7 +168,10 @@ export function SceneInspector({ store, asset }: { store: Store; asset: Asset })
           </div>
           <div className="prop-row">
             <span className="prop-label">Lighting</span>
-            <select value={spec.lighting ?? 'day'} onChange={(e) => run((d) => (d.lighting = e.target.value as SceneSpec['lighting']))}>
+            <select
+              value={spec.lighting ?? 'day'}
+              onChange={(e) => run((d) => (d.lighting = e.target.value as SceneSpec['lighting']))}
+            >
               {['day', 'night', 'indoor', 'none'].map((l) => (
                 <option key={l} value={l}>
                   {l}
@@ -172,9 +191,21 @@ export function SceneInspector({ store, asset }: { store: Store; asset: Asset })
                 onClick={() => openDirector({ kind: 'character', id: c.id })}
               >
                 <span className="scene-object-id">{c.id}</span>
-                <span className="scene-object-model">{manifest?.characters[c.model]?.label ?? c.model}</span>
+                <span className="scene-object-model">
+                  {manifest?.characters[c.model]?.label ?? c.model}
+                </span>
               </button>
-              <button className="fx-remove" title="Remove" onClick={async () => { const r = await editScene(store, { assetId: asset.id, edits: [{ type: 'remove', id: c.id, cascade: true }] }); setError(r.ok ? null : r.message); }}>
+              <button
+                className="fx-remove"
+                title="Remove"
+                onClick={async () => {
+                  const r = await editScene(store, {
+                    assetId: asset.id,
+                    edits: [{ type: 'remove', id: c.id, cascade: true }],
+                  });
+                  setError(r.ok ? null : r.message);
+                }}
+              >
                 ×
               </button>
             </div>
@@ -184,7 +215,11 @@ export function SceneInspector({ store, asset }: { store: Store; asset: Asset })
             onClick={() =>
               run((d) => {
                 const model = characterModels[0] ?? 'char/mannequin';
-                const c: NonNullable<SceneSpec['characters']>[number] = { id: nextSceneId(d, 'char'), model, position: { x: 0, z: 0 } };
+                const c: NonNullable<SceneSpec['characters']>[number] = {
+                  id: nextSceneId(d, 'char'),
+                  model,
+                  position: { x: 0, z: 0 },
+                };
                 if (manifest?.characters[model]?.file.startsWith('builtin:')) c.pose = 'standing';
                 else {
                   const first = Object.keys(manifest?.characters[model]?.clips ?? {})[0];
@@ -205,15 +240,40 @@ export function SceneInspector({ store, asset }: { store: Store; asset: Asset })
                 title="Edit on the stage (opens the Director with this object selected)"
                 onClick={() => openDirector({ kind: 'prop', id: p.id! })}
               >
-                <span className="scene-object-id">{manifest?.props[p.model]?.label ?? p.model}</span>
-                {p.attachTo && <span className="scene-object-model">on {p.attachTo.character}</span>}
+                <span className="scene-object-id">
+                  {manifest?.props[p.model]?.label ?? p.model}
+                </span>
+                {p.attachTo && (
+                  <span className="scene-object-model">on {p.attachTo.character}</span>
+                )}
               </button>
-              <button className="fx-remove" title="Remove" onClick={async () => { const r = await editScene(store, { assetId: asset.id, edits: [{ type: 'remove', id: p.id!, cascade: true }] }); setError(r.ok ? null : r.message); }}>
+              <button
+                className="fx-remove"
+                title="Remove"
+                onClick={async () => {
+                  const r = await editScene(store, {
+                    assetId: asset.id,
+                    edits: [{ type: 'remove', id: p.id!, cascade: true }],
+                  });
+                  setError(r.ok ? null : r.message);
+                }}
+              >
                 ×
               </button>
             </div>
           ))}
-          <button className="fx-add" onClick={() => run((d) => (d.props ??= []).push({ id: nextSceneId(d, 'prop'), model: propModels[0] ?? 'prop/cube', position: { x: 2, z: -1 } }))}>
+          <button
+            className="fx-add"
+            onClick={() =>
+              run((d) =>
+                (d.props ??= []).push({
+                  id: nextSceneId(d, 'prop'),
+                  model: propModels[0] ?? 'prop/cube',
+                  position: { x: 2, z: -1 },
+                }),
+              )
+            }
+          >
             + Prop
           </button>
 
@@ -235,11 +295,16 @@ export function SceneInspector({ store, asset }: { store: Store; asset: Asset })
           <div className="prop-row">
             <span className="prop-label">Look at</span>
             <select
-              value={spec.camera?.lookAt && 'character' in spec.camera.lookAt ? 'character' : 'point'}
+              value={
+                spec.camera?.lookAt && 'character' in spec.camera.lookAt ? 'character' : 'point'
+              }
               onChange={(e) =>
                 run((d) => {
                   const cam = (d.camera ??= {});
-                  cam.lookAt = e.target.value === 'character' ? { character: d.characters?.[0]?.id ?? '' } : { x: 0, y: 1, z: 0 };
+                  cam.lookAt =
+                    e.target.value === 'character'
+                      ? { character: d.characters?.[0]?.id ?? '' }
+                      : { x: 0, y: 1, z: 0 };
                 })
               }
             >
@@ -249,7 +314,14 @@ export function SceneInspector({ store, asset }: { store: Store; asset: Asset })
             {spec.camera?.lookAt && 'character' in spec.camera.lookAt && (
               <select
                 value={spec.camera.lookAt.character}
-                onChange={(e) => run((d) => ((d.camera ??= {}).lookAt = { character: e.target.value }))}
+                onChange={(e) =>
+                  run(
+                    (d) =>
+                      ((d.camera ??= {}).lookAt = {
+                        character: e.target.value,
+                      }),
+                  )
+                }
               >
                 {(spec.characters ?? []).map((c) => (
                   <option key={c.id} value={c.id}>
