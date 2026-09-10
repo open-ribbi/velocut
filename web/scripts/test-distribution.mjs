@@ -289,14 +289,17 @@ window.probe=(async()=>{
   throw error;
 } finally {
   console.log('Closing distribution browser and build services');
+  const cleanupDeadline = setTimeout(() => { console.error('Distribution cleanup exceeded 20 seconds'); process.exit(1); }, 20_000);
+  cleanupDeadline.unref();
   await client?.close();
   await browser?.close();
   await studio?.close();
   await devServer?.close();
-  if (preview) await new Promise((resolve) => preview.httpServer.close(resolve));
+  if (preview) await new Promise((resolve) => { preview.httpServer.close(resolve); preview.httpServer.closeAllConnections(); });
   // Vite retains esbuild's service even after closing its HTTP servers.
   // Release the executable before deleting it on Windows.
   consumerEsbuild?.stop();
   if (process.env.VELOCUT_KEEP_CONSUMER !== '1')
     await rm(workspace, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  clearTimeout(cleanupDeadline);
 }

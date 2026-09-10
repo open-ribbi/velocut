@@ -98,7 +98,20 @@ export default defineConfig(({ command }) => ({
       '@velocut/collab-sdk': fileURLToPath(new URL('../../packages/collab-sdk/src/index.ts', import.meta.url)),
     },
   },
-  optimizeDeps: { include: ['@dimforge/rapier3d-compat'] },
+  // Discover the lazy scene/media dependencies before users start editing.
+  // Late optimizer reloads would interrupt gestures and disconnect MCP sessions.
+  optimizeDeps: {
+    noDiscovery: !!process.env.CI,
+    include: [
+      'react', 'react-dom', 'react-dom/client', 'react/jsx-runtime',
+      '@anthropic-ai/sdk', '@dimforge/rapier3d-compat', '@huggingface/transformers',
+      'aws4fetch', 'gsap', 'mp4-muxer', 'mp4box', 'yjs', 'zod', 'three',
+      'three/examples/jsm/controls/OrbitControls.js',
+      'three/examples/jsm/controls/TransformControls.js',
+      'three/examples/jsm/loaders/GLTFLoader.js',
+      'three/examples/jsm/utils/SkeletonUtils.js',
+    ],
+  },
   server: {
     headers: {
       // Reserved for future SharedArrayBuffer / multithreaded workers (cross-origin isolation)
