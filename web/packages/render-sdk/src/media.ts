@@ -228,8 +228,9 @@ export class MediaLibrary {
     /** Project id scoping the OPFS pcm/proxy caches (asset ids are only unique
      *  per project). Omitted = the legacy unscoped directories. */
     private storageScope?: string,
+    options: { workerUrl?: string | URL } = {},
   ) {
-    this.worker = new Worker(new URL('./media.worker.ts', import.meta.url), { type: 'module' });
+    this.worker = options.workerUrl ? new Worker(options.workerUrl, { type: 'module' }) : new Worker(new URL('./media.worker.ts', import.meta.url), { type: 'module' });
     this.worker.onmessage = (e: MessageEvent<WorkerToMain>) => this.onMessage(e.data);
   }
 

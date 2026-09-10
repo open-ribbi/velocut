@@ -18,3 +18,9 @@ redteam*.md
 *.local.md
 audit*.md
 test-results/
+
+# Generated package declarations, copied licenses, and editor asset assembly
+web/packages/*/tsconfig.build.json
+web/packages/*/LICENSE
+web/apps/editor/public/scene-assets/
+artifacts/

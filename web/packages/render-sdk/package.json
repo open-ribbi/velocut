@@ -1,18 +1,84 @@
 {
   "name": "@velocut/render-sdk",
   "version": "0.1.0",
-  "private": true,
   "license": "MIT",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts",
-    "./motionspec": "./src/motionspec.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./motionspec": {
+      "types": "./dist/motionspec.d.ts",
+      "import": "./dist/motionspec.js",
+      "default": "./dist/motionspec.js"
+    },
+    "./package.json": "./package.json",
+    "./transcribe": {
+      "types": "./dist/transcribe.d.ts",
+      "import": "./dist/transcribe.js"
+    },
+    "./tts": {
+      "types": "./dist/tts.d.ts",
+      "import": "./dist/tts.js"
+    },
+    "./upload": {
+      "types": "./dist/upload.d.ts",
+      "import": "./dist/upload.js"
+    },
+    "./videogen": {
+      "types": "./dist/videogen.d.ts",
+      "import": "./dist/videogen.js"
+    },
+    "./effects": {
+      "types": "./dist/effects.d.ts",
+      "import": "./dist/effects.js"
+    },
+    "./workers/*": "./dist/*.worker.js",
+    "./vite": {
+      "types": "./dist/vite.d.ts",
+      "import": "./dist/vite.js"
+    }
   },
   "dependencies": {
-    "@huggingface/transformers": "^3.8.1",
-    "@velocut/protocol": "*",
+    "@velocut/protocol": "0.1.0",
     "aws4fetch": "^1.0.20",
     "mp4-muxer": "^5.2.2",
-    "mp4box": "^0.5.2"
+    "mp4box": "^0.5.2",
+    "@webgpu/types": "^0.1.71",
+    "gsap": "^3.15.0"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "types": "./dist/index.d.ts",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/open-ribbi/velocut.git",
+    "directory": "web/packages/render-sdk"
+  },
+  "scripts": {
+    "build": "node ../../scripts/build-sdk.mjs render-sdk",
+    "prepack": "node ../../scripts/validate-package.mjs"
+  },
+  "peerDependencies": {
+    "@huggingface/transformers": "^3.8.1"
+  },
+  "peerDependenciesMeta": {
+    "@huggingface/transformers": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@huggingface/transformers": "^3.8.1"
+  },
+  "engines": {
+    "node": ">=22.6"
   }
 }

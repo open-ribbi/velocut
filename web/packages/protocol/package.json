@@ -1,11 +1,38 @@
 {
   "name": "@velocut/protocol",
   "version": "0.1.0",
-  "private": true,
   "license": "MIT",
   "type": "module",
-  "exports": { ".": "./src/types.ts" },
+  "exports": {
+    ".": {
+      "types": "./dist/types.d.ts",
+      "import": "./dist/types.js",
+      "default": "./dist/types.js"
+    },
+    "./package.json": "./package.json"
+  },
   "dependencies": {
     "zod": "^3.25.76"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "types": "./dist/types.d.ts",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/open-ribbi/velocut.git",
+    "directory": "web/packages/protocol"
+  },
+  "scripts": {
+    "build": "node ../../scripts/build-sdk.mjs protocol",
+    "prepack": "node ../../scripts/validate-package.mjs"
+  },
+  "engines": {
+    "node": ">=22.6"
   }
 }

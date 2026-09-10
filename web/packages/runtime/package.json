@@ -1,0 +1,79 @@
+{
+  "name": "@velocut/runtime",
+  "version": "0.1.0",
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    "./history": {
+      "types": "./dist/history.d.ts",
+      "import": "./dist/history.js"
+    },
+    "./script": {
+      "types": "./dist/script.d.ts",
+      "import": "./dist/script.js"
+    },
+    "./engine": {
+      "types": "./dist/engine.d.ts",
+      "import": "./dist/engine.js"
+    },
+    "./observe": {
+      "types": "./dist/observe.d.ts",
+      "import": "./dist/observe.js"
+    },
+    "./director-session": {
+      "types": "./dist/director-session.d.ts",
+      "import": "./dist/director-session.js"
+    },
+    "./scene": {
+      "types": "./dist/scene.d.ts",
+      "import": "./dist/scene.js"
+    },
+    "./host": {
+      "types": "./dist/host.d.ts",
+      "import": "./dist/host.js"
+    },
+    "./results": {
+      "types": "./dist/results.d.ts",
+      "import": "./dist/results.js"
+    },
+    "./store": {
+      "types": "./dist/store.d.ts",
+      "import": "./dist/store.js"
+    },
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./scene-resources": {
+      "types": "./dist/scene-resources.d.ts",
+      "import": "./dist/scene-resources.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "node ../../scripts/build-sdk.mjs runtime",
+    "prepack": "node ../../scripts/validate-package.mjs"
+  },
+  "dependencies": {
+    "@velocut/protocol": "0.1.0",
+    "@velocut/core-ts": "0.1.0",
+    "@velocut/render-sdk": "0.1.0",
+    "@velocut/scene-sdk": "0.1.0",
+    "three": "^0.185.1"
+  },
+  "engines": {
+    "node": ">=22.6"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/open-ribbi/velocut.git",
+    "directory": "web/packages/runtime"
+  }
+}

@@ -158,3 +158,6 @@ export {
   DocumentFormatError,
   type MigrateResult,
 } from './migrate.ts';
+
+/** Transport compatibility is independent of document revisions and formats. */
+export { BRIDGE_PROTOCOL_VERSION, SUPPORTED_BRIDGE_PROTOCOLS } from './bridge.ts';

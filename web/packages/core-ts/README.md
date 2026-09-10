@@ -8,7 +8,7 @@ The TypeScript **reference engine** — a faithful mirror of the canonical Rust 
 
 ## Usage
 
-Runs directly on Node (>= 22.6): `node --experimental-strip-types demo.ts`
+The npm package ships ESM JavaScript and TypeScript 5.9+ declarations. JavaScript runs directly on Node: `node demo.mjs`; no TypeScript loader is needed.
 
 ```ts
 import { TsEngine } from '@velocut/core-ts';

@@ -7,7 +7,7 @@ observations are returned to the Codex conversation for reasoning and vision.
 
 ## Components
 
-- `web/packages/codex-bridge`: official MCP SDK v2 server, ephemeral loopback HTTP
+- `web/packages/mcp`: official MCP SDK v2 server, ephemeral loopback HTTP
   broker, plugin manifest/skill and a self-contained Node bundle.
 - `services/codex-connection.ts`: opt-in browser pairing, serialized command
   execution, heartbeat and explicit disconnect.
@@ -21,39 +21,50 @@ observations are returned to the Codex conversation for reasoning and vision.
   a pairing link or disconnect. Pairing also works by opening the link directly,
   including same-document hash navigation.
 
-## Build and install locally
+## Install from a release
 
-Requires Node.js 22+ and the repository's web dependencies.
+A standalone release directory contains the prebuilt Studio launcher and a
+relocatable Codex marketplace. Run `node start-studio.mjs`, add the extracted
+directory as a marketplace source, install Velocut and start a new Codex task.
+No source checkout or npm install is needed; Node.js 22.6+ and a suitable browser
+are still required. The plugin alone contains MCP and skills, not the UI.
+
+The generic `@velocut/mcp` npm executable can also be used with other MCP clients.
+Use a published version, or install a locally built tarball; package creation
+here does not imply npm publication. See [distribution guide](npm-packages.md).
+
+## Build locally
 
 ```sh
 cd web
-npm install
-npm run build:codex-plugin
+npm ci
+npm run build:release
+npm run pack:release
 ```
 
-The distributable folder is `web/packages/codex-bridge/dist/velocut`. It includes
-`.codex-plugin/plugin.json`, `.mcp.json`, the Director skill and scene API reference,
-and `scripts/server.cjs` with its runtime dependencies bundled. No npm install is
-needed inside the installed plugin. `.mcp.json` uses Codex's `${PLUGIN_ROOT}`
-substitution, so a cached installation does not depend on the source checkout.
+The plugin source is `plugins/codex/velocut`. Its standalone build is
+`web/packages/mcp/dist/velocut`: manifest, MCP launcher, bundled runtime,
+Director skill, API references and license notices. `${PLUGIN_ROOT}` resolves
+inside Codex's installed plugin cache, so it does not depend on the checkout.
+The same MCP implementation also builds the npm package's `dist/cli.cjs`.
 
-For a personal development install, use Codex's Plugin Creator skill to create a
-`velocut` scaffold and personal marketplace entry, then build over that new source:
+For a personal development install, use the Plugin Creator skill to create a
+scaffold and marketplace entry, then build over that source:
 
 ```sh
-node packages/codex-bridge/build.mjs --out "$HOME/plugins/velocut"
+node packages/mcp/build.mjs --out "$HOME/plugins/velocut"
 codex plugin add velocut@personal
 ```
 
-Use the actual marketplace name if the personal marketplace has another name.
-When updating an already-installed source, follow Plugin Creator's cachebuster
-and reinstall flow. Start a new Codex task to pick up newly installed tools.
-The portable artifact can also be packaged for another supported marketplace.
+Use your actual personal marketplace name. Updating an installed development
+plugin requires Plugin Creator's cachebuster/reinstall flow and a new task.
+Regular release users can add the generated standalone marketplace directory
+instead; they do not need to scaffold their own plugin.
 
 ## Use
 
-1. Start the editor with `npm run dev` in `web/` (or let Codex start it from the
-   repository). Use the URL actually printed by Vite.
+1. Start Studio with the release launcher or installed CLI. For development use
+   `npm run dev` in `web/`. Use the actual printed URL.
 2. In a new Codex task with the plugin, ask: “Connect to my local Velocut editor.”
 3. `velocut_connect` returns a temporary local pairing URL. Open it in the browser,
    or paste it into the editor's Codex control. No provider key is requested.
@@ -115,15 +126,15 @@ Plugin and Skill manifests are additionally checked with Plugin Creator's
 `validate_plugin.py` and Skill Creator's `quick_validate.py` (requires PyYAML).
 
 
-## Completion record
+## Compatibility and distribution verification
 
-- Production editor build passes.
-- 76 existing engine/scene tests and 7 bridge/MCP tests pass through `npm test`.
-- All 22 browser tests pass, including the 3 real packaged-MCP integration tests.
-- The bundle negotiates both MCP 2026 and legacy 2025-11-25 clients.
-- Plugin and skill validators pass; the personal plugin is installed and enabled.
-- Actual model reasoning stays in Codex. The integration tests use an MCP client
-  against real browser pages; they do not require or invoke a second LLM API.
+The browser/bridge protocol negotiates supported versions independently of the
+MCP protocol and document revision. New peers prefer protocol 2; compatible
+protocol 1 clients remain accepted. An unsupported version set is rejected
+before any page session is registered.
 
-Install/update completion still requires a new Codex task to load the new tool
-set; it does not require rebuilding the editor or adding model credentials.
+The normal browser suite verifies packaged MCP editing, vision, local GLB
+imports, multiple projects, attribution, conflicts and disconnect during compile.
+`npm run test:distribution` additionally installs CLI/MCP/SDK tarballs outside
+the repository and runs scene creation and observation against the prebuilt
+editor. See the distribution guide for the cross-platform CI and release gates.

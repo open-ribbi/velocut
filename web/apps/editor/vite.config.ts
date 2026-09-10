@@ -81,10 +81,13 @@ function googleKey(): string {
   }
 }
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
+  // Dev may serve local test media. Releases assemble an explicit asset set.
+  publicDir: command === 'build' ? false : 'public',
   plugins: [react(), videoGenProxy()],
   resolve: {
     alias: {
+      '@velocut/runtime': fileURLToPath(new URL('../../packages/runtime/src', import.meta.url)),
       '@velocut/protocol': fileURLToPath(new URL('../../packages/protocol/src/types.ts', import.meta.url)),
       '@velocut/core-ts': fileURLToPath(new URL('../../packages/core-ts/src/engine.ts', import.meta.url)),
       // Specific subpath BEFORE the package alias — the plain key is a prefix
@@ -95,6 +98,7 @@ export default defineConfig({
       '@velocut/collab-sdk': fileURLToPath(new URL('../../packages/collab-sdk/src/index.ts', import.meta.url)),
     },
   },
+  optimizeDeps: { include: ['@dimforge/rapier3d-compat'] },
   server: {
     headers: {
       // Reserved for future SharedArrayBuffer / multithreaded workers (cross-origin isolation)
@@ -143,4 +147,4 @@ export default defineConfig({
     },
   },
   build: { target: 'esnext' },
-});
+}));

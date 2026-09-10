@@ -1,3 +1,4 @@
+import { BRIDGE_PROTOCOL_VERSION, SUPPORTED_BRIDGE_PROTOCOLS } from '@velocut/protocol';
 import { createServer } from 'node:http';
 import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 
@@ -56,10 +57,15 @@ export async function createBroker({ requestTimeoutMs = 90_000 } = {}) {
       if (req.url === '/register' && req.method === 'POST') {
         if (!equal(key, pairingKey)) return json(res, 401, { error: 'invalid pairing token' });
         if (sessions.size >= 12) return json(res, 429, { error: 'too many connected pages' });
-        const info = metadata(await body(req, 16_384));
+        const registration = await body(req, 16_384);
+        const supported = registration?.protocolVersions ?? [1];
+        if (!Array.isArray(supported)) return json(res, 400, { error: 'invalid protocol versions' });
+        const protocol = SUPPORTED_BRIDGE_PROTOCOLS.find(version => supported.includes(version));
+        if (!protocol) return json(res, 409, { error: `incompatible editor protocol; MCP supports ${SUPPORTED_BRIDGE_PROTOCOLS.join(', ')}` });
+        const info = metadata(registration);
         const session = { id: randomUUID(), key: secret(), origin, ...info, queue: [], poll: null, inflight: null, lastSeen: Date.now(), lastCommand: null };
         sessions.set(session.id, session);
-        return json(res, 200, { sessionId: session.id, sessionKey: session.key, protocol: 1 });
+        return json(res, 200, { sessionId: session.id, sessionKey: session.key, protocol, serverProtocol: BRIDGE_PROTOCOL_VERSION });
       }
       const match = /^\/sessions\/([a-f0-9-]+)(?:\/(next|result|ping))?$/.exec(req.url ?? '');
       const s = match && sessions.get(match[1]);

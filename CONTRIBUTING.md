@@ -59,14 +59,14 @@ cd web && npx tsc -b apps/editor   # type check
 
 If you changed the Rust engine, remember to rebuild wasm (see README for the command) —
 otherwise you are still running the old engine or the TS engine locally. The badge in the
-top-right corner will tell you the truth.
+bottom status bar will tell you the truth.
 
 ## Common pitfalls
 
 - **"Do I need Rust installed?"** No — without the wasm bundle the app falls
   back to the TS reference engine automatically. You only need Rust to work on
   the canonical engine itself.
-- **"I changed the engine but nothing happened."** If the top-right badge says
+- **"I changed the engine but nothing happened."** If the status-bar badge says
   `engine: Rust/WASM`, the browser is running the *prebuilt* wasm from
   `web/apps/editor/public/wasm` — rebuild it (`just build-wasm`) or your change
   only exists in native `cargo test`.
@@ -84,3 +84,17 @@ top-right corner will tell you the truth.
 
 - Match the comment density and naming of the surrounding code; comments should only state constraints the code itself cannot express
 - Commit messages should explain the "why", not restate the diff
+
+## SDK and distribution changes
+
+Public packages build to ESM JS plus declaration files. Never depend on an
+application module from a package. Declare direct dependencies even when npm
+workspace hoisting makes an undeclared import work locally. Keep public package
+versions coordinated using `npm run version:release -- <version>` from `web/`.
+
+Before changing SDK exports, workers, asset hosting, CLI or MCP packaging, run
+`npm run build:release`, `npm run pack:release`, and `npm run test:distribution`.
+This installs real tarballs outside the checkout, typechecks them and exercises
+rendering/MCP in a browser. Do not run a rebuild concurrently with dev-server
+E2E tests, since rebuilds trigger HMR. CI adds macOS/Windows/Linux distribution
+checks; public npm publishing remains a separate explicit maintainer operation.

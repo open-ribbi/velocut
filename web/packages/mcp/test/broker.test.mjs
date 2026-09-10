@@ -66,3 +66,14 @@ test('cancelling an undelivered operation removes it from the queue', async (t) 
   await a.request('', undefined, 'DELETE');
   assert.equal(broker.list().length, 0);
 });
+
+test('editor protocol versions negotiate separately from revisions and reject incompatibility', async (t) => {
+  const broker = await createBroker(); t.after(() => broker.close());
+  const pair = broker.connect('http://localhost:5173');
+  const token = new URLSearchParams(new URL(pair.url).hash.slice(1)).get('velocut-codex').split('.')[1];
+  const register = protocolVersions => fetch(broker.url + '/register', { method: 'POST', headers: { Origin: 'http://localhost:5173', Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ projectId: 'protocol-test', revision: 987, protocolVersions }) });
+  const accepted = await register([2, 1]); assert.equal(accepted.status, 200); assert.equal((await accepted.json()).protocol, 2);
+  const old = await register([1]); assert.equal(old.status, 200); assert.equal((await old.json()).protocol, 1);
+  const rejected = await register([999]); assert.equal(rejected.status, 409); assert.match((await rejected.json()).error, /incompatible editor protocol/);
+  assert.equal(broker.list().length, 2);
+});

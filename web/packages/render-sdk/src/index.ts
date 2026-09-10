@@ -1,3 +1,4 @@
+/// <reference types="@webgpu/types" preserve="true" />
 // @velocut/render-sdk — browser rendering & media runtime for Velocut.
 //
 // What it owns: WebGPU compositing (Renderer), the worker-backed demux/decode
@@ -7,7 +8,7 @@
 // semantics, documents, or commands.
 
 export { Renderer, type InkRect, type TextLayout, type TextLine } from './renderer.ts';
-export { RendererClient, type PreviewRenderer } from './renderer-client.ts';
+export { RendererClient, type RendererClientOptions, type PreviewRenderer } from './renderer-client.ts';
 export { MediaLibrary, RemoteVideoSource, type ProbedMedia } from './media.ts';
 export { Playback, type TransportStore } from './playback.ts';
 export { AudioEngine } from './audio.ts';

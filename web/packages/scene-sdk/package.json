@@ -1,17 +1,46 @@
 {
   "name": "@velocut/scene-sdk",
   "version": "0.1.0",
-  "private": true,
   "license": "MIT",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json",
+    "./assets/*": "./assets/*"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.19.3",
-    "three": "^0.185.1"
+    "three": "^0.185.1",
+    "@types/three": "^0.185.0",
+    "@velocut/render-sdk": "0.1.0"
   },
   "devDependencies": {
     "@types/three": "^0.185.0"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "assets"
+  ],
+  "types": "./dist/index.d.ts",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/open-ribbi/velocut.git",
+    "directory": "web/packages/scene-sdk"
+  },
+  "scripts": {
+    "build": "node ../../scripts/build-sdk.mjs scene-sdk",
+    "prepack": "node ../../scripts/validate-package.mjs"
+  },
+  "engines": {
+    "node": ">=22.6"
   }
 }

@@ -1,3 +1,4 @@
+import { SUPPORTED_BRIDGE_PROTOCOLS } from '@velocut/protocol';
 import type { createCodexHost } from './codex-host';
 
 type Host = ReturnType<typeof createCodexHost>;
@@ -39,8 +40,8 @@ export function createCodexConnection(host: Host) {
       return result;
     };
     try {
-      const { sessionId, sessionKey, protocol } = await request('/register', match[2], host.info());
-      if (protocol !== 1 || typeof sessionId !== 'string' || typeof sessionKey !== 'string') throw new Error('unsupported Codex bridge');
+      const { sessionId, sessionKey, protocol } = await request('/register', match[2], { ...host.info(), protocolVersions: SUPPORTED_BRIDGE_PROTOCOLS });
+      if (!SUPPORTED_BRIDGE_PROTOCOLS.includes(protocol) || typeof sessionId !== 'string' || typeof sessionKey !== 'string') throw new Error('unsupported Codex bridge');
       if (abort.signal.aborted) return;
       const path = `/sessions/${sessionId}`;
       leave = () => { clearInterval(heartbeat); void fetch(base + path, { method: 'DELETE', headers: { Authorization: `Bearer ${sessionKey}` }, keepalive: true }).catch(() => {}); };

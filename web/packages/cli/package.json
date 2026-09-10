@@ -1,0 +1,34 @@
+{
+  "name": "@velocut/cli",
+  "version": "0.1.0",
+  "description": "Run the prebuilt Velocut Studio locally without a source checkout",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.6"
+  },
+  "bin": {
+    "velocut": "./dist/cli.mjs"
+  },
+  "exports": {
+    ".": "./dist/server.mjs"
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node --test test/*.test.mjs",
+    "prepack": "node ../../scripts/validate-package.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/open-ribbi/velocut.git",
+    "directory": "web/packages/cli"
+  }
+}

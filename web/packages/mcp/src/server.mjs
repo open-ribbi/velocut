@@ -35,7 +35,7 @@ export async function createVelocutServer(options = {}) {
     const { sessionId, ...rest } = args;
     return broker.call(sessionId, method, map(rest), signal);
   };
-  register('velocut_connect', 'Create a temporary pairing URL for the local Velocut editor. Open the returned URL in a browser, then call velocut_sessions. If the editor is not running, start it with npm run dev from the project web directory. No separate model API key is required.',
+  register('velocut_connect', 'Create a temporary pairing URL for the local Velocut editor. Open the returned URL in a browser, then call velocut_sessions. If the editor is not running, use velocut studio from the installed CLI or node start-studio.mjs from an extracted release. A source checkout can use npm run dev from web/. No separate model API key is required.',
     { editorUrl: z.string().url().optional().describe('Local HTTP editor URL; default http://localhost:5173') }, ({ editorUrl }) => broker.connect(editorUrl), true);
   register('velocut_sessions', 'List paired live pages with project identities, revisions and last-command state. Select the intended sessionId explicitly for every operation.', {}, () => ({ ok: true, sessions: broker.list() }), true);
   register('velocut_document', 'Read the paired project document and current revision. Does not expose editor/provider settings or API credentials.', session, relay('document'), true);
@@ -76,7 +76,7 @@ export async function createVelocutServer(options = {}) {
   return { server, broker, close: async () => { await broker.close(); await server.close(); } };
 }
 
-async function main() {
+export async function main() {
   const app = await createVelocutServer();
   let closing = false;
   const close = async () => { if (closing) return; closing = true; await app.close(); };
@@ -84,6 +84,3 @@ async function main() {
   process.on('SIGTERM', () => void close()); process.on('SIGINT', () => void close());
   await app.server.connect(new StdioServerTransport());
 }
-// Bundled entry and direct source execution share the same explicit flag. Tests
-// import createVelocutServer without opening listeners or attaching stdin.
-if (process.argv.includes('--stdio')) main().catch((e) => { console.error(e); process.exitCode = 1; });

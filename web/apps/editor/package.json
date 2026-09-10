@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && node ../../scripts/copy-editor-assets.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -20,7 +20,9 @@
     "three": "^0.185.1",
     "gsap": "^3.15.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "@velocut/runtime": "0.1.0",
+    "@huggingface/transformers": "^3.8.1"
   },
   "devDependencies": {
     "@types/react": "^18.3.12",

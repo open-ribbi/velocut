@@ -43,7 +43,12 @@ export interface PreviewRenderer {
  *  tolerates a dropped frame; a growing backlog of decoded frames it does not. */
 const MAX_INFLIGHT = 2;
 
+export interface RendererClientOptions {
+  /** Override for hosts whose bundler serves workers through an explicit asset URL. */
+  workerUrl?: string | URL;
+}
 export class RendererClient implements PreviewRenderer {
+  constructor(private options: RendererClientOptions = {}) {}
   private worker: Worker | null = null;
   private initPromise: Promise<void> | null = null;
   private initCanvas: HTMLCanvasElement | null = null;
@@ -70,7 +75,9 @@ export class RendererClient implements PreviewRenderer {
     return new Promise<void>((resolve, reject) => {
       let worker: Worker;
       try {
-        worker = new Worker(new URL('./render.worker.ts', import.meta.url), { type: 'module' });
+        worker = this.options.workerUrl
+          ? new Worker(this.options.workerUrl, { type: 'module' })
+          : new Worker(new URL('./render.worker.ts', import.meta.url), { type: 'module' });
       } catch (e) {
         reject(e instanceof Error ? e : new Error(String(e)));
         return;

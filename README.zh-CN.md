@@ -7,9 +7,39 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Node](https://img.shields.io/badge/node-%E2%89%A522.6-brightgreen)
 
-Velocut 是 [Ribbi](https://ribbi.ai) 开源的 Rust + WASM + WebGPU Web 视频剪辑引擎与编辑器——免安装、不上传,素材永远留在本地。**协议先行、AI-native**:人通过 UI 剪辑、LLM 直接下发 JSON 命令剪辑,两者走同一条命令链路,映射到同一个 UI。
+Velocut 是 [Ribbi](https://ribbi.ai) 开源的 Rust + WASM + WebGPU Web 视频剪辑引擎与编辑器——编辑和渲染在浏览器中运行，素材默认保存在本地，AI 观察和可选云服务会向所选提供方发送所需数据。**协议先行、AI-native**:人通过 UI 剪辑、LLM 直接下发 JSON 命令剪辑,两者走同一条命令链路,映射到同一个 UI。
 
 ![Velocut 编辑器——多轨时间线(波形/关键帧/转场/变速)+ WebGPU 合成预览](docs/media/editor.png)
+
+## 新的安装与 SDK 分发方式
+
+当前仓库可以构建独立 npm 包及“编辑器＋Codex 插件”的便携发行目录。
+**构建产物不等于已经发布到 npm**；公共发布由维护者单独执行。
+
+便携发行包解压后，在目录中运行：
+
+```sh
+node start-studio.mjs
+```
+
+无需克隆源码或安装开发依赖，但需要 Node.js 22.6+ 和支持 WebGPU/WebCodecs
+的 Chrome/Edge。启动器打开预构建编辑器；保持终端运行，并使用相同的主机名、
+端口和浏览器配置，以便再次打开保存在浏览器中的项目。
+
+对应版本发布到 npm 后，也可以运行：
+
+```sh
+npx @velocut/cli@0.1.0 studio
+```
+
+发行目录同时包含 Codex marketplace。将该目录添加为插件来源，安装 Velocut，
+在新 Codex 任务中要求连接正在运行的 Studio URL，打开返回的配对链接即可。
+模型推理在 Codex 中进行，不需要额外填写模型 API Key。其他 MCP 客户端可使用
+同一实现发布的 `@velocut/mcp`。
+
+协议、TS 引擎、场景、核心渲染和项目运行时均有独立 npm 产物；SDK 的 JS 和类型
+声明、Worker 和模型资源随包提供，不依赖当前源码目录。
+[安装、SDK 集成及发布指南](docs/integrations/npm-packages.md)。
 
 ## 环境要求
 
@@ -21,11 +51,11 @@ Velocut 是 [Ribbi](https://ribbi.ai) 开源的 Rust + WASM + WebGPU Web 视频�
 
 ```bash
 cd web
-npm install
+npm ci
 npm run dev
 ```
 
-开箱即用:DI 容器检测到 WASM 包缺失时自动回退到 TS 参考引擎(右上角 badge 显示当前引擎)。
+开箱即用:DI 容器检测到 WASM 包缺失时自动回退到 TS 参考引擎(底部状态栏 badge 显示当前引擎)。
 
 ## 启用 Rust/WASM 引擎(canonical 实现)
 
@@ -43,7 +73,7 @@ cd web && npm run dev   # badge 变为 "engine: Rust/WASM"
 
 ## Agent 快速上手
 
-Velocut 的第一"用户"是 AI Agent:点右下角「⌘ Agent」气泡,在供应商设置面板
+Velocut 的第一"用户"是 AI Agent:点工作区导航中的「Assistant」,在供应商设置面板
 里完成配置(直接用你自己的 Anthropic API key 即可),就能用自然语言剪辑——
 "把静音段都剪掉""给开头加个标题"。
 

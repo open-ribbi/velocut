@@ -4,5 +4,5 @@ import { fileURLToPath } from 'node:url';
 
 /** Keep direct `npx playwright test` (including clean CI jobs) reproducible. */
 export default async function setup() {
-  await promisify(execFile)(process.execPath, [fileURLToPath(new URL('../packages/codex-bridge/build.mjs', import.meta.url))]);
+  await promisify(execFile)(process.execPath, [fileURLToPath(new URL('../packages/mcp/build.mjs', import.meta.url))]);
 }

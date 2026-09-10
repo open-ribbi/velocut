@@ -47,6 +47,27 @@
   Anthropic API; transport injectable for testing)
 - `@velocut/collab-sdk` — CollabSession (Yjs/BC/IndexedDB) + OPFS media library
 
+## Public packages and project runtime
+
+The editor's shared `Store`, branching history, scene creation/edit/arrangement,
+observation, script sandbox and Director session now live in `@velocut/runtime`.
+The UI's old module paths are compatibility re-exports; project storage is wired
+by the app through an injected load/save adapter. Renderer caches are keyed by
+Store as well as asset ID, so independent projects may reuse IDs safely.
+
+`@velocut/mcp` implements the generic MCP transport. `plugins/codex/velocut`
+contains the Codex-specific manifest and skill; its executable bundle comes from
+the same MCP source. The browser's Codex adapter supplies history identity and
+pairs explicitly to a project. Wire compatibility is negotiated separately from
+document revisions and persisted-document format versions.
+
+`@velocut/cli` serves the prebuilt Studio through a loopback HTTP server with
+isolation headers and packaged scene assets. Pure engine/validation APIs work
+in Node; GPU rendering remains a browser capability. The independent SDK build
+emits JS, declarations and standalone worker files. A tarball consumer test is
+the distribution boundary test; workspace builds alone are not sufficient.
+See [package contracts and release flow](docs/integrations/npm-packages.md).
+
 ## Core Decisions and Rationale
 
 **1. Protocol first, dual engine implementations.**

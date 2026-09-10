@@ -9,7 +9,7 @@ import { modelFixture } from '../packages/scene-sdk/test/glb-fixture';
 async function mcp() {
   const client = new Client({ name: 'velocut-browser-test', version: '1.0.0' });
   await client.connect(new StdioClientTransport({ command: process.execPath,
-    args: [resolve('packages/codex-bridge/dist/velocut/scripts/server.cjs'), '--stdio'], stderr: 'pipe' }));
+    args: [resolve('packages/mcp/dist/velocut/scripts/server.cjs'), '--stdio'], stderr: 'pipe' }));
   const tool = async (name: string, args: Record<string, unknown> = {}) => client.callTool({ name, arguments: args }) as Promise<any>;
   return { client, tool };
 }

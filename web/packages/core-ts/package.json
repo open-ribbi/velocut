@@ -1,11 +1,38 @@
 {
   "name": "@velocut/core-ts",
   "version": "0.1.0",
-  "private": true,
   "license": "MIT",
   "type": "module",
-  "exports": { ".": "./src/engine.ts" },
+  "exports": {
+    ".": {
+      "types": "./dist/engine.d.ts",
+      "import": "./dist/engine.js",
+      "default": "./dist/engine.js"
+    },
+    "./package.json": "./package.json"
+  },
   "dependencies": {
-    "@velocut/protocol": "*"
+    "@velocut/protocol": "0.1.0"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "types": "./dist/engine.d.ts",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/open-ribbi/velocut.git",
+    "directory": "web/packages/core-ts"
+  },
+  "scripts": {
+    "build": "node ../../scripts/build-sdk.mjs core-ts",
+    "prepack": "node ../../scripts/validate-package.mjs"
+  },
+  "engines": {
+    "node": ">=22.6"
   }
 }
