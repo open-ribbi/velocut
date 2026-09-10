@@ -1,3 +1,4 @@
+import { browserOptions } from './scripts/browser-options.mjs';
 // E2E smoke configuration. The suite is designed to stay green on headless CI
 // runners: it exercises boot, import (image), timeline editing, persistence and
 // the project switcher — but asserts nothing that requires working WebGPU or
@@ -20,10 +21,9 @@ export default defineConfig({
   use: {
     baseURL: 'http://localhost:5173',
     trace: 'on-first-retry',
-    launchOptions: {
-      // Best-effort WebGPU on machines without a real GPU; harmless elsewhere.
-      args: ['--enable-unsafe-webgpu', '--use-angle=swiftshader'],
-    },
+    launchOptions: browserOptions,
+    headless: browserOptions.headless,
+    channel: browserOptions.channel,
   },
   webServer: {
     command: 'npm run dev',

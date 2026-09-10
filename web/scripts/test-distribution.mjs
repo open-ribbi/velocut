@@ -1,3 +1,4 @@
+import { browserOptions } from './browser-options.mjs';
 import assert from 'node:assert/strict';
 import { mkdtemp, writeFile, readFile, cp, mkdir, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -117,7 +118,7 @@ try {
   assert.equal(range.status, 206);
   assert.equal((await range.arrayBuffer()).byteLength, 16);
   assert.equal((await fetch(studio.url + '/%2e%2e%2fpackage.json')).status, 403);
-  browser = await chromium.launch({ args: ['--enable-unsafe-webgpu', '--use-angle=swiftshader'] });
+  browser = await chromium.launch(browserOptions);
   const page = await browser.newPage();
   await page.goto(studio.url);
   await page.waitForFunction(() => window.velocut?.sceneEdit);

@@ -64,7 +64,10 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - run: npm ci
       - run: npx playwright install --with-deps chromium
-      - run: npx playwright test
+      - run: sudo apt-get update && sudo apt-get install -y xvfb libvulkan1 mesa-vulkan-drivers
+      - run: xvfb-run -a npx playwright test
+        env:
+          VELOCUT_HEADED: '1'
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
