@@ -278,6 +278,8 @@ export interface SceneEditOptions {
   assetId: string;
   expectedRevision?: number;
   edits: SceneEdit[];
+  /** Validate and compile the candidate without changing the document/history. */
+  dryRun?: boolean;
 }
 type SceneDispatch = (cmd: Command) => ReturnType<Store['dispatch']>;
 
@@ -297,9 +299,11 @@ export async function replaceSceneSpec(
   spec: SceneSpec,
   expectedRevision: number,
   dispatch: SceneDispatch = (cmd) => store.dispatch(cmd),
+  dryRun = false,
 ) {
   let compiled: CompiledScene | undefined;
   try {
+    if (typeof dryRun !== 'boolean') throw new Error('dryRun must be boolean');
     const media = authoringMedia.get(store);
     if (!media) throw new Error('scene authoring is not initialized');
     const before = readScene(store, assetId);
@@ -321,6 +325,11 @@ export async function replaceSceneSpec(
       store.getState().doc.assets.find((a) => a.id === assetId)?.spec !== before.asset.spec
     ) {
       throw new Error('conflict: document changed while compiling; read the scene again');
+    }
+    if (dryRun) {
+      compiled.dispose();
+      compiled = undefined;
+      return { ok: true as const, assetId, revision: expectedRevision, ready: false, preview: true, spec: normalized };
     }
     const r = dispatch({ type: 'setAssetSpec', assetId, spec: serialized });
     if (!r.ok) throw new Error(r.error.message);
@@ -350,8 +359,9 @@ export async function editScene(store: Store, opts: SceneEditOptions, dispatch?:
       result.spec,
       opts.expectedRevision ?? before.revision,
       dispatch,
+      opts.dryRun ?? false,
     );
-    return committed.ok ? { ...committed, changedIds: result.changedIds } : committed;
+    return committed.ok ? { ...committed, changedIds: result.changedIds, createdIds: result.createdIds, copies: result.copies } : committed;
   } catch (e) {
     return { ok: false as const, message: e instanceof Error ? e.message : String(e) };
   }
@@ -396,7 +406,10 @@ export async function inspectScene(
 export interface SceneArrangeOptions {
   assetId: string;
   ids: string[];
-  mode: 'ground' | 'on' | 'align';
+  mode: 'ground' | 'on' | 'align' | 'distribute';
+  /** distribute: first lower bound along axis; defaults to the first selected object. */
+  start?: number;
+  dryRun?: boolean;
   referenceId?: string;
   axis?: 'x' | 'y' | 'z';
   edge?: 'min' | 'max' | 'center';
@@ -422,11 +435,14 @@ export async function arrangeScene(
       new Set(opts.ids).size !== opts.ids.length
     )
       throw new Error('ids must contain 1..200 unique object IDs');
-    if (!['ground', 'on', 'align'].includes(opts.mode)) throw new Error('unknown arrange mode');
+    if (!['ground', 'on', 'align', 'distribute'].includes(opts.mode)) throw new Error('unknown arrange mode');
     if (opts.axis != null && !['x', 'y', 'z'].includes(opts.axis))
       throw new Error('unknown align axis');
     if (opts.edge != null && !['min', 'max', 'center'].includes(opts.edge))
       throw new Error('unknown align edge');
+    if (opts.timeS != null && (!Number.isFinite(opts.timeS) || opts.timeS < 0)) throw new Error('timeS must be nonnegative');
+    if (opts.start != null && !Number.isFinite(opts.start)) throw new Error('start must be finite meters');
+    if (opts.mode === 'distribute' && opts.referenceId != null) throw new Error('distribute does not use referenceId');
     const gap = opts.gap ?? 0;
     if (!Number.isFinite(gap)) throw new Error('gap must be finite meters');
     const r = await inspectScene(store, opts);
@@ -435,7 +451,7 @@ export async function arrangeScene(
       throw new Error('conflict: document changed; read the scene again');
     const targets = new Map(r.objects.map((o) => [o.id, o]));
     const reference = opts.referenceId ? targets.get(opts.referenceId) : undefined;
-    if (opts.mode !== 'ground' && !reference?.bounds)
+    if ((opts.mode === 'on' || opts.mode === 'align') && !reference?.bounds)
       throw new Error('on/align requires a referenceId with geometry');
     const moves = new Set(opts.ids);
     for (const id of [...opts.ids, ...(reference ? [reference.id] : [])]) {
@@ -454,6 +470,9 @@ export async function arrangeScene(
     if (reference && moves.has(reference.id)) throw new Error('reference must not be moved');
     const T = await import('three');
     const edits: SceneEdit[] = [];
+    const distributionAxis = opts.axis ?? 'x';
+    const distributionIndex = { x: 0, y: 1, z: 2 }[distributionAxis];
+    let cursor = opts.start ?? targets.get(opts.ids[0])?.bounds?.min[distributionIndex] ?? 0;
     for (const id of opts.ids) {
       const object = targets.get(id)!;
       if (!object.bounds) throw new Error(`object '${id}' has no geometry`);
@@ -461,7 +480,10 @@ export async function arrangeScene(
       if ('physics' in authored && authored.physics && (opts.timeS ?? 0) !== 0)
         throw new Error('arrange physics props at timeS:0 to change their initial pose');
       const delta = new T.Vector3();
-      if (opts.mode === 'align') {
+      if (opts.mode === 'distribute') {
+        delta[distributionAxis] = cursor - object.bounds.min[distributionIndex];
+        cursor += object.bounds.size[distributionIndex] + gap;
+      } else if (opts.mode === 'align') {
         const axis = opts.axis ?? 'x',
           i = { x: 0, y: 1, z: 2 }[axis],
           edge = opts.edge ?? 'center';
@@ -495,7 +517,7 @@ export async function arrangeScene(
     }
     return editScene(
       store,
-      { assetId: opts.assetId, edits, expectedRevision: r.revision },
+      { assetId: opts.assetId, edits, expectedRevision: r.revision, dryRun: opts.dryRun },
       dispatch,
     );
   } catch (e) {

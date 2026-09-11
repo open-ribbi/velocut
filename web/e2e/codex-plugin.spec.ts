@@ -14,6 +14,60 @@ async function mcp() {
   return { client, tool };
 }
 
+test('CodeAct previews and commits batch copies/layout as one attributed undo step', async ({ page }) => {
+  const { client, tool } = await mcp();
+  try {
+    await page.goto((await tool('velocut_connect')).structuredContent.url);
+    await expect(page.locator('.codex-status')).toHaveClass(/\bconnected\b/);
+    const sessionId = (await tool('velocut_sessions')).structuredContent.sessions[0].sessionId;
+    const made = (await tool('velocut_scene_create', { sessionId, spec: { version: 1, durationUs: 1_000_000, width: 320, height: 180 } })).structuredContent;
+    const assetId = made.assetId;
+    const before = (await tool('velocut_scene_inspect', { sessionId, assetId })).structuredContent;
+    const code = (dryRun: boolean) => `
+      const copies = Array.from({length:3}, (_,i) => ({prefix:'seat'+i}));
+      const edits = [
+        {type:'assembly',id:'chair',recipe:{template:'chair'}},
+        {type:'duplicateMany',ids:['chair'],copies},
+        {type:'layout',ids:['chair',...copies.map(c=>c.prefix+'/chair')],layout:{mode:'radial',center:{},radius:3,facing:'inward'}},
+        {type:'transform',ids:['seat0/chair'],relative:true,transform:{position:{y:0.25},rotation:{y:10}}}
+      ];
+      const result = await velocut.sceneEdit({assetId:${JSON.stringify(assetId)},expectedRevision:${before.revision},dryRun:${dryRun},edits});
+      if (!result.ok) throw new Error(result.message);
+      return result;
+    `;
+    const preview = (await tool('velocut_script', { sessionId, code: code(true) })).structuredContent;
+    expect(preview.ok, JSON.stringify(preview)).toBe(true);
+    expect(preview.result.preview).toBe(true); expect(preview.result.ready).toBe(false);
+    expect(preview.result.revision).toBe(before.revision);
+    const afterPreview = (await tool('velocut_scene_inspect', { sessionId, assetId })).structuredContent;
+    expect(afterPreview.spec).toEqual(before.spec); expect(afterPreview.revision).toBe(before.revision);
+    const committed = (await tool('velocut_script', { sessionId, code: code(false) })).structuredContent;
+    expect(committed.ok, JSON.stringify(committed)).toBe(true);
+    expect(committed.result.ready).toBe(true);
+    expect(committed.result.createdIds).toHaveLength(28); // Four groups, six parts each.
+    expect(committed.result.copies[0].idMap.chair).toBe('seat0/chair');
+    const after = (await tool('velocut_scene_inspect', { sessionId, assetId })).structuredContent;
+    const distributionPreview = await tool('velocut_scene_arrange', { sessionId, assetId, ids: ['chair', 'seat0/chair'], mode: 'distribute', axis: 'x', start: -6, gap: 0.2, dryRun: true, expectedRevision: after.revision });
+    expect(distributionPreview.isError, JSON.stringify(distributionPreview.structuredContent)).toBe(false);
+    expect(distributionPreview.structuredContent.preview).toBe(true);
+    const seat = after.objects.find((o: any) => o.id === 'seat0/chair');
+    expect(seat.position[0]).toBeCloseTo(3); expect(seat.position[1]).toBeCloseTo(0.25);
+    expect(after.spec.groups.find((g: any) => g.id === 'seat0/chair').rotationY).toBe(280);
+    const failed = await tool('velocut_scene_edit', { sessionId, assetId, expectedRevision: after.revision, edits: [
+      { type: 'transform', ids: ['chair'], transform: { position: { x: 100 } } },
+      { type: 'duplicateMany', ids: ['chair'], copies: [{ prefix: 'seat0' }] },
+    ] });
+    expect(failed.isError).toBe(true);
+    expect((await tool('velocut_scene_inspect', { sessionId, assetId })).structuredContent.revision).toBe(after.revision);
+    const image = await tool('velocut_observe', { sessionId, mode: 'scene', source: { assetId }, view: 'top' });
+    expect(image.content.some((c: any) => c.type === 'image')).toBe(true);
+    const history = await page.evaluate(() => (window as any).velocut.store.getHistory().all().filter((n: any) => n.actor.name === 'Codex'));
+    expect(history).toHaveLength(2); // create + entire script batch; preview/failure add nothing.
+    expect((await tool('velocut_history', { sessionId, expectedRevision: after.revision, action: 'undo' })).isError).toBe(false);
+    expect((await tool('velocut_scene_inspect', { sessionId, assetId })).structuredContent.spec).toEqual(before.spec);
+  } finally { await client.close(); }
+});
+
 test('packaged MCP drives the real editor, returns images and attributes edits to Codex', async ({ page }, testInfo) => {
   const { client, tool } = await mcp();
   try {

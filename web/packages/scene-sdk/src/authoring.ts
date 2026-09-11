@@ -1,11 +1,16 @@
 // Pure, transactional authoring. This is shared by human controls, scripts and
 // future transports. Three.js remains a derived view of the returned document.
+import { layoutTransforms, transformObject, placementTime, type ObjectTransform, type SceneLayout } from './placement.ts';
 import { assemblyParts, type AssemblyRecipe } from './assemblies.ts';
 import { validateSceneSpec, type SceneSpec, type SceneCharacter, type SceneProp, type SceneGroup, type SceneLight } from './types.ts';
 
 export type SceneObjectKind = 'character' | 'prop' | 'group' | 'light';
 export type SceneObject = SceneCharacter | SceneProp | SceneGroup | SceneLight;
+export interface SceneCopy { prefix: string; rootIds: string[]; idMap: Record<string, string> }
 export type SceneEdit =
+  | { type: 'duplicateMany'; ids: string[]; copies: Array<{ prefix: string; transform?: ObjectTransform; relative?: boolean }>; timeS?: number }
+  | { type: 'transform'; ids: string[]; transform: ObjectTransform; relative?: boolean; timeS?: number }
+  | { type: 'layout'; ids: string[]; layout: SceneLayout; timeS?: number }
   | { type: 'assembly'; id: string; recipe: AssemblyRecipe }
   | { type: 'array'; id: string; prefix: string; copies: number; offset: { x?: number; y?: number; z?: number } }
   | { type: 'add'; kind: 'character'; object: SceneCharacter }
@@ -50,12 +55,14 @@ const fields: Record<SceneObjectKind, string[]> = {
 };
 const fail = (message: string): never => { throw new Error(message); };
 
-export function applySceneEdits(input: SceneSpec, edits: SceneEdit[]): { spec: SceneSpec; changedIds: string[] } {
+export function applySceneEdits(input: SceneSpec, edits: SceneEdit[]): { spec: SceneSpec; changedIds: string[]; createdIds: string[]; copies: SceneCopy[] } {
   if (!Array.isArray(edits) || !edits.length || edits.length > 500) fail('edits must contain 1..500 operations');
   const initialError = validateSceneSpec(input);
   if (initialError) fail(initialError);
   const spec = normalizeSceneSpec(input);
   const changed = new Set<string>();
+  const initialIds = new Set(sceneObjects(spec).map(e => e.object.id));
+  const copies: SceneCopy[] = [];
   const find = (id: string) => sceneObjects(spec).find((e) => e.object.id === id) ?? fail(`unknown object '${id}'`);
   const append = (kind: SceneObjectKind, object: SceneObject) => {
     if (kind === 'character') (spec.characters ??= []).push(object as SceneCharacter);
@@ -76,6 +83,14 @@ export function applySceneEdits(input: SceneSpec, edits: SceneEdit[]): { spec: S
       }
     }
     return ids;
+  };
+  const selection = (ids: string[]) => {
+    if (!Array.isArray(ids) || !ids.length || ids.length > 200 || ids.some(id => typeof id !== 'string' || !id.trim()) || new Set(ids).size !== ids.length)
+      fail('ids must contain 1..200 unique object IDs');
+    const entries = ids.map(find);
+    for (const id of ids) for (const child of descendants(id))
+      if (child !== id && ids.includes(child)) fail('selection cannot include both an object and its descendant');
+    return entries;
   };
   const expanded = edits.flatMap((edit): SceneEdit[] => {
     if (edit?.type !== 'array') return [edit];
@@ -120,36 +135,56 @@ export function applySceneEdits(input: SceneSpec, edits: SceneEdit[]): { spec: S
       Object.assign(object, structuredClone(edit.patch));
       for (const k of edit.clear ?? []) delete (object as unknown as Record<string, unknown>)[k];
       changed.add(edit.id);
-    } else if (edit.type === 'duplicate') {
-      find(edit.id);
-      if (typeof edit.newId !== 'string' || !edit.newId.trim()) fail('duplicate requires newId');
-      const ids = descendants(edit.id);
-      const entries = sceneObjects(spec).filter((e) => e.object.id && ids.has(e.object.id));
-      const mapped = new Map<string, string>();
-      const used = new Set(sceneObjects(spec).map((e) => e.object.id));
-      for (const e of entries) {
-        const oldId = e.object.id!;
-        const id = oldId === edit.id ? edit.newId : oldId.startsWith(edit.id + '/') ? edit.newId + oldId.slice(edit.id.length) : `${edit.newId}/${oldId}`;
-        if (used.has(id)) fail(`duplicate object id '${id}'`);
-        used.add(id); mapped.set(e.object.id!, id);
+    } else if (edit.type === 'transform' || edit.type === 'layout') {
+      const entries = selection(edit.ids);
+      const timeS = placementTime(edit.timeS);
+      if (edit.type === 'transform' && edit.relative != null && typeof edit.relative !== 'boolean') fail('relative must be boolean');
+      if (edit.type === 'layout') {
+        const frame = (o: SceneObject) => 'attachTo' in o && o.attachTo ? `bone:${o.attachTo.character}:${o.attachTo.bone}` : `parent:${o.parentId ?? ''}`;
+        if (new Set(entries.map(e => frame(e.object))).size !== 1) fail('layout objects must share a parent frame; use sceneArrange for world-space placement');
       }
-      for (const { kind, object } of entries) {
-        const o = structuredClone(object);
-        o.id = mapped.get(o.id!)!;
-        if (o.parentId && mapped.has(o.parentId)) o.parentId = mapped.get(o.parentId);
-        if ('attachTo' in o && o.attachTo && mapped.has(o.attachTo.character)) o.attachTo.character = mapped.get(o.attachTo.character)!;
-        if ('gaze' in o && typeof o.gaze === 'object' && mapped.has(o.gaze.character)) o.gaze.character = mapped.get(o.gaze.character)!;
-        if (object.id === edit.id && edit.offset) {
-          for (const axis of ['x', 'y', 'z'] as const) {
-            const delta = edit.offset[axis] ?? 0;
-            if (!Number.isFinite(delta)) fail('offset must contain finite numbers');
-            if (!delta) continue;
-            const base = axis === 'y' && kind === 'prop' && !('attachTo' in o && o.attachTo) ? 0.5 : 0;
-            const v = o.position?.[axis] ?? base;
-            (o.position ??= {})[axis] = Array.isArray(v) ? v.map((k) => ({ ...k, v: k.v + delta })) : v + delta;
-          }
+      const transforms = edit.type === 'layout' ? layoutTransforms(edit.layout, entries.length) : entries.map(() => edit.transform);
+      entries.forEach(({ kind, object }, i) => {
+        transformObject(object, kind, transforms[i], edit.type === 'transform' && (edit.relative ?? false), timeS);
+        changed.add(object.id!);
+      });
+    } else if (edit.type === 'duplicate' || edit.type === 'duplicateMany') {
+      const roots = edit.type === 'duplicate' ? [edit.id] : edit.ids;
+      selection(roots);
+      const timeS = edit.type === 'duplicateMany' ? placementTime(edit.timeS) : 0;
+      const requests = edit.type === 'duplicate' ? [{ prefix: edit.newId }] : edit.copies;
+      if (!Array.isArray(requests) || !requests.length || requests.length > 100) fail('copies must contain 1..100 copy requests');
+      const ids = new Set(roots.flatMap(id => [...descendants(id)]));
+      // Snapshot once: later copies must never recursively copy earlier copies.
+      const entries = sceneObjects(spec).filter(e => ids.has(e.object.id!));
+      if (entries.length * requests.length > 500) fail('duplication exceeds 500 generated objects');
+      for (const request of requests) {
+        if (!request || typeof request.prefix !== 'string' || !request.prefix.trim()) fail('duplicate requires a nonempty prefix/newId');
+        if (Object.keys(request).some(k => !['prefix', 'transform', 'relative'].includes(k))) fail('unknown copy request field');
+        if ('relative' in request && request.relative != null && typeof request.relative !== 'boolean') fail('relative must be boolean');
+        const mapped = new Map<string, string>();
+        const used = new Set(sceneObjects(spec).map(e => e.object.id));
+        for (const { object } of entries) {
+          const oldId = object.id!;
+          const id = edit.type === 'duplicate'
+            ? oldId === edit.id ? request.prefix : oldId.startsWith(edit.id + '/') ? request.prefix + oldId.slice(edit.id.length) : `${request.prefix}/${oldId}`
+            : `${request.prefix}/${oldId}`;
+          if (used.has(id)) fail(`duplicate object id '${id}'`);
+          used.add(id); mapped.set(oldId, id);
         }
-        append(kind, o); changed.add(o.id);
+        for (const { kind, object } of entries) {
+          const o = structuredClone(object);
+          o.id = mapped.get(o.id!)!;
+          if (o.parentId && mapped.has(o.parentId)) o.parentId = mapped.get(o.parentId);
+          if ('attachTo' in o && o.attachTo && mapped.has(o.attachTo.character)) o.attachTo.character = mapped.get(o.attachTo.character)!;
+          if ('gaze' in o && typeof o.gaze === 'object' && mapped.has(o.gaze.character)) o.gaze.character = mapped.get(o.gaze.character)!;
+          if (roots.includes(object.id!)) {
+            if (edit.type === 'duplicate' && edit.offset) transformObject(o, kind, { position: edit.offset }, true);
+            if ('transform' in request && request.transform !== undefined) transformObject(o, kind, request.transform!, request.relative ?? false, timeS);
+          }
+          append(kind, o); changed.add(o.id);
+        }
+        copies.push({ prefix: request.prefix, rootIds: roots.map(id => mapped.get(id)!), idMap: Object.fromEntries(mapped) });
       }
     } else if (edit.type === 'remove') {
       find(edit.id);
@@ -177,5 +212,5 @@ export function applySceneEdits(input: SceneSpec, edits: SceneEdit[]): { spec: S
   }
   const error = validateSceneSpec(spec);
   if (error) fail(error);
-  return { spec, changedIds: [...changed] };
+  return { spec, changedIds: [...changed], createdIds: sceneObjects(spec).map(e => e.object.id!).filter(id => !initialIds.has(id)), copies };
 }

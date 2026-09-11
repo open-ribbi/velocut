@@ -42,7 +42,7 @@ export {
   type StageProp,
 } from './stage.ts';
 
-export { applySceneEdits, normalizeSceneSpec, nextSceneId, sceneObjects, type SceneEdit, type SceneObjectKind, type SceneObject } from './authoring.ts';
+export { applySceneEdits, normalizeSceneSpec, nextSceneId, sceneObjects, type SceneEdit, type SceneCopy, type SceneObjectKind, type SceneObject } from './authoring.ts';
 
 export { validateViewCamera, type SceneViewCamera, constructionCamera, inspectStage, SCENE_VIEWS, type SceneView } from './inspection.ts';
 
@@ -51,3 +51,5 @@ export { ASSEMBLY_DEFAULTS, assemblyParts, type AssemblyRecipe, type AssemblyTem
 export { withImportedModels, validateGlb, parseSceneModel, loadImportedModel, MAX_MODEL_BYTES, type SceneResources } from './models.ts';
 
 export { exportSceneGlb, type SceneGlbOptions, type SceneGlbResult } from './export.ts';
+
+export { type ObjectTransform, type SceneLayout, type PlacementVector } from './placement.ts';

@@ -31,15 +31,15 @@ unfinished requirements explicitly; passing schema tests alone is not completion
 ## Implemented authoring surface
 
 All methods below are available in the editor's `window.velocut` and in the
-agent's `velocut_script` sandbox. A future MCP adapter can delegate to them.
+agent's `velocut_script` sandbox. The MCP adapter delegates to the same services.
 
 | Method | Behavior |
 |---|---|
 | `sceneClip({spec,…})` | Create and compile a scene, normalize anonymous prop IDs |
 | `sceneInspect({assetId,timeS?})` | Return normalized spec, document revision, world transforms and evaluated bounds |
-| `sceneEdit({assetId,expectedRevision?,edits})` | Apply an object/scene transaction; compile before committing; return `ready:true` |
+| `sceneEdit({assetId,expectedRevision?,edits,dryRun?})` | Compile then commit once; `dryRun:true` returns a validated candidate without committing |
 | `sceneImportModel({assetId,file?/base64?,kind?,…})` | Import an embedded GLB into versioned project storage and create a static/animated object |
-| `sceneArrange({assetId,ids,mode,…})` | Ground, place on another object, or align an edge using world bounds |
+| `sceneArrange({assetId,ids,mode,…})` | Ground, place on another object, align an edge, or distribute using world bounds; accepts `dryRun` |
 | `directorSession(opts?)` | Read/control open scene, selection, focus, view, gizmo mode, time and playback |
 | `observe({mode:'scene',source:{assetId},view,…})` | Render a construction/shot view and return image plus revision and geometry evidence |
 
@@ -70,6 +70,87 @@ Geometry: existing primitives, lathe and extrusion, plus `prop/tube` with a
 Groups nest via `parentId`. All objects support animatable `rotationX/Y/Z`
 (degrees, XYZ Euler order) and positive per-axis scale. Props expose PBR
 roughness, metalness, opacity, emissive color/intensity and face sidedness.
+
+### Batch copying and precise placement (unreleased)
+
+These operations work in `sceneEdit.edits`, from the standalone SDK's
+`applySceneEdits`, the built-in agent, and the Codex MCP script tool.
+
+- `duplicateMany`: `{type:'duplicateMany',ids,copies:[{prefix,transform?,relative?}],timeS?}`.
+  Select independent roots; descendants are included automatically. Every copy
+  uses `${prefix}/${oldId}` for all objects, remapping parent, attachment and
+  internal gaze references across the entire selection. External references stay
+  external. Each optional transform applies to each copied root in its own local
+  frame; use `relative:true` for offsets that preserve separation. Originals are
+  unchanged. Result `copies` contains `{prefix,rootIds,idMap}` for each copy;
+  `createdIds` lists new objects remaining in the candidate, `changedIds` includes
+  updated/removed objects. Prefix collisions fail the entire batch.
+- `transform`: `{type:'transform',ids,transform:{position?,rotation?,scale?},relative?,timeS?}`.
+  Position and rotation use `{x?,y?,z?}`. Scale is a positive number or per-axis
+  object. Default mode sets supplied components to the requested values at
+  `timeS` (default 0); `relative:true` adds position/Euler components and multiplies
+  scales. Omitted axes remain unchanged. Keyframes shift uniformly, retaining
+  timing and easing. Coordinates are parent-local, rotations are XYZ Euler
+  degrees about each object's own origin. This is not rotation/scaling of a
+  selection around a shared pivot. Physics props require `timeS:0`.
+- `layout`: `{type:'layout',ids,layout,timeS?}`. Place origins in caller ID order.
+  All roots must share a parent frame (or the same attachment bone). Layouts:
+  - `{mode:'line',origin:{x?,y?,z?},step:{x?,y?,z?}}`.
+  - `{mode:'grid',origin:{x?,y?,z?},columns,spacing:{x,z}}`: row-major X/Z grid,
+    positive spacing and 1..200 columns.
+  - `{mode:'radial',center:{x?,y?,z?},radius,startAngle?,sweepAngle?,facing?,rotationOffset?}`:
+    X/Z ring or arc, positive radius, default start 0 and sweep 360 degrees.
+    Angle 0 is +Z; positive angles turn toward +X. A full ±360 ring omits the
+    duplicate endpoint; shorter arcs include both endpoints. Facing defaults to
+    `keep`, or use `inward`, `outward`, `tangent` to orient local +Z; `rotationOffset`
+    adds a yaw correction to these orientations. Only yaw changes. Omitted
+    origin/center axes are 0. Existing animation paths are shifted at `timeS`.
+- `sceneArrange({assetId,ids,mode:'distribute',axis?,gap?,start?,timeS?,expectedRevision?,dryRun?})`:
+  pack evaluated world bounds in ID order, along positive axis (default X), with
+  `gap` meters between edges (default 0; negative values intentionally overlap).
+  `start` sets the first lower edge, defaulting to that object's current lower
+  edge. Other world coordinates are retained. Supports different, rotated/scaled
+  parents and shifts local animation paths. It does not use `referenceId`.
+
+Selections reject duplicate IDs and parent/descendant overlap. Limits remain
+200 props, 100 groups, 8 characters, 16 lights, and 256 KiB per scene; assembly
+parts count as props. `duplicateMany` accepts 1..100 copy requests and at most
+500 generated objects, subject to these tighter scene limits. Layouts address
+origins, not geometry clearance; use world-bound arrangement for measured gaps.
+
+`dryRun:true` performs the same validation and compilation as a commit, disposes
+its temporary renderer, and returns `{ok:true,preview:true,ready:false,revision,
+spec,changedIds,createdIds,copies}`. It changes neither document nor history and
+returns no image. Commit the same edits with the returned revision; a concurrent
+edit causes a conflict. Preview is optional, not an approval requirement.
+
+Combine copying, layout and detailed transforms in **one** `sceneEdit` call to
+get one undo step and no partial state if validation/compilation fails. Several
+separate calls in a script are still separate transactions.
+
+```js
+// assetId is the scene selected from document/inspection, not an object ID.
+const current = await velocut.sceneInspect({ assetId });
+if (!current.ok) throw new Error(current.message);
+const copies = Array.from({ length: 11 }, (_, i) => ({ prefix: `seat${i + 1}` }));
+const ids = ['chair', ...copies.map(c => `${c.prefix}/chair`)];
+const edits = [
+  { type: 'assembly', id: 'chair', recipe: { template: 'chair' } },
+  { type: 'duplicateMany', ids: ['chair'], copies },
+  { type: 'layout', ids, layout: {
+    mode: 'radial', center: { y: 0 }, radius: 4,
+    startAngle: -90, sweepAngle: 180, facing: 'inward'
+  } },
+  { type: 'transform', ids: ['seat1/chair'], relative: true,
+    transform: { position: { y: 0.1 }, rotation: { y: 5 } } }
+];
+const result = await velocut.sceneEdit({
+  assetId, expectedRevision: current.revision, edits
+});
+if (!result.ok) throw new Error(result.message);
+return { revision: result.revision, createdIds: result.createdIds, copies: result.copies };
+// Follow with the separate velocut_observe tool for actual images.
+```
 
 ### Example: assemble and place a vase
 
@@ -174,3 +255,19 @@ real host/tool/vision/history wiring. It does not assert that a real model will
 produce professional geometry for every natural-language request. Known runtime
 boundaries above remain explicit; implementing Blender's full DCC feature set is
 outside the requested native Director capability expansion.
+
+## Batch placement validation (2026-09-11)
+
+- Production SDK declarations and editor build passed; no new dependencies.
+- 84 unit tests and 8 MCP tests passed. New placement cases cover absolute and
+  relative animated transforms, multi-root reference/attachment remapping,
+  assembly regeneration after copying, line/grid/radial layouts, facing, copy
+  limits, malformed inputs, overlapping selections and transactional failures.
+- 15 relevant browser tests passed across `director-authoring.spec.ts`,
+  `codex-plugin.spec.ts` and `placement.spec.ts`. The packaged MCP executes a
+  real sandbox script that previews and commits copies + layout + adjustments,
+  returns rendered image content and undoes the whole batch in one step.
+  Distribution measures exact gaps under rotated/nonuniformly scaled parents,
+  preserves animation and rejects stale revisions. Dry-run compile failures
+  leave document and history unchanged. The final focused MCP check also covers
+  the direct distribute tool's dryRun/start schema.
