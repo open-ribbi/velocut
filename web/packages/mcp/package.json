@@ -10,9 +10,9 @@
   },
   "devDependencies": {
     "@modelcontextprotocol/client": "2.0.0",
-    "esbuild": "^0.21.5",
+    "esbuild": "^0.28.2",
     "@modelcontextprotocol/server": "2.0.0",
-    "zod": "^4.0.0",
+    "zod": "^4.5.4",
     "@velocut/protocol": "0.0.1"
   },
   "bin": {
