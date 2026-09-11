@@ -1,47 +1,109 @@
-<!-- markdownlint-disable MD041 -->
-**English** | [简体中文](README.zh-CN.md)
+**English** · [简体中文](README.zh-CN.md)
 
-# Velocut — AI-native video editing in the browser
+# Velocut
 
-[![CI](https://github.com/open-ribbi/velocut/actions/workflows/ci.yml/badge.svg)](.github/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-![Node](https://img.shields.io/badge/node-%E2%89%A522.6-brightgreen)
+**A browser studio for editing video and directing 3D scenes with AI.**
 
-Velocut, by [Ribbi](https://ribbi.ai), is an **AI-native, local-first video editor that runs entirely in the browser** — no install, no upload, media storage and rendering stay on your machine; AI observations and optional cloud features send the data needed by the selected provider. A canonical Rust engine (compiled to WASM) is mirrored by a TypeScript reference engine and kept in lock-step by shared golden-vector tests; WebGPU handles compositing and WebCodecs handles decode/export; and an LLM agent edits through the *exact same* JSON command protocol a human drives from the UI.
+[![Release](https://img.shields.io/badge/release-v0.0.1-e6b774)](https://github.com/open-ribbi/velocut/releases/tag/v0.0.1)
+[![CI](https://github.com/open-ribbi/velocut/actions/workflows/ci.yml/badge.svg)](https://github.com/open-ribbi/velocut/actions/workflows/ci.yml)
+[![Distribution](https://github.com/open-ribbi/velocut/actions/workflows/distribution.yml/badge.svg)](https://github.com/open-ribbi/velocut/actions/workflows/distribution.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-> **Protocol-first, AI-native.** Humans edit via the UI, the LLM issues JSON commands directly — both flow through one command pipeline into one document model. The AI agent is treated as the system's first-class *user*; the human UI's job is to make the agent's perception and actions visible and correctable.
+**[Download 0.0.1](https://github.com/open-ribbi/velocut/releases/tag/v0.0.1)** · [Connect Codex](#connect-codex) · [Use the SDKs](#use-the-sdks) · [Contribute](CONTRIBUTING.md)
 
-![Velocut editor — multi-track timeline with waveforms, keyframes, transitions, speed ramps, and a WebGPU-composited preview](docs/media/editor.png)
+Velocut combines a multitrack video editor, an editable 3D Director and a programmable project runtime. Arrange a shot by hand or ask Codex to build it: both use the same editing services, project document and undo history.
 
-## Requirements
+Built by [Ribbi](https://ribbi.ai). Media storage and rendering stay in your browser. AI observations and optional cloud features send the data needed by the model or provider you choose.
 
-- **Node ≥ 22.6** (`npm test` uses `--experimental-strip-types`; a `.nvmrc` is at the repo root)
-- **Browser: Chrome / Edge 113+** (WebGPU + WebCodecs; Safari/Firefox not yet supported)
-- Optional: Rust stable + `wasm-pack` (only to build the canonical WASM engine)
+![Velocut Studio: the Sunroom scene in the program monitor, three shots on the timeline, a title track and clip properties.](docs/media/editor.png)
 
-## Run Studio
+*The current Studio UI, captured from a real project. The demo scene is made from editable geometry and furniture assemblies.*
 
-The repository now builds two end-user distributions: a portable Studio + Codex
-plugin bundle and npm packages. Registry publication is a separate maintainer
-step; do not assume a version has been published just because it builds here.
+## Start Studio
 
-**Portable release:** extract `velocut-<version>` and run:
+Download the **[portable ZIP](https://github.com/open-ribbi/velocut/releases/download/v0.0.1/velocut-standalone.zip)** or **[TAR.GZ](https://github.com/open-ribbi/velocut/releases/download/v0.0.1/velocut-standalone.tar.gz)**, extract it, then run inside the `velocut-0.0.1` directory:
 
 ```sh
 node start-studio.mjs
 ```
 
-This serves the prebuilt editor and opens your browser. No npm install or source
-checkout is required. Keep the terminal running and reuse the printed hostname
-and port: browser projects are scoped to that origin.
+Studio opens in your browser. Keep the terminal running while you work. The portable bundle includes the editor, scene assets and a Codex plugin marketplace; no source checkout or `npm install` is required.
 
-**npm, after the requested version is published:**
+- **Node.js 22.6+** and **Chrome/Edge with WebGPU and WebCodecs** are required. Safari and Firefox are not currently supported by the full editor.
+- Projects live in browser IndexedDB/OPFS. Reuse the same browser profile, hostname and port to reopen them.
+- Manual editing and the Codex integration need no additional model API key.
+- The release includes [SHA-256 checksums](https://github.com/open-ribbi/velocut/releases/download/v0.0.1/SHA256SUMS.txt). Public npm registry publication is still pending; the release provides installable `.tgz` packages today.
 
-```sh
-npx @velocut/cli@0.0.1 studio
-```
+## Connect Codex
 
-**From source:**
+1. Start Studio using the portable launcher.
+2. Add the extracted release directory as a local marketplace source in Codex and install **Velocut**.
+3. Start a new Codex task and ask it to connect to the Studio URL printed in your terminal.
+4. Open the returned pairing link. Codex can then select your project, edit it and inspect rendered views.
+
+Try a request such as:
+
+> Build a sunlit room with a wooden table, two chairs and a small sculpture. Keep everything editable, then compose a wide shot and a close-up.
+
+The model runs in Codex. The plugin supplies tools for scene creation, object editing, GLB import, arrangement, camera control and visual inspection. It does not call a second LLM inside Velocut. Other MCP clients can use the same generic MCP server.
+
+[Connection and troubleshooting guide →](docs/integrations/codex-plugin.md)
+
+## Build scenes in the Director
+
+Create primitives, editable meshes and parametric tables, chairs or stairs. Import self-contained GLB models, adjust materials and lighting, pose characters, and direct camera shots. Transform gizmos, object properties and programmatic edits all work on the same scene data.
+
+![Velocut Director: a furnished Sunroom scene with object hierarchy, transform gizmos and editable table properties.](docs/media/director.png)
+
+### Keep the canvas usable in a small window
+
+The workspace adapts to narrow browser panels alongside Codex. Bottom navigation opens the media/objects, properties, history and assistant panels as needed; the timeline can collapse to make room for the canvas. Media can be inserted by clicking, without dragging.
+
+<p align="center">
+  <img src="docs/media/compact.png" width="360" alt="Velocut Director in a 440-pixel-wide window, with compact tools, a scene viewport and bottom panel navigation.">
+</p>
+
+### See what changed, then undo it
+
+Edits are attributed in the branching history. Inspect a change, undo it, or return to an earlier state and continue from there. Revision checks reject stale AI edits when someone else has changed the scene.
+
+![The history panel shows actual Codex-attributed scene creation and editing operations beside the live Director.](docs/media/history.png)
+
+*These screenshots use a reproducible documentation fixture driven through the real MCP bridge. No generated UI mockups or fabricated chat transcripts are shown.*
+
+## What you can do
+
+| Area | Capabilities |
+| --- | --- |
+| Video editing | Multiple tracks, split/trim, snapping, speed changes, track controls and transitions |
+| Titles and motion | Editable text, captions, transform keyframes, effects and declarative motion graphics |
+| 3D directing | Geometry, assemblies, GLB models, characters, materials, lights, physics and cameras |
+| Audio | Mixed playback, volume keyframes and optional transcription/narration providers |
+| AI inspection | Rendered views, frame grabs, contact sheets, shot analysis and audio metrics; available tools depend on the host integration |
+| Export | WebCodecs encoding and MP4 muxing, with codec availability determined by the browser |
+| Local projects | Per-project storage, persisted history and same-origin multi-tab synchronization |
+
+The built-in **Assistant** is a separate, optional integration. Configure an Anthropic-compatible provider there to use it. Browser-local Whisper/VITS and cloud generation services have their own dependencies or credentials; they are not required for editing or Codex. Development-only cloud relays are not included in the portable server. See the [security and data-flow notes](SECURITY.md).
+
+## Use the SDKs
+
+The editor and its integrations share a monorepo. Seven independently packaged modules ship as JavaScript and, for the SDKs, TypeScript declarations. GPU rendering remains a browser capability; an npm package does not imply a headless Node renderer.
+
+| Package | Purpose |
+| --- | --- |
+| [`@velocut/protocol`](web/packages/protocol) | Document types, commands, validation and protocol compatibility |
+| [`@velocut/core-ts`](web/packages/core-ts) | Pure timeline editing, evaluation and engine history |
+| [`@velocut/render-sdk`](web/packages/render-sdk) | WebGPU composition, media workers, audio and export; includes a Vite helper |
+| [`@velocut/scene-sdk`](web/packages/scene-sdk) | Scene descriptions, geometry, models, physics, cameras and assets |
+| [`@velocut/runtime`](web/packages/runtime) | Shared project authoring, branching history and host interfaces |
+| [`@velocut/mcp`](web/packages/mcp) | Generic MCP server used by the Codex plugin and other clients |
+| [`@velocut/cli`](web/packages/cli) | Prebuilt local Studio launcher |
+
+The `.tgz` files are available in [Release 0.0.1](https://github.com/open-ribbi/velocut/releases/tag/v0.0.1). Until registry publication, install dependent Velocut tarballs together rather than using registry-only `npx` commands.
+
+[SDK integration examples and release workflow →](docs/integrations/npm-packages.md)
+
+## Develop from source
 
 ```sh
 git clone https://github.com/open-ribbi/velocut.git
@@ -50,120 +112,51 @@ npm ci
 npm run dev
 ```
 
-The dev command builds workspace SDKs first. The editor uses the TS reference
-engine if the optional Rust/WASM bundle is absent. The status bar shows the
-active engine. Chrome/Edge and Node.js 22.6+ are required; no model key is needed
-for manual editing or the Codex plugin.
+The dev command builds the workspace SDKs first. The TypeScript engine works without Rust; the canonical Rust engine is optional and shares behavioral test vectors with it.
 
-## Use with Codex or another MCP client
+<details>
+<summary>Build the optional Rust/WASM engine</summary>
 
-The portable release directory is also a local Codex plugin marketplace. Add
-that directory as a marketplace source, install **Velocut**, then start a new
-Codex task. Ask Codex to connect to the running Studio URL. It returns a pairing
-link; open it and let Codex select the intended project session.
+Run from the repository root:
 
-Other MCP clients can start the published `@velocut/mcp` package through `npx`
-(or its installed `velocut-mcp` executable). The same MCP source is bundled in
-the Codex plugin together with its Director skill. Reasoning runs in your
-client's model; the editor owns rendering, state, conflicts and undo.
-
-Detailed setup and local tarball installation: [Codex/MCP integration](docs/integrations/codex-plugin.md).
-SDK use and release process: [npm distribution](docs/integrations/npm-packages.md).
-
-## Enable the Rust/WASM engine (canonical implementation)
-
-```bash
-# one-time setup
+```sh
 rustup target add wasm32-unknown-unknown
 cargo install wasm-pack
-
-# build and drop into the app's public dir (or: just build-wasm)
 wasm-pack build crates/velocut-wasm --target web --release \
-  --out-dir web/apps/editor/public/wasm
-
-cd web && npm run dev   # badge switches to "engine: Rust/WASM"
+  --out-dir ../../web/apps/editor/public/wasm
 ```
 
-Portable releases use the TS engine by default for reproducibility. To include
-freshly compiled Rust/WASM artifacts, set `VELOCUT_INCLUDE_WASM=1` when running
-`npm run build:release`. Release builds copy only declared application/SDK
-assets; local videos in the development public directory are excluded.
+Restart the dev server. The status bar identifies the active engine. Portable builds use the TS engine by default; set `VELOCUT_INCLUDE_WASM=1` during the release build to include freshly built WASM artifacts.
 
-## Agent quick start
+</details>
 
-Velocut's first "user" is the AI agent. Click **Assistant** in the workspace navigation, configure a provider in the settings panel (your own Anthropic API key works as-is), and edit in natural language — *"cut out the silent parts", "add a title at the start"*.
-
-![The agent reads the project and lands a styled closing title card in one atomic batch — through the exact same command protocol the UI uses](docs/media/agent.png)
-
-- **The key lives only in your browser's localStorage; requests go straight from the browser to the configured endpoint with no intermediary server** (trust model: [SECURITY.md](SECURITY.md)).
-- The agent can *see* (frame grabs / contact sheets), *hear* (loudness & silence analysis), and *cut* (shot-boundary detection). Every edit uses the same command protocol as the UI, so each step is visible in a chat card and the branching history tree — click to jump, undo to roll back.
-- **Relays/gateways are first-class**: the ⚙ provider settings take any Anthropic-protocol-compatible base URL (LiteLLM, one-api, a corporate proxy), a choice of `x-api-key` or `Authorization: Bearer` auth, custom model ids, and a one-click connection test. The endpoint must allow browser (CORS) requests.
-
-### Optional capabilities & key convention (dev server only)
-
-Web search (Gemini grounding) and MiniMax cloud TTS are proxied by the Vite dev server, which injects the secrets server-side so the browser never holds them:
-
-```bash
-# both optional; the files are gitignored, placed under web/apps/editor/
-echo "<your Google API key>"  > web/apps/editor/.google-key    # velocut_search
-echo "<your MiniMax key>"     > web/apps/editor/.minimax-key   # cloud TTS (local TTS needs no key)
+```text
+crates/                 Rust engine and WASM bindings
+protocol/vectors/       Shared behavioral tests
+web/apps/editor/        Studio UI and application wiring
+web/packages/           SDKs, runtime, MCP and CLI
+plugins/codex/velocut/   Codex manifest and Director skill
+web/scripts/            Builds, packaging, verification and documentation capture
 ```
 
-Note: these proxies exist only under `npm run dev`; after a static `vite build`, search and cloud TTS are unavailable.
+## Verify and contribute
 
-## Testing (both engines share golden vectors)
-
-```bash
-cargo test                # the Rust engine runs protocol/vectors/*.json
-cd web && npm test        # the TS engine runs the same vectors + unit tests
-cd web && npm run e2e     # Playwright smoke (boot / import / edit / persistence)
+```sh
+# From web/
+npm test
+npm run e2e
+npm run build:release
+npm -w @velocut/cli test
+npm run pack:release
+npm run test:distribution
 ```
 
-Any change to engine behavior must land as a new vector, and both sides must pass to count as consistent. Beyond the vectors, the suite covers the agent tool-use loop (via an injected transport), the effect/motion-spec registries, and browser journeys covering editing, native 3D authoring, GLB import, MCP and compact layouts. CI (`.github/workflows/ci.yml`) checks Rust (fmt + clippy + vectors), TS (vectors + unit tests + tsc), a WASM compile smoke test, and the E2E suite. A separate distribution workflow installs real tarballs and checks the prebuilt CLI, SDK workers, GPU pixels and MCP on a macOS/Windows/Linux matrix. See [CONTRIBUTING.md](CONTRIBUTING.md) for the flow.
+Run `cargo test` from the repository root for the Rust engine. Run build and browser checks sequentially: rebuilding SDKs can reload an active development page.
 
-## Repository layout
+CI checks both engines, WASM compilation and editor journeys. The distribution workflow installs tarballs outside the checkout and verifies the CLI, MCP, workers and actual rendering on macOS, Windows and Linux.
 
-```
-crates/
-  velocut-core/        # canonical engine: model / commands / eval / history (pure Rust, no wasm deps)
-  velocut-wasm/        # wasm-bindgen bindings (string-JSON ABI)
-protocol/
-  vectors/             # golden test vectors — the behavioral contract for both engines
-web/
-  packages/protocol/   # TS protocol types + zod validation (1:1 shape with the Rust serde model)
-  packages/core-ts/    # TS reference engine (frontend fallback; runnable on Node)
-  packages/render-sdk/ # WebGPU compositing / WebCodecs decode+export / workers / perception (grabs, shots, loudness)
-  packages/agent-sdk/  # Anthropic-protocol tool-use loop (injectable transport)
-  packages/scene-sdk/  # editable 3D scenes, geometry, models, physics, cameras, assets
-  packages/runtime/    # shared project authoring, history and host interface
-  packages/mcp/        # generic MCP server; npm executable + bundled plugin runtime
-  packages/cli/        # prebuilt local Studio launcher
-  packages/collab-sdk/ # local-first persistence + multi-tab CRDT sync (Yjs)
-  apps/editor/         # Vite + React editor (timeline / Director / compact panels)
-plugins/codex/velocut/ # Codex manifest and Director skill; no duplicated editor engine
-```
-
-## Current capabilities
-
-1. ✅ Multi-track editing: split / drag / snap / speed / trim / track reorder, with a **branching** edit history (go back and edit to fork a new branch; human vs. AI actions are color-attributed).
-2. ✅ Keyframe animation (linear / hold / bezier) + an effect registry (color grade, etc.) + transitions.
-3. ✅ Text layers & caption styling (rasterized → composited through the same WebGPU pipeline as video).
-4. ✅ Audio: mixed playback, volume keyframes (fade-in/out, ducking), TTS narration (local / MiniMax), Whisper auto-captions.
-5. ✅ Agent perception: frame-grab observation / shot-boundary detection / loudness & silence analysis, surfaced as images and sparklines in chat.
-6. ✅ Declarative motion graphics (`motionClip`): keyframed layers described by a JSON spec — persisted, and safe to author from the sandboxed script tool.
-7. ✅ Export: WebCodecs encode + mp4 mux (streaming, no whole-clip memory bloat); background low-res proxy transcode for smooth preview.
-8. ✅ Local-first: media in OPFS, document + history in IndexedDB, real-time multi-tab sync.
-9. ✅ Multi-project management: a toolbar project switcher with fully isolated per-project storage (document, history, media, caches).
-
-Keys: Space = play / S = split / Delete = delete / Cmd+Z = undo / Ctrl+wheel = zoom timeline / drag a clip edge to trim / right-click a track head or clip for a menu.
-
-## Programmatic entry points
-
-- DevTools / external scripts: `window.velocut.apply({type:'splitClip', clipId:'clip_2', atUs:1500000})`
-- Node-side engine: `@velocut/core-ts` (consumed inside the workspace; ships as an independently installable ESM/type-declaration package).
-
-Command protocol → [PROTOCOL.md](PROTOCOL.md). Architecture decisions → [ARCHITECTURE.md](ARCHITECTURE.md). Security & trust model → [SECURITY.md](SECURITY.md).
+[Contributing](CONTRIBUTING.md) · [Architecture](ARCHITECTURE.md) · [Command protocol](PROTOCOL.md) · [Security](SECURITY.md)
 
 ## License
 
-MIT © 2026 willbean
+MIT © 2026 willbean. Bundled third-party code and scene assets retain their own [licenses and attribution](web/packages/scene-sdk/assets/LICENSES.md).

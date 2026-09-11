@@ -24,7 +24,8 @@
     "pack:release": "node scripts/pack-release.mjs",
     "test:distribution": "node scripts/test-distribution.mjs",
     "publish:release": "node scripts/publish-release.mjs",
-    "version:release": "node scripts/version-release.mjs"
+    "version:release": "node scripts/version-release.mjs",
+    "docs:screenshots": "npm run build:release && node scripts/capture-readme.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",

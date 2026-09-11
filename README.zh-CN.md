@@ -1,152 +1,162 @@
-<!-- markdownlint-disable MD041 -->
-[English](README.md) | **简体中文**
+[English](README.md) · **简体中文**
 
-# Velocut — 浏览器里的 AI 原生视频剪辑
+# Velocut
 
-[![CI](https://github.com/open-ribbi/velocut/actions/workflows/ci.yml/badge.svg)](.github/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-![Node](https://img.shields.io/badge/node-%E2%89%A522.6-brightgreen)
+**在浏览器里剪辑视频，与 AI 一起搭建场景、设计镜头。**
 
-Velocut 是 [Ribbi](https://ribbi.ai) 开源的 Rust + WASM + WebGPU Web 视频剪辑引擎与编辑器——编辑和渲染在浏览器中运行，素材默认保存在本地，AI 观察和可选云服务会向所选提供方发送所需数据。**协议先行、AI-native**:人通过 UI 剪辑、LLM 直接下发 JSON 命令剪辑,两者走同一条命令链路,映射到同一个 UI。
+[![Release](https://img.shields.io/badge/release-v0.0.1-e6b774)](https://github.com/open-ribbi/velocut/releases/tag/v0.0.1)
+[![CI](https://github.com/open-ribbi/velocut/actions/workflows/ci.yml/badge.svg)](https://github.com/open-ribbi/velocut/actions/workflows/ci.yml)
+[![Distribution](https://github.com/open-ribbi/velocut/actions/workflows/distribution.yml/badge.svg)](https://github.com/open-ribbi/velocut/actions/workflows/distribution.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-![Velocut 编辑器——多轨时间线(波形/关键帧/转场/变速)+ WebGPU 合成预览](docs/media/editor.png)
+**[下载 0.0.1](https://github.com/open-ribbi/velocut/releases/tag/v0.0.1)** · [连接 Codex](#连接-codex) · [使用 SDK](#使用-sdk) · [参与贡献](CONTRIBUTING.md)
 
-## 新的安装与 SDK 分发方式
+Velocut 将多轨视频编辑器、可编辑的 3D 导演台和程序化项目运行时放在同一个工作区。你可以手动调整镜头，也可以让 Codex 搭建场景：两者共用编辑服务、项目文档和撤销历史。
 
-当前仓库可以构建独立 npm 包及“编辑器＋Codex 插件”的便携发行目录。
-**构建产物不等于已经发布到 npm**；公共发布由维护者单独执行。
+由 [Ribbi](https://ribbi.ai) 构建。素材存储和渲染在浏览器中完成；AI 观察与可选云服务会向你选择的模型或提供方发送所需数据。
 
-便携发行包解压后，在目录中运行：
+![Velocut 剪辑工作区：Sunroom 场景预览、时间线上的三个镜头、标题轨道和片段属性。](docs/media/editor.png)
+
+*当前版本的真实界面。演示场景由可编辑几何体和家具组件搭建。*
+
+## 启动 Studio
+
+下载 **[便携 ZIP](https://github.com/open-ribbi/velocut/releases/download/v0.0.1/velocut-standalone.zip)** 或 **[TAR.GZ](https://github.com/open-ribbi/velocut/releases/download/v0.0.1/velocut-standalone.tar.gz)**，解压后在 `velocut-0.0.1` 目录中运行：
 
 ```sh
 node start-studio.mjs
 ```
 
-无需克隆源码或安装开发依赖，但需要 Node.js 22.6+ 和支持 WebGPU/WebCodecs
-的 Chrome/Edge。启动器打开预构建编辑器；保持终端运行，并使用相同的主机名、
-端口和浏览器配置，以便再次打开保存在浏览器中的项目。
+Studio 会在浏览器中打开，使用期间保持终端运行。便携包已经包含编辑器、场景素材和 Codex 插件 marketplace，无需克隆源码或执行 `npm install`。
 
-对应版本发布到 npm 后，也可以运行：
+- 需要 **Node.js 22.6+**，以及支持 **WebGPU / WebCodecs 的 Chrome 或 Edge**。完整编辑器暂不支持 Safari 和 Firefox。
+- 项目保存在浏览器的 IndexedDB / OPFS 中。再次使用时，请保持相同的浏览器配置、主机名和端口。
+- 手动编辑和 Codex 集成不需要额外填写模型 API Key。
+- 发行版附有 [SHA-256 校验文件](https://github.com/open-ribbi/velocut/releases/download/v0.0.1/SHA256SUMS.txt)。公共 npm registry 尚未发布，目前可以下载并安装 Release 中的 `.tgz` 包。
+
+## 连接 Codex
+
+1. 使用便携包启动 Studio。
+2. 在 Codex 中将解压后的发行目录添加为本地 marketplace 来源，安装 **Velocut** 插件。
+3. 新建一个 Codex 任务，让它连接终端中显示的 Studio 地址。
+4. 打开返回的配对链接，Codex 即可选择项目、编辑场景并查看真实渲染结果。
+
+可以这样开始：
+
+> 搭建一个明亮的房间，放一张木桌、两把椅子和一个小雕塑。所有对象保持可编辑，再设计一个全景和一个特写镜头。
+
+模型推理在 Codex 中进行。插件提供场景创建、对象编辑、GLB 导入、布局、镜头控制和视觉检查工具，不会在 Velocut 内再调用一层 LLM。其他 MCP 客户端也可使用同一套通用 MCP 服务。
+
+[连接与排障指南 →](docs/integrations/codex-plugin.md)
+
+## 在导演台搭建场景
+
+创建基础几何体、可编辑网格，以及参数化桌子、椅子和楼梯；导入自包含 GLB 模型，调整材质与灯光，设置角色姿态和相机镜头。变换手柄、属性面板和程序化编辑都作用于同一份场景数据。
+
+![Velocut 导演台：Sunroom 房间、对象层级、变换手柄和可编辑的桌子属性。](docs/media/director.png)
+
+### 小窗也能操作
+
+工作区适配 Codex 旁边的窄浏览器面板。底部导航按需打开素材／对象、属性、历史和助手面板；时间线可以折叠，为画布留出空间。素材支持点击插入，无需拖拽。
+
+<p align="center">
+  <img src="docs/media/compact.png" width="360" alt="440 像素宽窗口中的 Velocut 导演台：紧凑工具栏、场景画布和底部面板导航。">
+</p>
+
+### 看清每一次修改
+
+分支历史记录操作归属。你可以检查修改、撤销操作，或回到之前的状态继续编辑。若项目已被其他操作改变，版本检查会拒绝过期的 AI 修改。
+
+![历史面板在真实导演台旁显示通过 MCP 执行、归属于 Codex 的场景创建和修改记录。](docs/media/history.png)
+
+*以上截图来自可复现的文档演示项目，通过真实 MCP 桥接操作。未使用生成式界面效果图，也未伪造聊天记录。*
+
+## 当前能力
+
+| 领域 | 功能 |
+| --- | --- |
+| 视频剪辑 | 多轨、分割／裁剪、吸附、变速、轨道控制和转场 |
+| 标题与动效 | 可编辑文字、字幕、变换关键帧、特效和声明式动态图形 |
+| 3D 导演台 | 几何体、参数化组件、GLB 模型、角色、材质、灯光、物理和镜头 |
+| 音频 | 混音播放、音量关键帧，以及可选的转写和旁白服务 |
+| AI 观察 | 渲染视图、抽帧、联系表、镜头分析和音频指标；具体工具取决于接入方式 |
+| 导出 | WebCodecs 编码与 MP4 封装，可用编码器由浏览器决定 |
+| 本地项目 | 独立项目存储、持久化历史，以及同源多标签页同步 |
+
+内置 **Assistant** 是另一种可选接入方式，使用前需要配置兼容 Anthropic 协议的供应商。浏览器本地 Whisper / VITS 和云端生成服务分别需要对应依赖或凭据，它们不是手动编辑或 Codex 的前置条件。开发服务器的云端代理不包含在便携版中，详见[安全与数据流说明](SECURITY.md)。
+
+## 使用 SDK
+
+编辑器与各项集成在同一个 monorepo 中维护。七个模块提供独立安装包，SDK 包含 JavaScript 和 TypeScript 类型声明。GPU 渲染仍是浏览器能力，npm 包不代表提供无界面的 Node 渲染器。
+
+| 包 | 用途 |
+| --- | --- |
+| [`@velocut/protocol`](web/packages/protocol) | 文档类型、命令、校验与协议兼容 |
+| [`@velocut/core-ts`](web/packages/core-ts) | 纯时间线编辑、求值和引擎历史 |
+| [`@velocut/render-sdk`](web/packages/render-sdk) | WebGPU 合成、媒体 Worker、音频与导出，包含 Vite 辅助插件 |
+| [`@velocut/scene-sdk`](web/packages/scene-sdk) | 场景描述、几何、模型、物理、镜头与素材 |
+| [`@velocut/runtime`](web/packages/runtime) | 共用项目编辑、分支历史和宿主接口 |
+| [`@velocut/mcp`](web/packages/mcp) | Codex 插件与其他客户端共用的 MCP 服务 |
+| [`@velocut/cli`](web/packages/cli) | 预构建的本地 Studio 启动器 |
+
+`.tgz` 文件见 [Release 0.0.1](https://github.com/open-ribbi/velocut/releases/tag/v0.0.1)。公共 registry 发布前，请将相互依赖的 Velocut 压缩包一起安装，不要直接使用依赖 registry 的 `npx` 命令。
+
+[SDK 集成示例与发布流程 →](docs/integrations/npm-packages.md)
+
+## 从源码开发
 
 ```sh
-npx @velocut/cli@0.0.1 studio
-```
-
-发行目录同时包含 Codex marketplace。将该目录添加为插件来源，安装 Velocut，
-在新 Codex 任务中要求连接正在运行的 Studio URL，打开返回的配对链接即可。
-模型推理在 Codex 中进行，不需要额外填写模型 API Key。其他 MCP 客户端可使用
-同一实现发布的 `@velocut/mcp`。
-
-协议、TS 引擎、场景、核心渲染和项目运行时均有独立 npm 产物；SDK 的 JS 和类型
-声明、Worker 和模型资源随包提供，不依赖当前源码目录。
-[安装、SDK 集成及发布指南](docs/integrations/npm-packages.md)。
-
-## 环境要求
-
-- **Node ≥ 22.6**(`npm test` 依赖 `--experimental-strip-types`;仓库根有 `.nvmrc`)
-- **浏览器:Chrome / Edge 113+**(WebGPU + WebCodecs;Safari/Firefox 暂不支持)
-- 可选:Rust stable + wasm-pack(仅构建 canonical WASM 引擎时需要)
-
-## 快速启动(零依赖,TS 引擎)
-
-```bash
-cd web
+git clone https://github.com/open-ribbi/velocut.git
+cd velocut/web
 npm ci
 npm run dev
 ```
 
-开箱即用:DI 容器检测到 WASM 包缺失时自动回退到 TS 参考引擎(底部状态栏 badge 显示当前引擎)。
+开发命令会先构建 workspace SDK。无需 Rust 也可以使用 TypeScript 引擎；可选的 Rust 引擎是规范实现，与 TS 引擎共享行为测试向量。
 
-## 启用 Rust/WASM 引擎(canonical 实现)
+<details>
+<summary>构建可选的 Rust/WASM 引擎</summary>
 
-```bash
-# 一次性环境
+在仓库根目录运行：
+
+```sh
 rustup target add wasm32-unknown-unknown
 cargo install wasm-pack
-
-# 构建并放入前端 public 目录(或用 just build-wasm)
 wasm-pack build crates/velocut-wasm --target web --release \
-  --out-dir web/apps/editor/public/wasm
-
-cd web && npm run dev   # badge 变为 "engine: Rust/WASM"
+  --out-dir ../../web/apps/editor/public/wasm
 ```
 
-## Agent 快速上手
+重启开发服务器后，可在状态栏查看当前引擎。便携版默认使用 TS 引擎；发行构建时设置 `VELOCUT_INCLUDE_WASM=1`，可包含刚刚构建的 WASM 产物。
 
-Velocut 的第一"用户"是 AI Agent:点工作区导航中的「Assistant」,在供应商设置面板
-里完成配置(直接用你自己的 Anthropic API key 即可),就能用自然语言剪辑——
-"把静音段都剪掉""给开头加个标题"。
+</details>
 
-![Agent 读取工程后用一个原子 batch 落好风格匹配的片尾字卡——走的是与 UI 完全相同的命令协议](docs/media/agent.png)
-
-- **Key 只存在你本机浏览器的 localStorage,请求从浏览器直连所配置的端点,不经任何中间服务器**(信任模型详见 [SECURITY.md](SECURITY.md))
-- Agent 能看(抽帧/拼图观察)、能听(响度与静音分析)、能切(镜头边界检测),所有编辑走与 UI 相同的命令协议,每一步都在聊天卡片和历史树里可见、可点击跳转、可回滚
-- **中转/网关一等公民**:⚙ 供应商设置支持任意 Anthropic 协议兼容的 Base URL(LiteLLM、one-api、企业代理),`x-api-key` 或 `Authorization: Bearer` 两种鉴权,自定义模型 id,以及一键连接测试;端点需允许浏览器跨域(CORS)请求
-
-### 可选能力与密钥约定(仅 dev server)
-
-联网搜索(Gemini grounding)与 MiniMax 云 TTS 经 Vite dev server 代理注入密钥,浏览器永远不持有它们:
-
-```bash
-# 均为可选;文件已被 .gitignore,放在 web/apps/editor/ 下
-echo "<你的 Google API key>"  > web/apps/editor/.google-key    # velocut_search
-echo "<你的 MiniMax key>"     > web/apps/editor/.minimax-key   # 云 TTS(本地 TTS 无需 key)
+```text
+crates/                 Rust 引擎与 WASM 绑定
+protocol/vectors/       共用行为测试
+web/apps/editor/        Studio UI 与应用组装
+web/packages/           SDK、运行时、MCP 和 CLI
+plugins/codex/velocut/   Codex 清单与导演台技能
+web/scripts/            构建、打包、验证和文档截图
 ```
 
-注意:这两个代理只存在于 `npm run dev`;`vite build` 静态部署后搜索/云 TTS 不可用。
+## 验证与贡献
 
-## 测试(双引擎共享 golden vectors)
-
-```bash
-cargo test                # Rust 引擎跑 protocol/vectors/*.json
-cd web && npm test        # TS 引擎跑同一套向量 + 单元测试
-cd web && npm run e2e     # Playwright 冒烟(启动/导入/编辑/持久化)
+```sh
+# 在 web/ 中运行
+npm test
+npm run e2e
+npm run build:release
+npm -w @velocut/cli test
+npm run pack:release
+npm run test:distribution
 ```
 
-任何引擎行为变更必须以新增向量的方式落地,两边同时通过才算一致。向量之外,
-套件还覆盖 agent tool-use 循环(注入 transport)、特效/动态图形注册表,以及
-两条 Chromium 端到端旅程。CI(`.github/workflows/ci.yml`)对每个 PR 强制四个
-job:Rust(fmt + clippy + 向量)、TS(向量 + 单测 + tsc)、wasm 编译冒烟、E2E。
-贡献流程详见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+Rust 引擎测试在仓库根目录运行 `cargo test`。请顺序执行构建与浏览器检查，重新构建 SDK 可能触发开发页面重载。
 
-## 目录结构
+CI 检查双引擎、WASM 编译和编辑器操作；发行流程在仓库外安装压缩包，并在 macOS、Windows、Linux 上验证 CLI、MCP、Worker 与真实渲染。
 
-```
-crates/
-  velocut-core/      # canonical 引擎:模型/命令/求值/历史(纯 Rust,无 wasm 依赖)
-  velocut-wasm/      # wasm-bindgen 绑定(string JSON ABI)
-protocol/
-  vectors/           # golden test vectors —— 双实现的行为契约
-web/
-  packages/protocol/ # TS 协议类型 + zod 校验(与 Rust serde 形状一一对应)
-  packages/core-ts/  # TS 参考引擎(前端 fallback;Node 侧可直接跑)
-  packages/render-sdk/ # WebGPU 合成 / WebCodecs 解码与导出 / worker / 观察(抽帧、镜头、响度)
-  packages/agent-sdk/  # Anthropic 协议 tool-use 循环(transport 可注入)
-  packages/collab-sdk/ # local-first 持久化 + 多 tab CRDT 同步(Yjs)
-  apps/editor/       # Vite + React 编辑器(Canvas 时间轴 / 分支历史 / Agent 控制台)
-```
+[参与贡献](CONTRIBUTING.md) · [架构](ARCHITECTURE.md) · [命令协议](PROTOCOL.md) · [安全](SECURITY.md)
 
-## 当前能力
+## 许可证
 
-1. ✅ 多轨剪辑:切割 / 拖拽 / 吸附 / 变速 / trim / 轨道重排,分支式编辑历史(回到过去再编辑开新分支,人/AI 操作分色归因)
-2. ✅ 关键帧动画(linear/hold/bezier)+ 特效注册表(调色等)+ 转场
-3. ✅ 文字图层与字幕样式(栅格化 → 与视频同一 WebGPU 管线合成)
-4. ✅ 音频:混音播放、音量关键帧(淡入淡出 / ducking)、TTS 旁白(本地 / MiniMax)、Whisper 自动字幕
-5. ✅ Agent 感知:抽帧观察 / 镜头边界检测 / 响度与静音分析,结果以图片和 sparkline 呈现在聊天里
-6. ✅ 声明式动态图形(motionClip):JSON spec 描述的关键帧图层,持久化、可从沙箱脚本生成
-7. ✅ 导出:WebCodecs 编码 + mp4 封装(流式,不憋整段内存);低清代理预览后台转码
-8. ✅ local-first:素材进 OPFS、文档与历史进 IndexedDB,多 tab 实时同步
-9. ✅ 多项目管理:工具栏项目切换器,每个项目的文档/历史/素材/缓存完全隔离
-
-操作:空格播放 / S 分割 / Delete 删除 / Cmd+Z 撤销 / Ctrl+滚轮缩放时间轴 / 拖 clip 边缘 trim / 右键轨道头与 clip 出菜单。
-
-## 程序化入口
-
-- DevTools / 外部脚本:`window.velocut.apply({type:'splitClip', clipId:'clip_2', atUs:1500000})`
-- Node 侧引擎:`@velocut/core-ts`(workspace 内消费;独立发包在路线图上)
-
-命令协议详见 [PROTOCOL.md](PROTOCOL.md),架构决策详见 [ARCHITECTURE.md](ARCHITECTURE.md),安全与信任模型详见 [SECURITY.md](SECURITY.md)。
-
-## License
-
-MIT © 2026 willbean
+MIT © 2026 willbean。随包提供的第三方代码与场景素材保留各自的[许可证和署名要求](web/packages/scene-sdk/assets/LICENSES.md)。
