@@ -10,6 +10,13 @@ import type { FrameGraph, TimeUs } from '@velocut/protocol';
 import type { MediaLibrary } from './media.ts';
 import type { PreviewRenderer } from './renderer-client.ts';
 import type { AudioEngine } from './audio.ts';
+import { validatePreviewRate } from './preview-rate.ts';
+
+export interface PreviewSessionOptions {
+  rate?: number;
+  playing?: boolean;
+  timeUs?: number;
+}
 
 /** What the transport needs from the app's store — any state container that
  *  fronts an ICoreEngine satisfies this. */
@@ -21,6 +28,71 @@ export interface TransportStore {
 }
 
 export class Playback {
+  private previewRate = 1;
+  private audioDriving = false;
+  private rateListeners = new Set<() => void>();
+  get rate() { return this.previewRate; }
+  subscribeRate = (listener: () => void) => {
+    this.rateListeners.add(listener);
+    return () => { this.rateListeners.delete(listener); };
+  };
+
+  private currentTime() {
+    const s = this.store.getState();
+    if (!s.playing) return s.playheadUs;
+    const now = performance.now();
+    let audioT = this.audio?.clockUs() ?? null;
+    if (audioT !== null && !this.audioDriving) {
+      // Autoplay may delay AudioContext.resume(). Join the wall clock when
+      // audio becomes available, instead of jumping back to the old anchor.
+      this.audio!.onSeek(this.playStartUs + (now - this.playStartWall) * 1000 * this.rate);
+      audioT = this.audio!.clockUs();
+    } else if (audioT === null && this.audioDriving) {
+      this.playStartUs = s.playheadUs;
+      this.playStartWall = now;
+    }
+    this.audioDriving = audioT !== null;
+    const t = audioT ?? this.playStartUs + (now - this.playStartWall) * 1000 * this.rate;
+    return Math.min(Math.max(0, t), Math.max(0, s.durationUs));
+  }
+
+  setRate(rate: number) {
+    validatePreviewRate(rate);
+    if (rate === this.rate) return;
+    // Sample the OLD clock before replacing its slope. Speed changes never seek.
+    const at = this.currentTime();
+    this.previewRate = rate;
+    if (this.store.getState().playing) {
+      this.store.seek(at);
+      this.playStartUs = at;
+      this.playStartWall = performance.now();
+      this.audio?.onPlay(at, rate);
+      this.audioDriving = this.audio?.clockUs() != null;
+    }
+    this.rateListeners.forEach(fn => fn());
+  }
+
+  /** UI/agent transport controls. Validate the whole request before any effect. */
+  session(opts?: PreviewSessionOptions) {
+    try {
+      if (opts !== undefined) {
+        if (!opts || typeof opts !== 'object' || Array.isArray(opts) || Object.keys(opts).some(k => !['rate', 'playing', 'timeUs'].includes(k)))
+          throw new Error('preview options must contain only rate, playing, timeUs');
+        if (opts.rate !== undefined) validatePreviewRate(opts.rate);
+        if (opts.playing !== undefined && typeof opts.playing !== 'boolean') throw new Error('playing must be boolean');
+        if (opts.timeUs !== undefined && (!Number.isFinite(opts.timeUs) || opts.timeUs < 0 || opts.timeUs > this.store.getState().durationUs))
+          throw new Error('timeUs outside project duration');
+        if (opts.rate !== undefined) this.setRate(opts.rate);
+        if (opts.timeUs !== undefined) this.seek(opts.timeUs);
+        if (opts.playing === true) this.play();
+        if (opts.playing === false) this.pause();
+      }
+      const s = this.store.getState();
+      return { ok: true as const, state: { rate: this.rate, playing: s.playing, timeUs: Math.round(this.currentTime()), durationUs: s.durationUs } };
+    } catch (error) {
+      return { ok: false as const, message: error instanceof Error ? error.message : String(error) };
+    }
+  }
   private raf = 0;
   private playStartWall = 0; // performance.now() when play began
   private playStartUs = 0; // playhead at that moment
@@ -53,9 +125,8 @@ export class Playback {
       let t = s.playheadUs;
       if (s.playing) {
         // Audio is the master clock while it runs — what you hear is true.
-        const audioT = this.audio?.clockUs();
-        t = audioT ?? this.playStartUs + (performance.now() - this.playStartWall) * 1000;
-        const end = Math.max(s.durationUs, 1);
+        t = this.currentTime();
+        const end = Math.max(s.durationUs, 0);
         if (t >= end) {
           t = end;
           this.store.setPlaying(false);
@@ -63,7 +134,8 @@ export class Playback {
         }
         this.store.seek(t);
       }
-      this.media.setPlaying(s.playing);
+      const playing = this.store.getState().playing;
+      this.media.setPlaying(playing);
       // Paused with no document edits and no new decoded frames → the canvas
       // already shows this exact composite; skip the evaluate (engine JSON
       // round-trip) and the GPU pass entirely.
@@ -85,7 +157,7 @@ export class Playback {
           // transport loop — the next edit/seek re-marks dirty and retries.
           console.error('[velocut] render tick failed', e);
         }
-        if (s.playing) this.audio?.update(fg, tInt);
+        if (playing) this.audio?.update(fg, tInt);
         this.lastT = tInt;
         this.lastRevision = s.revision;
         this.lastMediaVersion = this.media.version;
@@ -98,15 +170,18 @@ export class Playback {
 
   play() {
     const s = this.store.getState();
+    if (s.playing) return;
     const atEnd = s.playheadUs >= s.durationUs && s.durationUs > 0;
     this.playStartUs = atEnd ? 0 : s.playheadUs;
     if (atEnd) this.store.seek(0);
     this.playStartWall = performance.now();
     this.store.setPlaying(true);
-    this.audio?.onPlay(this.playStartUs);
+    this.audio?.onPlay(this.playStartUs, this.rate);
+    this.audioDriving = this.audio?.clockUs() != null;
   }
 
   pause() {
+    if (this.store.getState().playing) this.store.seek(this.currentTime());
     this.store.setPlaying(false);
     this.audio?.onPause();
   }
@@ -128,8 +203,8 @@ export class Playback {
   }
 
   stop() {
+    this.pause();
     this.running = false;
-    this.audio?.onPause();
     cancelAnimationFrame(this.raf);
   }
 }

@@ -9,12 +9,14 @@ import {
   type SceneView,
 } from '@velocut/scene-sdk';
 import type { Store } from './store';
+import { validatePreviewRate } from '@velocut/render-sdk';
 
 export interface DirectorSession {
   assetId: string;
   objectId: string | null;
   timeS: number;
   playing: boolean;
+  rate: number;
   view: SceneView;
   mode: 'translate' | 'rotate' | 'scale';
   focusId: string | null;
@@ -27,6 +29,7 @@ export interface DirectorSessionOptions {
   objectId?: string | null;
   timeS?: number;
   playing?: boolean;
+  rate?: number;
   view?: SceneView;
   mode?: DirectorSession['mode'];
   /** Frame this object/group, null frames the whole scene. */
@@ -82,6 +85,7 @@ function createController(store: Store) {
               'objectId',
               'timeS',
               'playing',
+              'rate',
               'view',
               'mode',
               'focusId',
@@ -108,6 +112,7 @@ function createController(store: Store) {
             objectId: null,
             timeS: 0,
             playing: false,
+            rate: 1,
             view: 'perspective',
             mode: 'translate',
             focusId: null,
@@ -115,6 +120,10 @@ function createController(store: Store) {
           }
         : state!;
       const next = { ...current };
+      if (opts.rate !== undefined) {
+        validatePreviewRate(opts.rate);
+        next.rate = opts.rate;
+      }
       for (const k of ['objectId', 'focusId'] as const) {
         if (opts[k] !== undefined) {
           if (opts[k] !== null && !sceneObjects(spec).some((e) => e.object.id === opts[k]))

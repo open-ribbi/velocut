@@ -1,3 +1,4 @@
+import type { PreviewSessionOptions } from '@velocut/render-sdk';
 import { createCodexHost } from './services/codex-host';
 import { createCodexConnection } from './services/codex-connection';
 import { directorSession, type DirectorSessionOptions } from './services/director-session';
@@ -186,6 +187,7 @@ async function bootstrap() {
 
   const store = container.resolve(TOKENS.Store);
   const media = container.resolve(TOKENS.Media);
+  const playback = container.resolve(TOKENS.Playback);
 
   // Local-first persistence + multi-tab CRDT sync: restores the last
   // session's document from IndexedDB, then mirrors every edit to Y.
@@ -239,10 +241,11 @@ async function bootstrap() {
   // you, in DevTools) can edit the project with plain JSON commands:
   //   velocut.apply({type:'splitClip', clipId:'clip_2', atUs:1500000})
   bindSceneAuthoring(store, media);
-  const codexConnection = createCodexConnection(createCodexHost(store, media, container.resolve(TOKENS.Observer), project));
+  const codexConnection = createCodexConnection(createCodexHost(store, media, container.resolve(TOKENS.Observer), project, playback));
   container.registerValue(TOKENS.CodexConnection, codexConnection);
   (window as any).velocut = {
     codex: codexConnection,
+    previewSession: (o?: PreviewSessionOptions) => playback.session(o),
     directorSession: (o?: DirectorSessionOptions) => directorSession(store, o),
     sceneImportModel: (o: SceneModelImportOptions) => importSceneModel(store, o),
     sceneArrange: (o: SceneArrangeOptions) => arrangeScene(store, o),
@@ -298,7 +301,8 @@ async function bootstrap() {
           },
           evaluate: (t: number) => store.evaluate(t),
           document: () => store.getState().doc,
-          seek: (t: number) => store.seek(t),
+          seek: (t: number) => playback.seek(t),
+          previewSession: (o) => playback.session(o as PreviewSessionOptions),
           motionClip: (o) => createMotionClip(store, media, o as MotionClipOptions),
           sceneClip: (o) => createSceneClip(store, media, o as SceneClipOptions),
           sceneImportModel: (o) => importSceneModel(store, o as SceneModelImportOptions),
@@ -323,7 +327,7 @@ async function bootstrap() {
     ttsProviders: () => ttsProviders().map((p) => ({ id: p.id, label: p.label, kind: p.kind, languages: p.languages, voices: p.voices })),
     engine: engine.kind,
     store,
-    seek: (timeUs: number) => store.seek(timeUs),
+    seek: (timeUs: number) => playback.seek(timeUs),
     media,
     Exporter, // debug: new velocut.Exporter(velocut.media).export({...}) for bounded test exports
     audio: container.resolve(TOKENS.Audio),

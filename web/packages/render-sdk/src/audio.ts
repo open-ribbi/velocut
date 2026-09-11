@@ -15,6 +15,7 @@
 
 import type { FrameGraph, TimeUs } from '@velocut/protocol';
 import type { MediaLibrary } from './media.ts';
+import { validatePreviewRate } from './preview-rate.ts';
 
 /** Keep this much audio scheduled ahead of the playhead. */
 const AHEAD_US = 1_200_000;
@@ -38,6 +39,7 @@ export class AudioEngine {
   private playing = false;
   private anchorTlUs = 0;
   private anchorCtxSec = 0;
+  private rate = 1;
   /** Bumped on pause/seek — in-flight PCM for an old anchor is discarded. */
   private generation = 0;
 
@@ -58,8 +60,8 @@ export class AudioEngine {
 
   /** Master-clock readout while playing; null when audio isn't driving. */
   clockUs(): number | null {
-    if (!this.playing || !this.ctx) return null;
-    return this.anchorTlUs + (this.ctx.currentTime - this.anchorCtxSec) * 1e6;
+    if (!this.playing || !this.ctx || this.ctx.state !== 'running') return null;
+    return this.anchorTlUs + (this.ctx.currentTime - this.anchorCtxSec) * 1e6 * this.rate;
   }
 
   /** RMS of the current output — diagnostics ("is sound actually playing"). */
@@ -72,9 +74,12 @@ export class AudioEngine {
     return Math.sqrt(sum / buf.length);
   }
 
-  onPlay(timelineUs: TimeUs) {
+  onPlay(timelineUs: TimeUs, rate = 1) {
+    validatePreviewRate(rate);
     const ctx = this.ensureContext();
     void ctx.resume();
+    this.teardown();
+    this.rate = rate;
     this.playing = true;
     this.anchorTlUs = timelineUs;
     this.anchorCtxSec = ctx.currentTime;
@@ -125,7 +130,7 @@ export class AudioEngine {
         this.channels.set(slice.clipId, ch);
       }
       ch.gain.gain.value = slice.gain;
-      if (!ch.failed && !ch.fetching && ch.scheduledUntilTl < playheadUs + AHEAD_US) {
+      if (!ch.failed && !ch.fetching && ch.scheduledUntilTl < playheadUs + AHEAD_US * this.rate) {
         this.fetchChunk(slice.clipId, slice.assetId, ch, slice, playheadUs);
       }
     }
@@ -158,12 +163,13 @@ export class AudioEngine {
     const tlFrom = Math.max(ch.scheduledUntilTl, playheadUs);
     // speed === 1 → source time advances 1:1 with timeline time.
     const srcFrom = slice.sourceTimeUs + (tlFrom - playheadUs);
-    this.media.requestPcm(assetId, srcFrom, CHUNK_US).then(
+    const chunkUs = CHUNK_US * this.rate;
+    this.media.requestPcm(assetId, srcFrom, chunkUs).then(
       (pcm) => {
         ch.fetching = false;
-        if (gen !== this.generation || !this.channels.has(clipId)) return;
+        if (gen !== this.generation || this.channels.get(clipId) !== ch) return;
         if (pcm.frames === 0) {
-          ch.scheduledUntilTl = tlFrom + CHUNK_US;
+          ch.scheduledUntilTl = tlFrom + chunkUs;
           return;
         }
         const buffer = ctx.createBuffer(pcm.channels, pcm.frames, pcm.sampleRate);
@@ -171,13 +177,15 @@ export class AudioEngine {
         // The decoded window starts at an AAC frame boundary ≤ srcFrom; map
         // it back to timeline time and let start(when, offset) align.
         const tlStart = tlFrom + (pcm.startUs - srcFrom);
-        const when = this.anchorCtxSec + (tlStart - this.anchorTlUs) / 1e6;
+        const when = this.anchorCtxSec + (tlStart - this.anchorTlUs) / 1e6 / this.rate;
         const source = ctx.createBufferSource();
         source.buffer = buffer;
+        // Preview varispeed changes pitch as well as tempo; export is untouched.
+        source.playbackRate.value = this.rate;
         source.connect(ch.gain);
         const now = ctx.currentTime;
         if (when >= now) source.start(when);
-        else source.start(now, Math.min(now - when, buffer.duration));
+        else source.start(now, Math.min((now - when) * this.rate, buffer.duration));
         ch.sources.add(source);
         source.onended = () => ch.sources.delete(source);
         ch.scheduledUntilTl = tlStart + (pcm.frames / pcm.sampleRate) * 1e6;

@@ -1,5 +1,5 @@
 import type { Command } from '@velocut/protocol';
-import type { MediaLibrary, Observer } from '@velocut/render-sdk';
+import type { MediaLibrary, Observer, Playback, PreviewSessionOptions } from '@velocut/render-sdk';
 import {
   loadSceneManifest,
   scenePromptDoc,
@@ -34,6 +34,7 @@ export function createProjectHost(
   observer: Observer,
   project: { id: string; name: string },
   actor: { name: string; peerPrefix: string } = { name: 'MCP', peerPrefix: 'mcp' },
+  playback?: Playback,
 ) {
   const info = () => ({
     projectId: project.id,
@@ -94,6 +95,8 @@ export function createProjectHost(
     switch (method) {
       case 'document':
         return { ok: true, ...info(), document: store.getState().doc };
+      case 'previewSession':
+        return playback ? playback.session(args as PreviewSessionOptions | undefined) : { ok: false, message: 'preview transport is not configured on this host' };
       case 'sceneAssets': {
         let manifest = await loadSceneManifest(sceneAssetBase(store));
         if (a.assetId != null) {
@@ -163,7 +166,8 @@ export function createProjectHost(
         const api: ScriptApi = {
           document: () => store.getState().doc,
           evaluate: store.evaluate,
-          seek: store.seek,
+          seek: (timeUs) => playback ? playback.seek(timeUs) : store.seek(timeUs),
+          previewSession: local('previewSession'),
           apply: (cmd) => guarded(cmd as Command),
           sceneAssets: local('sceneAssets'),
           sceneClip: local('sceneClip'),

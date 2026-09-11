@@ -28,6 +28,7 @@ import type { ScriptResult } from './results';
  *  forget (`velocut.apply(cmd)` without await) still executes in order because
  *  the channel preserves message order and the host processes RPCs serially. */
 export interface ScriptApi {
+  previewSession(opts?: unknown): unknown;
   /** Execute one protocol command; returns the engine envelope (events carry
    *  freshly-minted ids). Same path as velocut_apply. */
   apply(cmd: unknown): unknown;
@@ -99,6 +100,7 @@ const RPC_METHODS = [
   'sceneImportModel',
   'sceneInspect',
   'directorSession',
+  'previewSession',
   'videoGen',
   'videoGenChannels',
   'uploadFrame',

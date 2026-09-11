@@ -13,6 +13,8 @@ import {
 } from '@velocut/render-sdk';
 import { importMediaFiles } from '../services/import';
 import { ProjectMenu } from './ProjectMenu';
+import { PreviewRateSelect } from './PreviewRateSelect';
+import { useSyncExternalStore } from 'react';
 import { splitAtPlayhead } from '../App';
 
 function fmtTime(us: number): string {
@@ -58,6 +60,7 @@ export function Toolbar({
   onDirector: () => void;
 }) {
   const [exportOpen, setExportOpen] = useState(false);
+  const previewRate = useSyncExternalStore(playback.subscribeRate, () => playback.rate);
   const [exportError, setExportError] = useState<string | null>(null);
   const fileRef = importInputRef;
   const [exportPct, setExportPct] = useState<{
@@ -237,9 +240,10 @@ export function Toolbar({
               {fmtTime(state.playheadUs)}
               <span> / {fmtTime(state.durationUs)}</span>
             </span>
+            <PreviewRateSelect rate={previewRate} onChange={rate => playback.setRate(rate)} label="Editor preview speed" />
             {selected && (
               <label className="speed-label">
-                <span>Speed</span>
+                <span>Clip speed</span>
                 <select
                   aria-label="Clip speed"
                   value={String(selected.speed)}

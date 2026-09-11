@@ -12,6 +12,8 @@ import type Anthropic from '@anthropic-ai/sdk';
 import { runAgentTurn, type AgentEvent } from '@velocut/agent-sdk';
 import {
   type MediaLibrary,
+  type Playback,
+  type PreviewSessionOptions,
   type Transcriber,
   type Observer,
   type TextToSpeech,
@@ -247,6 +249,7 @@ function toolSummary(e: Extract<AgentEvent, { kind: 'tool' }>): string {
 
 export function AgentConsole({
   store,
+  playback,
   media,
   transcriber,
   observer,
@@ -255,6 +258,7 @@ export function AgentConsole({
   onOpenChange: setOpen,
 }: {
   store: Store;
+  playback: Playback;
   state: UiState;
   media: MediaLibrary;
   transcriber: Transcriber;
@@ -383,7 +387,8 @@ export function AgentConsole({
                 },
                 evaluate: store.evaluate,
                 document: () => store.getState().doc,
-                seek: (t) => store.seek(t),
+                seek: (t) => playback.seek(t),
+                previewSession: (o) => playback.session(o as PreviewSessionOptions),
                 motionClip: (o) => createMotionClip(store, media, o as MotionClipOptions),
                 sceneClip: (o) =>
                   createSceneClip(store, media, o as SceneClipOptions, (cmd) =>

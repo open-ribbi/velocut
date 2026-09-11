@@ -10,7 +10,8 @@
 export { Renderer, type InkRect, type TextLayout, type TextLine } from './renderer.ts';
 export { RendererClient, type RendererClientOptions, type PreviewRenderer } from './renderer-client.ts';
 export { MediaLibrary, RemoteVideoSource, type ProbedMedia } from './media.ts';
-export { Playback, type TransportStore } from './playback.ts';
+export { Playback, type TransportStore, type PreviewSessionOptions } from './playback.ts';
+export { PREVIEW_RATES, validatePreviewRate } from './preview-rate.ts';
 export { AudioEngine } from './audio.ts';
 export { Exporter, type ExportOptions, type AudioClipPlan, type VideoCodecFamily } from './exporter.ts';
 export {

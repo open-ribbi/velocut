@@ -1,3 +1,4 @@
+import { PreviewRateSelect } from './PreviewRateSelect';
 import { SceneExportDialog } from './SceneExportDialog';
 import { Icon, type IconName } from './primitives/Icon';
 // DirectorPanel — the stage view: orbit the compiled 3D scene, select any
@@ -596,7 +597,7 @@ export function DirectorPanel({
         if (currentSession.playing) {
           const next = Math.min(
             parsed.durationUs / 1e6,
-            currentSession.timeS + Math.min(0.1, (now - lastTime) / 1000),
+            currentSession.timeS + Math.max(0, (now - lastTime) / 1000) * currentSession.rate,
           );
           controller.update({
             timeS: next,
@@ -882,6 +883,7 @@ export function DirectorPanel({
         >
           <Icon name={session.playing ? 'pause' : 'play'} />
         </button>
+        <PreviewRateSelect rate={session.rate} onChange={rate => controller.update({ rate })} label="Director preview speed" />
         <details className="tool-menu">
           <summary className="icon-button" aria-label="More Director tools" title="More tools">
             <Icon name="more" />

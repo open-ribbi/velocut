@@ -2733,3 +2733,14 @@ button.danger-button {
   font-size: 11px;
   line-height: 1.7;
 }
+
+/* Viewing rate stays visible in compact panels, independent of clip retiming. */
+.preview-rate { display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto; color: var(--subtle); font-size: 11px; white-space: nowrap; }
+.preview-rate select { width: 58px; min-height: 28px; min-width: 58px; padding: 2px 5px; color: var(--text); }
+.preview-rate .icon { color: var(--accent); }
+.director-toolbar .preview-rate .icon { display: none; }
+@media (max-width: 640px) {
+  .preview-rate > span { display: none; }
+  .edit-bar { flex-wrap: wrap; height: auto; min-height: 40px; padding-top: 5px; padding-bottom: 5px; row-gap: 5px; }
+  .director-toolbar { flex-wrap: wrap; }
+}

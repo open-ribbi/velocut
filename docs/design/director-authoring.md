@@ -40,12 +40,40 @@ agent's `velocut_script` sandbox. The MCP adapter delegates to the same services
 | `sceneEdit({assetId,expectedRevision?,edits,dryRun?})` | Compile then commit once; `dryRun:true` returns a validated candidate without committing |
 | `sceneImportModel({assetId,file?/base64?,kind?,…})` | Import an embedded GLB into versioned project storage and create a static/animated object |
 | `sceneArrange({assetId,ids,mode,…})` | Ground, place on another object, align an edge, or distribute using world bounds; accepts `dryRun` |
+| `previewSession({rate?,playing?,timeUs?})` | Read/control editor preview speed, play/pause and seek; no document/history/export changes |
 | `directorSession(opts?)` | Read/control open scene, selection, focus, view, gizmo mode, time and playback |
 | `observe({mode:'scene',source:{assetId},view,…})` | Render a construction/shot view and return image plus revision and geometry evidence |
 
 The discrete `velocut_observe` tool carries images to the model. The existing
 script observation contract returns numeric/structured data only, so scripts
 should not be used to request visual reasoning from image bytes.
+
+### Preview speed (unreleased)
+
+The editor toolbar and Director transport each provide a **Preview** selector:
+0.25×, 0.5×, 1×, 1.5×, 2×, 4×. It is available without selecting a clip. The
+existing **Clip speed** selector still retimes a selected clip and changes its
+exported duration; preview speed changes neither the document nor export.
+
+```js
+// Editor timeline: project-local microseconds; omitted options read state.
+await velocut.previewSession({ rate: 2, playing: true, timeUs: 0 });
+// Director: independent speed and scene-local seconds.
+await velocut.directorSession({ assetId, rate: 0.5, playing: true, timeS: 0 });
+```
+
+The MCP equivalents are `velocut_preview({sessionId,rate?,playing?,timeUs?})` and
+`velocut_director({sessionId,options:{assetId,rate,...}})`. The built-in agent and
+MCP scripts share `previewSession`. Custom SDK hosts pass their `Playback`
+instance as the sixth argument to `createProjectHost`; without it the host
+returns an explicit unsupported result. `Playback.session()` also supports this
+API directly. Rates are session-only: a new project/page starts at 1×; opening a
+fresh Director session starts at 1×. Switching to the Director pauses the editor.
+
+Editor preview audio uses the same rate for its clock and PCM scheduling, so it
+stays synchronized; pitch changes with speed (no pitch preservation). Clips with
+an authored clip speed other than 1 retain the existing muted-preview/export
+limitation. The Director's scene transport does not play timeline audio.
 
 ### Transaction grammar
 
@@ -271,3 +299,15 @@ outside the requested native Director capability expansion.
   preserves animation and rejects stale revisions. Dry-run compile failures
   leave document and history unchanged. The final focused MCP check also covers
   the direct distribute tool's dryRun/start schema.
+
+## Preview speed validation (2026-09-11)
+
+- 88 unit tests and 8 MCP tests passed. Preview tests exercise wall/audio clock
+  rate changes, continuous switching, seeking, pause/end/replay, invalid request
+  atomicity, delayed AudioContext activation and stale PCM cancellation.
+- All 37 browser tests passed. After the final workspace-pause and compact-control
+  changes, the 17 affected Director/preview/layout tests passed again. Real MCP
+  and sandbox calls control both preview transports, no history/document changes
+  occur, fresh projects reset to 1×, and small-window selectors remain usable.
+- Production SDK/type declarations and editor build passed. No new dependencies,
+  registry publication or GitHub release changes were made for this feature.

@@ -69,6 +69,9 @@ export function App({ container }: { container: Container }) {
   useEffect(() => {
     if (session && !directorAsset) director.update({ open: false });
   }, [session, directorAsset, director]);
+  useEffect(() => {
+    if (session?.assetId) playback.pause();
+  }, [session?.assetId, playback]);
 
   // Resizable panels — widths/height persisted per browser.
   const [assetW, setAssetW] = useState(() => storedNum('velocut.assetW', 232));
@@ -425,6 +428,7 @@ export function App({ container }: { container: Container }) {
         <span className="status-brand">Ribbi</span>
       </footer>
       <AgentConsole
+        playback={playback}
         store={store}
         state={state}
         media={media}
