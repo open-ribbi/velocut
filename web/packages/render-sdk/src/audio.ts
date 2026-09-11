@@ -40,6 +40,7 @@ export class AudioEngine {
   private anchorTlUs = 0;
   private anchorCtxSec = 0;
   private rate = 1;
+  private clockStarted = false;
   /** Bumped on pause/seek — in-flight PCM for an old anchor is discarded. */
   private generation = 0;
 
@@ -61,6 +62,10 @@ export class AudioEngine {
   /** Master-clock readout while playing; null when audio isn't driving. */
   clockUs(): number | null {
     if (!this.playing || !this.ctx || this.ctx.state !== 'running') return null;
+    // Some output devices report running before their clock starts ticking.
+    // Keep using the preview's wall clock until audio actually advances.
+    if (!this.clockStarted && this.ctx.currentTime <= this.anchorCtxSec) return null;
+    this.clockStarted = true;
     return this.anchorTlUs + (this.ctx.currentTime - this.anchorCtxSec) * 1e6 * this.rate;
   }
 
@@ -83,6 +88,7 @@ export class AudioEngine {
     this.playing = true;
     this.anchorTlUs = timelineUs;
     this.anchorCtxSec = ctx.currentTime;
+    this.clockStarted = false;
     this.generation++;
   }
 

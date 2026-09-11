@@ -24,6 +24,9 @@ test('editor and Director preview rates stay separate, fit compact UI and leave 
   await page.screenshot({ path: testInfo.outputPath('editor-preview-speed.png') });
   // Human gesture enables the real AudioContext, even when this scene is silent.
   await page.getByRole('button', { name: 'Play', exact: true }).click();
+  // The browser's audio output clock can start after resume() resolves under
+  // software/CI audio. Measure steady playback, not device startup latency.
+  await expect.poll(() => page.evaluate(() => (window as any).velocut.previewSession().state.timeUs)).toBeGreaterThan(100_000);
   const elapsed = await page.evaluate(async () => {
     const v = (window as any).velocut;
     const first = v.previewSession().state.timeUs, wall = performance.now();

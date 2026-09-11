@@ -68,7 +68,9 @@ test('audio preview rate scales the master clock and PCM schedule; stale chunks 
   t.after(() => { globalThis.AudioContext = original; });
   const requests: Array<{ from: number; duration: number; resolve: (pcm: any) => void }> = [];
   const audio = new AudioEngine({ requestPcm: (_id: string, from: number, duration: number) => new Promise(resolve => requests.push({ from, duration, resolve })) } as never);
-  audio.onPlay(1_000_000, 2); ctx.currentTime = 0.25;
+  audio.onPlay(1_000_000, 2);
+  assert.equal(audio.clockUs(), null); // Running context, output clock not started yet.
+  ctx.currentTime = 0.25;
   assert.equal(audio.clockUs(), 1_500_000);
   const frame = { audio: [{ clipId: 'a', assetId: 'media', speed: 1, gain: 1, sourceTimeUs: 1_500_000 }] } as never;
   audio.update(frame, 1_500_000);
