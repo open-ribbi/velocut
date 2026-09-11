@@ -58,6 +58,11 @@ export function CodexPanel({ connection }: { connection: CodexConnection }) {
           </p>
         )}
         {state.message && <p role="status">{state.message}</p>}
+        {state.status === 'connected' && !!state.referenceCount && (
+          <p>{state.referenceCount} clips are ready for Codex to read with <code>velocut_references</code>.
+            This does not send a chat message. <button onClick={connection.clearReferences}>Clear references</button>
+          </p>
+        )}
         <p>
           Codex edits this project through its own model. No additional model API key is needed.
         </p>

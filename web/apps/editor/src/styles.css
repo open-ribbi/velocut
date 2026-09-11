@@ -2735,6 +2735,9 @@ button.danger-button {
 }
 
 /* Viewing rate stays visible in compact panels, independent of clip retiming. */
+.timeline-reference-status { display: flex; align-items: center; justify-content: space-between; gap: 6px; flex: none; padding: 3px 10px; color: var(--accent); border-bottom: 1px solid var(--line); font-size: 10px; }
+.timeline-reference-status .icon-button { min-height: 24px; width: 24px; padding: 3px; }
+.timeline-heading [aria-pressed="true"] { color: var(--accent); background: var(--panel); }
 .preview-rate { display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto; color: var(--subtle); font-size: 11px; white-space: nowrap; }
 .preview-rate select { width: 58px; min-height: 28px; min-width: 58px; padding: 2px 5px; color: var(--text); }
 .preview-rate .icon { color: var(--accent); }
@@ -2744,3 +2747,5 @@ button.danger-button {
   .edit-bar { flex-wrap: wrap; height: auto; min-height: 40px; padding-top: 5px; padding-bottom: 5px; row-gap: 5px; }
   .director-toolbar { flex-wrap: wrap; }
 }
+
+.timeline-heading small.selection-count { display: inline; color: var(--accent); }

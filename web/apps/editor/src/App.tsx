@@ -185,10 +185,9 @@ export function App({ container }: { container: Container }) {
       } else if (e.key === 's' || e.key === 'S') {
         splitAtPlayhead(store);
       } else if (e.key === 'Delete' || e.key === 'Backspace') {
-        const id = store.getState().selectedClipId;
-        if (id) {
-          store.dispatch({ type: 'removeClip', clipId: id });
-          store.select(null);
+        if (store.getState().selectedClipIds.length) {
+          e.preventDefault();
+          store.removeSelectedClips();
         }
       } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
         e.preventDefault();
@@ -377,6 +376,7 @@ export function App({ container }: { container: Container }) {
               />
             )}
             <TimelinePanel
+              codex={container.resolve(TOKENS.CodexConnection)}
               store={store}
               state={state}
               media={media}

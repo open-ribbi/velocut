@@ -6,6 +6,7 @@ export interface CodexConnectionState {
   status: 'disconnected' | 'connecting' | 'connected' | 'error';
   sessionId?: string;
   message?: string;
+  referenceCount?: number;
 }
 const KEY = 'velocut.codexPairing';
 
@@ -16,8 +17,10 @@ export function createCodexConnection(host: Host) {
   const listeners = new Set<() => void>();
   let controller: AbortController | null = null;
   let leave: (() => void) | null = null;
+  let pingNow: (() => void) | null = null;
   const set = (next: CodexConnectionState) => { state = next; listeners.forEach((fn) => fn()); };
   const disconnect = () => {
+    pingNow = null; host.clearReferences();
     leave?.(); leave = null; controller?.abort(); controller = null;
     sessionStorage.removeItem(KEY); set({ status: 'disconnected' });
   };
@@ -45,11 +48,12 @@ export function createCodexConnection(host: Host) {
       if (abort.signal.aborted) return;
       const path = `/sessions/${sessionId}`;
       leave = () => { clearInterval(heartbeat); void fetch(base + path, { method: 'DELETE', headers: { Authorization: `Bearer ${sessionKey}` }, keepalive: true }).catch(() => {}); };
-      heartbeat = window.setInterval(() => {
+      pingNow = () => {
         void request(path + '/ping', sessionKey, host.info()).catch((e) => {
           if (!abort.signal.aborted) { set({ status: 'error', sessionId, message: `Codex disconnected: ${String(e)}. Reconnect before sending more edits.` }); abort.abort(); }
         });
-      }, 10_000);
+      };
+      heartbeat = window.setInterval(pingNow, 10_000);
       set({ status: 'connected', sessionId });
       const executed = new Set<string>();
       while (!abort.signal.aborted) {
@@ -68,7 +72,7 @@ export function createCodexConnection(host: Host) {
       }
     } catch (e) {
       if (!abort.signal.aborted) set({ status: 'error', message: `Connection stopped: ${e instanceof Error ? e.message : String(e)}. Inspect the project before retrying an edit.` });
-    } finally { clearInterval(heartbeat); if (controller === abort) { leave?.(); leave = null; abort.abort(); controller = null; } }
+    } finally { clearInterval(heartbeat); if (controller === abort) { pingNow = null; host.clearReferences(); leave?.(); leave = null; abort.abort(); controller = null; } }
   };
   const initialize = () => {
     const hash = new URLSearchParams(location.hash.slice(1));
@@ -79,6 +83,13 @@ export function createCodexConnection(host: Host) {
   };
   window.addEventListener('hashchange', () => { if (new URLSearchParams(location.hash.slice(1)).has('velocut-codex')) initialize(); });
   window.addEventListener('pagehide', () => { leave?.(); controller?.abort(); });
-  return { getSnapshot: () => state, subscribe: (fn: () => void) => { listeners.add(fn); return () => { listeners.delete(fn); }; }, connect, disconnect, initialize };
+  const referenceClips = (ids: string[]) => {
+    if (state.status !== 'connected' || !state.sessionId) return { ok: false as const, message: 'Connect to Codex before adding references.' };
+    const result = host.referenceClips(ids, state.sessionId);
+    if (result.ok) { set({ ...state, referenceCount: result.count }); pingNow?.(); }
+    return result;
+  };
+  const clearReferences = () => { host.clearReferences(); set({ ...state, referenceCount: 0 }); pingNow?.(); };
+  return { referenceClips, clearReferences, getSnapshot: () => state, subscribe: (fn: () => void) => { listeners.add(fn); return () => { listeners.delete(fn); }; }, connect, disconnect, initialize };
 }
 export type CodexConnection = ReturnType<typeof createCodexConnection>;

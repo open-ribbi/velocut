@@ -14,7 +14,9 @@ async function body(req, limit = 96 * 1024 * 1024) {
 function metadata(input) {
   if (!input || typeof input.projectId !== 'string' || !input.projectId || input.projectId.length > 128) throw new Error('invalid project identity');
   return { projectId: input.projectId, projectName: String(input.projectName ?? '').slice(0, 256),
-    documentName: String(input.documentName ?? '').slice(0, 256), revision: Number.isSafeInteger(input.revision) ? input.revision : 0 };
+    documentName: String(input.documentName ?? '').slice(0, 256),
+    referenceCount: Number.isInteger(input.referenceCount) && input.referenceCount >= 0 && input.referenceCount <= 200 ? input.referenceCount : 0,
+    referenceId: typeof input.referenceId === 'string' ? input.referenceId.slice(0, 64) : null, revision: Number.isSafeInteger(input.revision) ? input.revision : 0 };
 }
 
 /** One MCP process owns one ephemeral loopback listener. No shared global port,
@@ -112,7 +114,7 @@ export async function createBroker({ requestTimeoutMs = 90_000 } = {}) {
       hash.set('velocut-codex', `${port}.${pairingKey}`); url.hash = hash.toString();
       return { ok: true, url: url.href, instructions: 'Open this URL in a browser. Then list sessions and explicitly pass the intended sessionId to every tool. This URL contains a temporary local pairing capability.' };
     },
-    list() { return [...sessions.values()].map(({ id, projectId, projectName, documentName, revision, lastSeen, lastCommand }) => ({ sessionId: id, projectId, projectName, documentName, revision, connected: Date.now() - lastSeen < 30_000, lastCommand })); },
+    list() { return [...sessions.values()].map(({ id, projectId, projectName, documentName, revision, lastSeen, lastCommand, referenceCount, referenceId }) => ({ sessionId: id, projectId, projectName, documentName, revision, connected: Date.now() - lastSeen < 30_000, lastCommand, referenceCount, referenceId })); },
     call(sessionId, method, args, signal) {
       const s = sessions.get(sessionId);
       if (!s || Date.now() - s.lastSeen > 30_000) return Promise.reject(new Error('page is not connected; use velocut_connect and list sessions'));

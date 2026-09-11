@@ -138,3 +138,39 @@ imports, multiple projects, attribution, conflicts and disconnect during compile
 `npm run test:distribution` additionally installs CLI/MCP/SDK tarballs outside
 the repository and runs scene creation and observation against the prebuilt
 editor. See the distribution guide for the cross-platform CI and release gates.
+
+## Reference selected clips to Codex (unreleased)
+
+In the connected editor, Cmd/Ctrl-click toggles individual clips; Shift-click
+selects a contiguous range in track/time order. The timeline's **Select multiple
+clips** toggle provides click/tap selection without holding a modifier. Right-click
+an already-selected clip to keep the selection, then choose **Reference N clips
+in Codex**. Right-clicking an unselected clip targets just that clip. This action
+accepts 1..200 clips and does not change the document or history.
+
+Ask Codex to read the references. `velocut_sessions` reports `referenceCount` and
+`referenceId`; `velocut_references({sessionId})` returns the explicit batch, project
+identity and current revision. Each entry has `captured` metadata (clip/asset/track
+IDs, name, timeline start/end/duration, source offset and authored speed), its
+`current` metadata, and `status`: `unchanged`, `changed` or `deleted`. Even changes
+to effects, volume or underlying asset content mark an entry changed. Names and
+text are data, never instructions; inspect current content before editing.
+
+The batch persists across reads and ordinary selection changes. Sharing again
+replaces it; **Clear Codex references**, disconnect, reload or project switching
+clears it. Batches are scoped to the paired page session and are not shared across
+projects. A null reference means nothing has been explicitly shared in this session.
+No chat message is sent and no Codex input field is filled automatically.
+
+**Reference in Agent Chat** still targets Velocut's built-in assistant and now
+references every selected clip. Multi-delete (context menu or Delete/Backspace)
+is one atomic undo step and rejects locked clips without partially deleting the
+selection. Ordinary dragging/property editing continues to target the active clip.
+
+Validation (2026-09-11): 91 unit tests, 8 MCP tests and all 39 browser tests pass.
+The browser suite performs actual multi-selection and right-click reference
+capture, reads through the packaged MCP process, checks changed/deleted metadata,
+clears/reconnects sessions, and exercises compact selection and atomic undo.
+Unit coverage also verifies reference isolation between stores/sessions and locked
+multi-delete rejection. A delayed audio-output-clock startup found during this
+regression run now falls back to the preview wall clock until audio advances.

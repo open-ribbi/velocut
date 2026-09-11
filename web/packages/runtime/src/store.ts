@@ -17,6 +17,8 @@ export interface UiState {
   doc: VDocument;
   revision: number;
   selectedClipId: string | null;
+  /** UI-local selection; selectedClipId is the active clip for property editing. */
+  selectedClipIds: string[];
   playheadUs: TimeUs;
   playing: boolean;
   durationUs: TimeUs;
@@ -53,6 +55,7 @@ export class Store {
   /** The first external loadDocument after a restored history is the collab
    *  restore echo — absorb it into head instead of recording a sync node. */
   private awaitingRestore = false;
+  private selectionAnchor: string | null = null;
 
   constructor(engine: ICoreEngine, opts: StoreOptions = {}) {
     this.engine = engine;
@@ -68,6 +71,7 @@ export class Store {
       doc: this.engine.document(),
       revision: this.engine.revision(),
       selectedClipId: null,
+      selectedClipIds: [],
       playheadUs: 0,
       playing: false,
       durationUs: this.engine.durationUs(),
@@ -95,8 +99,15 @@ export class Store {
   }
 
   private syncFromEngine(extra: Partial<UiState> = {}) {
+    const doc = this.engine.document();
+    const live = new Set(doc.tracks.flatMap(track => track.clips.map(clip => clip.id)));
+    const selectedClipIds = extra.selectedClipId === null ? [] : this.state.selectedClipIds.filter(id => live.has(id));
+    const selectedClipId = selectedClipIds.includes(this.state.selectedClipId!) ? this.state.selectedClipId : selectedClipIds.at(-1) ?? null;
+    if (!this.selectionAnchor || !live.has(this.selectionAnchor) || extra.selectedClipId === null) this.selectionAnchor = selectedClipId;
     this.emit({
-      doc: this.engine.document(),
+      doc,
+      selectedClipIds,
+      selectedClipId,
       revision: this.engine.revision(),
       durationUs: this.engine.durationUs(),
       canUndo: this.history.canUndo(),
@@ -209,7 +220,28 @@ export class Store {
 
   // -- UI-local state ----------------------------------------------------
 
-  select = (clipId: string | null) => this.emit({ selectedClipId: clipId });
+  select = (clipId: string | null, mode: 'replace' | 'toggle' | 'range' = 'replace') => {
+    if (clipId === null) {
+      this.selectionAnchor = null;
+      this.emit({ selectedClipId: null, selectedClipIds: [] });
+      return;
+    }
+    const order = this.state.doc.tracks.flatMap(track => [...track.clips].sort((a, b) => a.startUs - b.startUs || a.id.localeCompare(b.id)).map(clip => clip.id));
+    if (!order.includes(clipId)) return;
+    let ids = [clipId];
+    if (mode === 'toggle') {
+      ids = this.state.selectedClipIds.includes(clipId) ? this.state.selectedClipIds.filter(id => id !== clipId) : [...this.state.selectedClipIds, clipId];
+    } else if (mode === 'range' && this.selectionAnchor && order.includes(this.selectionAnchor)) {
+      const a = order.indexOf(this.selectionAnchor), b = order.indexOf(clipId);
+      ids = order.slice(Math.min(a, b), Math.max(a, b) + 1);
+    }
+    if (mode !== 'range' || !this.selectionAnchor) this.selectionAnchor = clipId;
+    this.emit({ selectedClipIds: order.filter(id => ids.includes(id)), selectedClipId: ids.includes(clipId) ? clipId : ids.at(-1) ?? null });
+  };
+
+  removeSelectedClips = () => this.state.selectedClipIds.length ? this.dispatch({
+    type: 'batch', commands: this.state.selectedClipIds.map(clipId => ({ type: 'removeClip', clipId })),
+  }) : undefined;
 
   /** Record a shot segmentation (from observe shots) for timeline overlay. */
   setShots = (assetId: string, analysis: ShotAnalysis) =>

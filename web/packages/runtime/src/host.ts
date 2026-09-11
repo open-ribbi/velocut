@@ -1,3 +1,4 @@
+import { createClipReferences } from './clip-references';
 import type { Command } from '@velocut/protocol';
 import type { MediaLibrary, Observer, Playback, PreviewSessionOptions } from '@velocut/render-sdk';
 import {
@@ -36,7 +37,9 @@ export function createProjectHost(
   actor: { name: string; peerPrefix: string } = { name: 'MCP', peerPrefix: 'mcp' },
   playback?: Playback,
 ) {
+  const references = createClipReferences(store);
   const info = () => ({
+    ...references.summary(),
     projectId: project.id,
     projectName: project.name,
     documentName: store.getState().doc.name,
@@ -93,6 +96,8 @@ export function createProjectHost(
     };
     const a = (args ?? {}) as Record<string, unknown>;
     switch (method) {
+      case 'references':
+        return { ...info(), ...references.read(sessionId) };
       case 'document':
         return { ok: true, ...info(), document: store.getState().doc };
       case 'previewSession':
@@ -194,5 +199,5 @@ export function createProjectHost(
         return { ok: false, message: `unsupported project editor method: ${method}` };
     }
   };
-  return { info, execute };
+  return { info, execute, referenceClips: references.capture, clearReferences: references.clear };
 }

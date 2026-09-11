@@ -15,10 +15,11 @@ import { Icon } from './primitives/Icon';
 // fact), and the track area scrolls vertically under a fixed ruler — so the
 // layout is a running sum of per-track heights offset by a scroll position.
 
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { Clip, TimeUs } from '@velocut/protocol';
 import type { MediaLibrary } from '@velocut/render-sdk';
 import type { Store, UiState } from '../state/store';
+import type { CodexConnection } from '../services/codex-connection';
 import { referenceToAgent } from '../services/reference';
 import { draggedAsset, type DraggedAsset } from '../services/dnd';
 
@@ -67,6 +68,7 @@ const TRACK_COLORS: Record<string, [string, string]> = {
 };
 
 export function TimelinePanel({
+  codex,
   store,
   state,
   media,
@@ -74,6 +76,7 @@ export function TimelinePanel({
   collapsed: minimized = false,
   onToggle,
 }: {
+  codex: CodexConnection;
   store: Store;
   state: UiState;
   media: MediaLibrary;
@@ -81,6 +84,11 @@ export function TimelinePanel({
   collapsed?: boolean;
   onToggle?: () => void;
 }) {
+  const connection = useSyncExternalStore(codex.subscribe, codex.getSnapshot, codex.getSnapshot);
+  const [multiSelect, setMultiSelect] = useState(false);
+  const multiSelectRef = useRef(false);
+  multiSelectRef.current = multiSelect;
+  const [referenceError, setReferenceError] = useState<string | null>(null);
   const [zoom, setZoom] = useState(100);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -472,7 +480,7 @@ export function TimelinePanel({
         ctx.fill();
         ctx.globalAlpha = reordering ? 0.4 : 1;
 
-        if (s.selectedClipId === clip.id) {
+        if (s.selectedClipIds.includes(clip.id)) {
           ctx.strokeStyle = palette.accent;
           ctx.lineWidth = 2;
           roundRect(
@@ -692,8 +700,8 @@ export function TimelinePanel({
   // ------------------------------------------------------- interaction
 
   const removeClip = (clipId: string) => {
-    store.dispatch({ type: 'removeClip', clipId });
-    if (stateRef.current.selectedClipId === clipId) store.select(null);
+    if (store.getState().selectedClipIds.includes(clipId)) store.removeSelectedClips();
+    else store.dispatch({ type: 'removeClip', clipId });
   };
 
   const toggleCollapse = (trackId: string) => {
@@ -746,6 +754,12 @@ export function TimelinePanel({
         store.select(null);
         gesture.current = { kind: 'scrub' };
         store.seek(xToUs(x));
+        draw();
+        return;
+      }
+      if (e.shiftKey || e.metaKey || e.ctrlKey || multiSelectRef.current) {
+        store.select(hit.clip.id, e.shiftKey ? 'range' : 'toggle');
+        gesture.current = null;
         draw();
         return;
       }
@@ -903,7 +917,7 @@ export function TimelinePanel({
       const hit = hitTest(x, y);
       if (hit) {
         e.preventDefault();
-        store.select(hit.clip.id);
+        if (!store.getState().selectedClipIds.includes(hit.clip.id)) store.select(hit.clip.id);
         setMenu({
           x: e.clientX,
           y: e.clientY,
@@ -1046,6 +1060,9 @@ export function TimelinePanel({
     menu?.kind === 'clip'
       ? state.doc.tracks.flatMap((t) => t.clips).find((c) => c.id === menu.clipId)
       : null;
+  const menuIds = menu?.kind === 'clip'
+    ? state.selectedClipIds.includes(menu.clipId) ? state.selectedClipIds : [menu.clipId]
+    : [];
   const canSplit = !!(
     menuClip &&
     state.playheadUs > menuClip.startUs &&
@@ -1066,9 +1083,12 @@ export function TimelinePanel({
       <div className="timeline-heading">
         <span>
           <Icon name="timeline" size={15} />
-          Timeline <small>{state.doc.tracks.length} tracks</small>
+          Timeline <small className={state.selectedClipIds.length ? 'selection-count' : undefined}>{state.selectedClipIds.length ? `${state.selectedClipIds.length} selected` : `${state.doc.tracks.length} tracks`}</small>
         </span>
         <span className="spacer" />
+        <button className="icon-button" aria-label="Select multiple clips" aria-pressed={multiSelect}
+          title="Multi-select: toggle clips by clicking. Cmd/Ctrl-click toggles; Shift-click selects a range."
+          onClick={() => setMultiSelect(value => !value)}><Icon name="layers" size={15} /></button>
         <button
           className="icon-button"
           aria-label="Fit timeline"
@@ -1116,6 +1136,13 @@ export function TimelinePanel({
           />
         </button>
       </div>
+      {!minimized && connection.status === 'connected' && !!connection.referenceCount && (
+        <div className="timeline-reference-status" role="status">
+          <span>{connection.referenceCount} clips ready. Ask Codex to read references.</span>
+          <button className="icon-button" aria-label="Clear Codex references" onClick={codex.clearReferences}><Icon name="close" size={13} /></button>
+        </div>
+      )}
+      {!minimized && referenceError && <div className="timeline-reference-status" role="alert">{referenceError}</div>}
       <div className="timeline-panel" ref={wrapRef} hidden={minimized}>
         <canvas ref={canvasRef} aria-label="Timeline tracks" />
         {!state.doc.tracks.length && (
@@ -1150,16 +1177,26 @@ export function TimelinePanel({
                     }}
                   >
                     <Icon name="cut" size={15} />
-                    Split at Playhead
+                    {menuIds.length > 1 ? 'Split clicked clip at Playhead' : 'Split at Playhead'}
                   </button>
                   <button
                     onClick={() => {
-                      referenceToAgent({ id: menu.clipId });
+                      for (const id of menuIds) referenceToAgent({ id });
                       setMenu(null);
                     }}
                   >
                     <Icon name="sparkles" size={15} />
                     Reference in Agent Chat
+                  </button>
+                  <button disabled={connection.status !== 'connected' || menuIds.length > 200}
+                    title={connection.status !== 'connected' ? 'Connect to Codex first' : menuIds.length > 200 ? 'Reference at most 200 clips at a time' : 'Make these clips available to the Codex references tool'}
+                    onClick={() => {
+                      const r = codex.referenceClips(menuIds);
+                      setReferenceError(r.ok ? null : r.message);
+                      setMenu(null);
+                    }}>
+                    <Icon name="link" size={15} />
+                    {menuIds.length > 1 ? `Reference ${menuIds.length} clips in Codex` : 'Reference in Codex'}
                   </button>
                   <button
                     className="ctx-danger"
@@ -1169,7 +1206,7 @@ export function TimelinePanel({
                     }}
                   >
                     <Icon name="trash" size={15} />
-                    Delete Clip
+                    {menuIds.length > 1 ? `Delete ${menuIds.length} clips` : 'Delete Clip'}
                   </button>
                 </>
               )}
