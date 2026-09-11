@@ -109,6 +109,7 @@ export default defineConfig(({ command }) => ({
       'three/examples/jsm/controls/OrbitControls.js',
       'three/examples/jsm/controls/TransformControls.js',
       'three/examples/jsm/loaders/GLTFLoader.js',
+      'three/examples/jsm/exporters/GLTFExporter.js',
       'three/examples/jsm/utils/SkeletonUtils.js',
     ],
   },

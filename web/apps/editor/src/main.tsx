@@ -16,7 +16,7 @@ import { observeForAgent, type ObserveInput } from './services/observe';
 import { synthesizeNarration } from './services/tts';
 import { runAgentScript } from './services/script';
 import { createMotionClip, syncMotionAsset, migrateLegacyMotionSpecs, type MotionClipOptions } from './services/motion';
-import { bindSceneAuthoring, importSceneModel, type SceneModelImportOptions, editScene, arrangeScene, type SceneArrangeOptions, inspectScene, type SceneEditOptions, dispatchSceneAware, checkSpecCommand, createSceneClip, pruneSceneRenderers, syncSceneAsset, type SceneClipOptions } from './services/scene';
+import { exportSceneModel, type SceneExportOptions, bindSceneAuthoring, importSceneModel, type SceneModelImportOptions, editScene, arrangeScene, type SceneArrangeOptions, inspectScene, type SceneEditOptions, dispatchSceneAware, checkSpecCommand, createSceneClip, pruneSceneRenderers, syncSceneAsset, type SceneClipOptions } from './services/scene';
 import { loadSceneManifest, scenePromptDoc } from '@velocut/scene-sdk';
 import { searchWeb } from './services/search';
 import { generateVideoClip, describeVideoGenChannels, sandboxVideoGen, type VideoGenClipOptions } from './services/videogen';
@@ -263,6 +263,7 @@ async function bootstrap() {
     // agent's velocut.motionClip reaches (persisted, so it survives reload).
     motionClip: (o: MotionClipOptions) => createMotionClip(store, media, o),
     // Declarative 3D scene clip (Scene Director) — same seam as motionClip.
+    sceneExport: (o: SceneExportOptions) => exportSceneModel(store, o),
     sceneClip: (o: SceneClipOptions) => createSceneClip(store, media, o),
     // AI video generation via a configured channel (Agent settings → Video
     // generation). Full option surface incl. reference URLs — this is the

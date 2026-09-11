@@ -1,3 +1,4 @@
+import { SceneExportDialog } from './SceneExportDialog';
 import { Icon, type IconName } from './primitives/Icon';
 // DirectorPanel — the stage view: orbit the compiled 3D scene, select any
 // character/prop and manipulate it with transform gizmos, scrub time, and see
@@ -116,6 +117,7 @@ export function DirectorPanel({
   useEffect(() => () => rendererRef.current?.forceContextLoss(), []);
   const importRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const [importKind, setImportKind] = useState<'prop' | 'character'>('prop');
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const controller = directorController(store);
@@ -776,6 +778,7 @@ export function DirectorPanel({
 
   return (
     <section className="director-overlay" data-compact={compact}>
+      <SceneExportDialog open={exportOpen} onClose={() => setExportOpen(false)} store={store} assetId={asset.id} name={asset.name} objectId={session.objectId} timeS={session.timeS}/>
       <div className="director-head">
         <div className="director-heading">
           <span className="eyebrow">DIRECTOR WORKSPACE</span>
@@ -884,6 +887,7 @@ export function DirectorPanel({
             <Icon name="more" />
           </summary>
           <div className="tool-menu-content">
+            <button onClick={(e) => { e.currentTarget.closest('details')?.removeAttribute('open'); controller.update({ playing: false }); setExportOpen(true); }}><Icon name="download"/>Export GLB…</button>
             <button onClick={() => setGuides((v) => !v)} aria-pressed={guides}>
               <Icon name="grid" />
               {guides ? 'Hide guides' : 'Show guides'}

@@ -1,8 +1,9 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import { StdioServerTransport } from '@modelcontextprotocol/server/stdio';
 import * as z from 'zod/v4';
-import { open } from 'node:fs/promises';
-import { basename, extname, resolve } from 'node:path';
+import { open, link, unlink } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { basename, extname, resolve, isAbsolute, dirname } from 'node:path';
 import { createBroker } from './broker.mjs';
 
 const jsonObject = z.record(z.string(), z.unknown());
@@ -58,6 +59,26 @@ export async function createVelocutServer(options = {}) {
     { ...session, action: z.enum(['undo', 'redo']), expectedRevision: z.number().int().nonnegative() }, relay('history'));
   register('velocut_script', 'Run JavaScript in Velocut’s isolated, network-free editor sandbox (top-level await, return JSON). Available methods: document, evaluate, seek, apply, sceneAssets, sceneClip, sceneEdit, sceneArrange, sceneInspect, sceneImportModel, directorSession, observe (numbers only). Use loops to generate geometry or batches. Check result.ok; use the separate observe tool for images.',
     { ...session, code: z.string().min(1).max(256_000) }, relay('script', ({ code }) => code));
+  register('velocut_export_model', 'Export a static GLB snapshot of the whole scene or selected object IDs, including descendants at timeS. Keeps world placement, materials, textures and the current pose; skinning/morphs are baked into static geometry, without rigs, animation tracks or editing recipes. Writes only to the explicit absolute .glb path and never overwrites an existing file. Returns metadata, not model bytes.',
+    { ...asset, path: z.string().min(1), objectIds: z.array(z.string().min(1)).min(1).max(200).optional(), timeS: z.number().nonnegative().optional(), includeEnvironment: z.boolean().optional(), includeCamera: z.boolean().optional(), expectedRevision }, async ({ sessionId, path, ...args }, signal) => {
+      if (!isAbsolute(path) || extname(path).toLowerCase() !== '.glb') throw new Error('Export requires an explicit absolute .glb destination');
+      const result = await broker.call(sessionId, 'sceneExport', args, signal);
+      if (!result?.ok) return result;
+      const { base64, ...metadata } = result;
+      if (typeof base64 !== 'string' || base64.length > 90_000_000) throw new Error('invalid export payload');
+      const bytes = Buffer.from(base64, 'base64');
+      if (bytes.length < 20 || bytes.length > 64 * 1024 * 1024 || bytes.readUInt32LE(0) !== 0x46546c67 || bytes.readUInt32LE(4) !== 2 || bytes.readUInt32LE(8) !== bytes.length) throw new Error('invalid GLB export');
+      signal?.throwIfAborted();
+      const temporary = resolve(dirname(path), `.${basename(path)}.${randomUUID()}.tmp`);
+      const handle = await open(temporary, 'wx');
+      try {
+        await handle.writeFile(bytes);
+        await handle.close();
+        signal?.throwIfAborted();
+        await link(temporary, path); // atomic commit, EEXIST also rejects symlinks
+      } finally { await handle.close(); await unlink(temporary).catch(error => { if (error.code !== 'ENOENT') throw error; }); }
+      return { ...metadata, path, byteLength: bytes.length };
+    });
   register('velocut_import_model', 'Import a user-specified local self-contained GLB (up to 64 MiB) into the paired project. Preserves geometry/materials/textures and can use embedded animations with kind:character. Returns model/object IDs. No download or upload to an external service.',
     { ...asset, path: z.string().min(1), kind: z.enum(['prop', 'character']).optional(), name: z.string().optional(), expectedRevision }, async ({ sessionId, path, ...args }, signal) => {
       const fullPath = resolve(path);

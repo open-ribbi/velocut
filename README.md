@@ -55,6 +55,9 @@ Create primitives, editable meshes and parametric tables, chairs or stairs. Impo
 
 ![Velocut Director: a furnished Sunroom scene with object hierarchy, transform gizmos and editable table properties.](docs/media/director.png)
 
+
+Static GLB export is available in the current source build through the Director, SDK and MCP. See the [model export guide](docs/integrations/model-export.md); it is not part of the existing 0.0.1 download.
+
 ### Keep the canvas usable in a small window
 
 The workspace adapts to narrow browser panels alongside Codex. Bottom navigation opens the media/objects, properties, history and assistant panels as needed; the timeline can collapse to make room for the canvas. Media can be inserted by clicking, without dragging.

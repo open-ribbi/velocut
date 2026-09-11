@@ -52,6 +52,13 @@ transaction grammar. It uses the same `velocut` methods available in the script 
   GLBs must embed their buffers/textures. Don't read unrelated local files.
 - Use `velocut_director` to open/select/focus/scrub/play or set an inspection
   camera. This changes workspace navigation; authored camera changes use edits.
+- Export models with `velocut_export_model` to an explicit absolute `.glb` path.
+  Omit objectIds for the whole scene, or provide object IDs to include their
+  descendants. Set timeS for the desired scene-local pose (default 0). Exports
+  preserve world placement, textures and the current skin/morph pose baked into static geometry, without
+  rigs, animation tracks or parametric recipes. Read returned warnings. Existing
+  files are never overwritten; choose a new path. Do not try to serialize model
+  bytes through a script or claim native editing data is preserved by GLB.
 - Use the separate `velocut_observe` tool to SEE the result. It returns images,
   while script observation returns only data. Inspect multiple angles and time
   points, then iterate until the requested composition/motion is verified.

@@ -667,3 +667,35 @@ export function dispatchSceneAware(
     }
   })();
 }
+
+export interface SceneExportOptions {
+  assetId: string;
+  timeS?: number;
+  objectIds?: string[];
+  includeEnvironment?: boolean;
+  includeCamera?: boolean;
+  maxTextureSize?: number;
+  expectedRevision?: number;
+}
+/** Read-only snapshot export; the revision identifies exactly what was exported. */
+export async function exportSceneModel(
+  store: Store,
+  options: SceneExportOptions,
+  signal?: AbortSignal,
+) {
+  try {
+    const { spec, revision } = readScene(store, options.assetId);
+    if (options.expectedRevision != null && options.expectedRevision !== revision)
+      throw new Error('conflict: document revision changed before export');
+    const { exportSceneGlb } = await import('@velocut/scene-sdk');
+    const result = await exportSceneGlb(spec, {
+      ...options,
+      assetBase: sceneAssetBase(store),
+      resources: sceneResources(store),
+      signal,
+    });
+    return { ok: true as const, assetId: options.assetId, revision, ...result };
+  } catch (error) {
+    return { ok: false as const, message: error instanceof Error ? error.message : String(error) };
+  }
+}

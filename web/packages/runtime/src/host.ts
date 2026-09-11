@@ -17,6 +17,8 @@ import {
   arrangeScene,
   inspectScene,
   importSceneModel,
+  exportSceneModel,
+  type SceneExportOptions,
   type SceneClipOptions,
   type SceneEditOptions,
   type SceneArrangeOptions,
@@ -109,6 +111,19 @@ export function createProjectHost(
         return editScene(store, args as SceneEditOptions, dispatch);
       case 'sceneArrange':
         return arrangeScene(store, args as SceneArrangeOptions, dispatch);
+      case 'sceneExport': {
+        const result = await exportSceneModel(store, args as SceneExportOptions, signal);
+        if (!result.ok) return result;
+        const { blob, ...metadata } = result;
+        const base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onerror = () => reject(reader.error);
+          reader.onload = () => resolve(String(reader.result).split(',')[1]);
+          reader.readAsDataURL(blob);
+        });
+        signal?.throwIfAborted();
+        return { ...metadata, base64, byteLength: blob.size };
+      }
       case 'sceneImportModel':
         return importSceneModel(store, args as SceneModelImportOptions, dispatch);
       case 'sceneInspect':

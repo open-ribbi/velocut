@@ -30,3 +30,11 @@ containing directory. Pass a different `assetBase` for a subpath deployment.
 Models in the manifest resolve relative to this base; retain their LICENSES.md.
 Velocut's CLI includes the assets already. Imported GLBs use the explicit
 `SceneResources.modelBytes` resolver supplied by the host.
+
+## Static model export (unreleased)
+
+`exportSceneGlb(spec, { timeS, objectIds?, assetBase?, resources? })` returns a
+GLB Blob and format-limit warnings. Omit objectIds for the whole scene. It
+preserves hierarchy/world placement, materials, textures and the sampled
+skin/morph pose, without animation tracks or procedural editing recipes.
+See the [model export guide](../../../docs/integrations/model-export.md).

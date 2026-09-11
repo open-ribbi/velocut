@@ -49,3 +49,5 @@ export { validateViewCamera, type SceneViewCamera, constructionCamera, inspectSt
 export { ASSEMBLY_DEFAULTS, assemblyParts, type AssemblyRecipe, type AssemblyTemplate } from './assemblies.ts';
 
 export { withImportedModels, validateGlb, parseSceneModel, loadImportedModel, MAX_MODEL_BYTES, type SceneResources } from './models.ts';
+
+export { exportSceneGlb, type SceneGlbOptions, type SceneGlbResult } from './export.ts';

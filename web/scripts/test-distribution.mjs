@@ -161,6 +161,13 @@ try {
   });
   assert.equal(observed.isError, false);
   assert.ok(observed.content.some((c) => c.type === 'image' && c.data.length > 100));
+  const exportedPath = resolve(workspace, 'roundtrip.glb');
+  const exported = await call('velocut_export_model', { sessionId, assetId: created.assetId, path: exportedPath });
+  assert.equal(exported.base64, undefined);
+  const exportedBytes = await readFile(exportedPath);
+  assert.equal(exportedBytes.subarray(0, 4).toString(), 'glTF');
+  const roundtrip = await call('velocut_import_model', { sessionId, assetId: created.assetId, path: exportedPath });
+  assert.ok(roundtrip.objectId);
   console.log('Packed CLI + MCP + scene authoring/vision passed');
   await client.close();
   client = null;
@@ -272,6 +279,7 @@ window.probe=(async()=>{
           'http-headers-ranges',
           'mcp-stdio',
           'scene-vision',
+        'model-export-roundtrip',
           'vite-production-consumer',
           'media-worker',
           'render-worker-webgpu-pixels',
