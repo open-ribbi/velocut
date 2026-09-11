@@ -1,7 +1,6 @@
-# GLB model export (unreleased)
+# GLB model export (0.0.1)
 
-Available from the current source build. The already-published 0.0.1 release
-has not been replaced. No new third-party runtime dependency is required:
+Included in the rebuilt 0.0.1 release and npm packages. No new third-party runtime dependency is required:
 export uses Three.js GLTFExporter.
 
 ## Director

@@ -21,6 +21,12 @@ Velocut 将多轨视频编辑器、可编辑的 3D 导演台和程序化项目�
 
 ## 启动 Studio
 
+也可以直接从 npm 启动预构建编辑器：
+
+```sh
+npx @velocut/cli@0.0.1 studio
+```
+
 下载 **[便携 ZIP](https://github.com/open-ribbi/velocut/releases/download/v0.0.1/velocut-standalone.zip)** 或 **[TAR.GZ](https://github.com/open-ribbi/velocut/releases/download/v0.0.1/velocut-standalone.tar.gz)**，解压后在 `velocut-0.0.1` 目录中运行：
 
 ```sh
@@ -32,7 +38,7 @@ Studio 会在浏览器中打开，使用期间保持终端运行。便携包已�
 - 需要 **Node.js 22.6+**，以及支持 **WebGPU / WebCodecs 的 Chrome 或 Edge**。完整编辑器暂不支持 Safari 和 Firefox。
 - 项目保存在浏览器的 IndexedDB / OPFS 中。再次使用时，请保持相同的浏览器配置、主机名和端口。
 - 手动编辑和 Codex 集成不需要额外填写模型 API Key。
-- 发行版附有 [SHA-256 校验文件](https://github.com/open-ribbi/velocut/releases/download/v0.0.1/SHA256SUMS.txt)。公共 npm registry 尚未发布，目前可以下载并安装 Release 中的 `.tgz` 包。
+- 发行版附有 [SHA-256 校验文件](https://github.com/open-ribbi/velocut/releases/download/v0.0.1/SHA256SUMS.txt)。七个 `@velocut` 包也可通过 npm 安装，版本均为 0.0.1。
 
 ## 连接 Codex
 
@@ -56,7 +62,7 @@ Studio 会在浏览器中打开，使用期间保持终端运行。便携包已�
 ![Velocut 导演台：Sunroom 房间、对象层级、变换手柄和可编辑的桌子属性。](docs/media/director.png)
 
 
-当前源码已支持通过导演台、SDK 和 MCP 导出静态 GLB，详见[模型导出指南](docs/integrations/model-export.md)。此功能尚未包含在已发布的 0.0.1 下载包中。
+支持通过导演台、SDK 和 MCP 导出静态 GLB，详见[模型导出指南](docs/integrations/model-export.md)。Agent 还可批量复制、排列对象、调整预览倍速，以及读取从时间线多选引用的片段。
 
 ### 小窗也能操作
 
@@ -102,7 +108,7 @@ Studio 会在浏览器中打开，使用期间保持终端运行。便携包已�
 | [`@velocut/mcp`](web/packages/mcp) | Codex 插件与其他客户端共用的 MCP 服务 |
 | [`@velocut/cli`](web/packages/cli) | 预构建的本地 Studio 启动器 |
 
-`.tgz` 文件见 [Release 0.0.1](https://github.com/open-ribbi/velocut/releases/tag/v0.0.1)。公共 registry 发布前，请将相互依赖的 Velocut 压缩包一起安装，不要直接使用依赖 registry 的 `npx` 命令。
+`.tgz` 文件见 [Release 0.0.1](https://github.com/open-ribbi/velocut/releases/tag/v0.0.1)。也可直接运行 `npm install @velocut/scene-sdk@0.0.1 @velocut/runtime@0.0.1` 安装 SDK，或使用压缩包离线安装。
 
 [SDK 集成示例与发布流程 →](docs/integrations/npm-packages.md)
 

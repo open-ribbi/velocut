@@ -31,7 +31,7 @@ Models in the manifest resolve relative to this base; retain their LICENSES.md.
 Velocut's CLI includes the assets already. Imported GLBs use the explicit
 `SceneResources.modelBytes` resolver supplied by the host.
 
-## Static model export (unreleased)
+## Static model export (0.0.1)
 
 `exportSceneGlb(spec, { timeS, objectIds?, assetBase?, resources? })` returns a
 GLB Blob and format-limit warnings. Omit objectIds for the whole scene. It

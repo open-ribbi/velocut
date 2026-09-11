@@ -139,7 +139,7 @@ imports, multiple projects, attribution, conflicts and disconnect during compile
 the repository and runs scene creation and observation against the prebuilt
 editor. See the distribution guide for the cross-platform CI and release gates.
 
-## Reference selected clips to Codex (unreleased)
+## Reference selected clips to Codex (0.0.1)
 
 In the connected editor, Cmd/Ctrl-click toggles individual clips; Shift-click
 selects a contiguous range in track/time order. The timeline's **Select multiple

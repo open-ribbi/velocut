@@ -77,4 +77,9 @@ jobs:
       - name: Create draft release for review
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" artifacts/*.tgz artifacts/velocut-standalone.tar.gz artifacts/manifest.json --repo "$GITHUB_REPOSITORY" --draft --generate-notes
+        run: |
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "Release already exists; verified artifacts are available for an explicit maintainer update."
+          else
+            gh release create "$GITHUB_REF_NAME" artifacts/*.tgz artifacts/velocut-standalone.tar.gz artifacts/manifest.json --repo "$GITHUB_REPOSITORY" --draft --generate-notes
+          fi

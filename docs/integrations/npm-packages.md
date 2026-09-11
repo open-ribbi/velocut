@@ -1,8 +1,8 @@
 # Independent SDKs, Studio and MCP
 
-The monorepo produces seven public-package candidates at version 0.0.1. No
-registry publication is performed by build/test commands. Replace the example
-version only with a release that actually exists in your registry.
+The monorepo publishes seven public packages at version 0.0.1. Start the editor
+with `npx @velocut/cli@0.0.1 studio`, or install individual SDKs with npm.
+Build/test commands never publish to the registry.
 
 | Package | Environment | Public responsibility |
 | --- | --- | --- |
@@ -110,7 +110,8 @@ scene creation/vision. It writes a hash-bound verification record to artifacts.
 
 `.github/workflows/distribution.yml` runs the distribution checks on macOS,
 Windows and Linux. A matching version tag creates a **draft** GitHub release
-only after the matrix passes. The tag must equal the package version. Public
+only after the matrix passes. If the tag already has a release, CI leaves its
+assets unchanged for an explicit maintainer update. The tag must equal the package version. Public
 npm publishing remains explicit:
 
 ```sh

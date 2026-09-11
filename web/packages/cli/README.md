@@ -3,7 +3,7 @@
 Launch the prebuilt Velocut editor without cloning its source or installing a
 compiler. Node.js 22.6+ and a browser with WebGPU/WebCodecs are required.
 
-After registry publication:
+Start Studio from npm:
 
 ```sh
 npx @velocut/cli@0.0.1 studio

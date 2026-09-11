@@ -21,6 +21,14 @@ Built by [Ribbi](https://ribbi.ai). Media storage and rendering stay in your bro
 
 ## Start Studio
 
+Run the prebuilt editor from npm:
+
+```sh
+npx @velocut/cli@0.0.1 studio
+```
+
+Or use the portable download:
+
 Download the **[portable ZIP](https://github.com/open-ribbi/velocut/releases/download/v0.0.1/velocut-standalone.zip)** or **[TAR.GZ](https://github.com/open-ribbi/velocut/releases/download/v0.0.1/velocut-standalone.tar.gz)**, extract it, then run inside the `velocut-0.0.1` directory:
 
 ```sh
@@ -32,7 +40,7 @@ Studio opens in your browser. Keep the terminal running while you work. The port
 - **Node.js 22.6+** and **Chrome/Edge with WebGPU and WebCodecs** are required. Safari and Firefox are not currently supported by the full editor.
 - Projects live in browser IndexedDB/OPFS. Reuse the same browser profile, hostname and port to reopen them.
 - Manual editing and the Codex integration need no additional model API key.
-- The release includes [SHA-256 checksums](https://github.com/open-ribbi/velocut/releases/download/v0.0.1/SHA256SUMS.txt). Public npm registry publication is still pending; the release provides installable `.tgz` packages today.
+- The release includes [SHA-256 checksums](https://github.com/open-ribbi/velocut/releases/download/v0.0.1/SHA256SUMS.txt). The seven `@velocut` packages are also available from npm at version 0.0.1.
 
 ## Connect Codex
 
@@ -56,7 +64,7 @@ Create primitives, editable meshes and parametric tables, chairs or stairs. Impo
 ![Velocut Director: a furnished Sunroom scene with object hierarchy, transform gizmos and editable table properties.](docs/media/director.png)
 
 
-Static GLB export is available in the current source build through the Director, SDK and MCP. See the [model export guide](docs/integrations/model-export.md); it is not part of the existing 0.0.1 download.
+Export static GLB models through the Director, SDK and MCP; see the [model export guide](docs/integrations/model-export.md). Agents can batch-copy and arrange objects, adjust preview speed, and read multiple clips referenced from the timeline.
 
 ### Keep the canvas usable in a small window
 
@@ -102,7 +110,7 @@ The editor and its integrations share a monorepo. Seven independently packaged m
 | [`@velocut/mcp`](web/packages/mcp) | Generic MCP server used by the Codex plugin and other clients |
 | [`@velocut/cli`](web/packages/cli) | Prebuilt local Studio launcher |
 
-The `.tgz` files are available in [Release 0.0.1](https://github.com/open-ribbi/velocut/releases/tag/v0.0.1). Until registry publication, install dependent Velocut tarballs together rather than using registry-only `npx` commands.
+The `.tgz` files are available in [Release 0.0.1](https://github.com/open-ribbi/velocut/releases/tag/v0.0.1). Install SDKs directly with `npm install @velocut/scene-sdk@0.0.1 @velocut/runtime@0.0.1`, or use the tarballs offline.
 
 [SDK integration examples and release workflow →](docs/integrations/npm-packages.md)
 

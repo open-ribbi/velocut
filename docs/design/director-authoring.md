@@ -48,7 +48,7 @@ The discrete `velocut_observe` tool carries images to the model. The existing
 script observation contract returns numeric/structured data only, so scripts
 should not be used to request visual reasoning from image bytes.
 
-### Preview speed (unreleased)
+### Preview speed (0.0.1)
 
 The editor toolbar and Director transport each provide a **Preview** selector:
 0.25×, 0.5×, 1×, 1.5×, 2×, 4×. It is available without selecting a clip. The
@@ -99,7 +99,7 @@ Groups nest via `parentId`. All objects support animatable `rotationX/Y/Z`
 (degrees, XYZ Euler order) and positive per-axis scale. Props expose PBR
 roughness, metalness, opacity, emissive color/intensity and face sidedness.
 
-### Batch copying and precise placement (unreleased)
+### Batch copying and precise placement (0.0.1)
 
 These operations work in `sceneEdit.edits`, from the standalone SDK's
 `applySceneEdits`, the built-in agent, and the Codex MCP script tool.
