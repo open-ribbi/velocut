@@ -28,9 +28,9 @@
     "docs:screenshots": "npm run build:release && node scripts/capture-readme.mjs"
   },
   "devDependencies": {
-    "@playwright/test": "^1.61.1",
-    "esbuild": "^0.21.5",
-    "typescript": "^5.6.3",
-    "@types/node": "^22.0.0"
+    "@playwright/test": "^1.63.0",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2",
+    "@types/node": "^26.5.0"
   }
 }

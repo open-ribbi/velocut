@@ -9,6 +9,6 @@
   },
   "dependencies": {
     "@velocut/protocol": "*",
-    "@anthropic-ai/sdk": "^0.104.1"
+    "@anthropic-ai/sdk": "^0.124.0"
   }
 }

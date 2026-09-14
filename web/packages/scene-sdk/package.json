@@ -13,13 +13,13 @@
     "./assets/*": "./assets/*"
   },
   "dependencies": {
-    "@dimforge/rapier3d-compat": "^0.19.3",
+    "@dimforge/rapier3d-compat": "^0.20.0",
     "three": "^0.185.1",
-    "@types/three": "^0.185.0",
+    "@types/three": "^0.185.4",
     "@velocut/render-sdk": "0.0.1"
   },
   "devDependencies": {
-    "@types/three": "^0.185.0"
+    "@types/three": "^0.185.4"
   },
   "files": [
     "dist",
