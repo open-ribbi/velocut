@@ -2,14 +2,14 @@ import { useState } from 'react';
 import type { SceneLight, SceneProp, SceneMaterialDefinition } from '@velocut/scene-sdk';
 import { AnimatableField, NumberField } from './SceneFields';
 
-function JsonField({ label, value, onChange }: { label: string; value: unknown; onChange: (v: unknown) => void }) {
+export function JsonField({ label, value, onChange }: { label: string; value: unknown; onChange: (v: unknown) => void }) {
   const [error, setError] = useState<string | null>(null);
   const text = JSON.stringify(value);
   return <div>
     <div className="prop-label">{label}</div>
     <textarea aria-label={label} key={text} className="scene-json" defaultValue={text} onBlur={(e) => {
       try { const parsed = JSON.parse(e.target.value); setError(null); if (JSON.stringify(parsed) !== text) onChange(parsed); }
-      catch { setError('Enter a valid JSON array.'); }
+      catch { setError('Enter valid JSON.'); }
     }} />
     {error && <div className="scene-error">{error}</div>}
   </div>;

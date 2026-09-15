@@ -17,6 +17,7 @@ export const SCENE_LIMITS = Object.freeze({
   instanceBatches: 128, instanceTriangles: 2_000_000,
   geometryBytes: 16 * 1024 * 1024,
   materials: 128,
+  curves: null,
 });
 
 export function validateGeometry(value: unknown): string | null {
@@ -66,6 +67,7 @@ export function sceneBudget(spec: SceneSpec) {
     props: props.length - instances.length, instances: instances.length,
     geometries: geometries.length + resources.length, groups: spec.groups?.length ?? 0,
     materials: Object.keys(spec.materials ?? {}).length,
+    curves: Object.keys(spec.curves ?? {}).length,
     geometryBytes: geometries.reduce((n,g) => n + geometryByteLength(g.vertices?.length ?? 0,g.faces?.length ?? 0,!!g.uvs),0) + resources.reduce((n,r) => n+r.byteLength,0),
     instanceBatches: new Set(instances.map(p => instanceBatchKey(p, spec))).size,
     instanceTriangles: instances.reduce((n, p) => n + (spec.geometries?.[p.geometryId!]?.faces?.length ?? spec.geometryResources?.[p.geometryId!]?.triangleCount ?? 0), 0),

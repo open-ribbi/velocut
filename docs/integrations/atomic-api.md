@@ -38,7 +38,7 @@ const page = await velocut.query({
 });
 ```
 
-Kinds: `document`, `snapshot`, `assets`, `tracks`, `clips`, `sceneObjects`, `sceneGeometries`, `sceneMaterials`, `sceneBudget`,
+Kinds: `document`, `snapshot`, `assets`, `tracks`, `clips`, `sceneObjects`, `sceneGeometries`, `sceneMaterials`, `sceneCurves`, `sceneBudget`,
 `selection`. Entity results have `data:{items,total,nextOffset}`; continue until
 nextOffset is null. Use the same snapshotId for every page. Live pages without a
 snapshot can change between calls. Expired IDs fail instead of reading live data.
@@ -376,11 +376,11 @@ not the full GPU cost of imported GLBs, shadows or procedural primitives.
 
 Current boundaries:
 
-- Instances require opaque materials. Physics and bone attachment require
-  conversion with `makeUnique`; these cases fail explicitly instead of falling
-  back silently to expensive meshes or incorrectly sorted transparency.
-- Position/rotation animation and animated parents work with the existing
-  grammar. Scale remains constant; visibility/opacity animation is future work.
+- Physics and bone attachment require conversion with `makeUnique`.
+- Instances support visibility, per-axis scale and opacity animation, shared
+  curves and individual delays (see Animation channels below). Fully opaque
+  instances batch; partially transparent instances use individual draws while
+  retaining shared geometry. Transparency uses ordinary object sorting.
 - The Director uses logical meshes for precise selection, bounds and gizmos.
   Shared geometry fields state how many instances will change. **Make geometry
   unique** allows independent editing from the same properties panel.
@@ -549,8 +549,125 @@ There is no fixed instance-count limit. Existing limits remain 200 ordinary prop
 shared material definitions and 128 instance draw batches. The scene manifest has
 no fixed byte ceiling.
 Cloned definitions count toward the logical geometry count/byte budgets even
-when their immutable files initially deduplicate. Reusable animation definitions,
-visibility/scale animation and further resource scaling remain separate work.
+when their immutable files initially deduplicate. Animation curves are shared
+scene definitions too; see Animation channels below.
+
+## Animation channels
+
+Animation uses independently editable numeric channels and reusable curves. No
+new top-level MCP workflow is required: use `sceneEdit`, `query`, `sceneInspect`
+and `observe`, or compose them in CodeAct.
+
+Every group, prop, instance and character supports:
+
+- `visible`: a boolean or `[{t,v:boolean}]` step keys.
+- `opacity`: a number or `[{t,v,ease?}]`, constrained to 0..1. This multiplies
+  material opacity and ancestor opacity; it does not overwrite a shared material.
+- `animation: {timeOffset?, channels?}`. `timeOffset` delays the object's local
+  transform/visibility/opacity clock in seconds (negative offsets start early).
+- Channel names: `position.x/y/z`, `rotationX/Y/Z`, `scale.x/y/z`, `visible`,
+  `opacity`. A channel overrides the matching base field. Values are a number,
+  `[{t,v,ease?}]`, or a shared-curve binding. Base `scale` remains a positive
+  constant number or `{x?,y?,z?}`; animate scale through `animation.channels`.
+
+`spec.curves` holds `{id: {name?, mode?:'continuous'|'step', keys:[{t,v,ease?}]}}`.
+Continuous curves reuse MotionSpec easing: the arriving key's `ease` controls
+the segment; omitted easing is linear. Keys hold before the first and after
+the last key. Times must be finite, nonnegative and strictly increasing. There
+is no configured curve/key count or scene-manifest byte ceiling.
+
+A binding is `{curveId,timeOffset?,timeScale?,valueScale?,valueOffset?}`:
+
+```text
+curveTime = (sceneTime - object.animation.timeOffset - binding.timeOffset)
+            * binding.timeScale
+value = sample(curve, curveTime) * binding.valueScale + binding.valueOffset
+```
+
+Offsets default to 0; scales default to 1; `timeScale` must be positive. Channel
+bindings override base values, so use `valueOffset` to add a placement baseline.
+Visibility channels use numeric 0/1 step values without easing. Shared visibility
+bindings require a step curve and cannot use value transforms. Scale channels
+allow zero; opacity channels allow 0..1. Invalid key endpoints are rejected;
+easing overshoot is clamped to these ranges at sampling time.
+
+Existing atomic edits:
+
+```js
+{type:'curve.create', id:'grow', curve:{keys:[{t:0,v:0},{t:0.6,v:1,ease:'power2.out'}]}}
+{type:'curve.update', id:'grow', curve:{keys:[{t:0,v:0},{t:1,v:1,ease:'none'}]}}
+{type:'curve.remove', id:'grow'}
+```
+
+Update replaces the whole definition and validates every referencing object;
+remove rejects live references. `curveIds` lists changed definitions, and
+`changedIds` lists affected objects. Updates and reference changes can be
+combined in one undoable `sceneEdit`. `query({kind:'sceneCurves',assetId})`
+returns paginated `id/name/mode/keyCount/objectCount`; add `fields:['id','curve']`
+to read keys. A curve referenced by several channels on one object counts once.
+
+For example, given an existing geometry `tile` and material `gold`, an Agent
+can combine reveal, growth, drop and fade with its own placement loop:
+
+```js
+const snapshot = await velocut.query({kind:'snapshot'});
+if (!snapshot.ok) throw Error(JSON.stringify(snapshot));
+const edits = [
+  {type:'curve.create', id:'grow', curve:{keys:[{t:0,v:0},{t:.6,v:1,ease:'power2.out'}]}},
+  {type:'curve.create', id:'drop', curve:{keys:[{t:0,v:3},{t:.6,v:0,ease:'power2.out'}]}},
+  {type:'curve.create', id:'show', curve:{mode:'step',keys:[{t:0,v:0},{t:.01,v:1}]}},
+  ...Array.from({length:100}, (_,i) => ({
+    type:'add', kind:'prop', object:{
+      id:`tile_${i}`, model:'prop/instance', geometryId:'tile', materialId:'gold',
+      position:{x:(i%10)*.35,z:Math.floor(i/10)*.35},
+      animation:{timeOffset:i*.03,channels:{
+        'position.y':{curveId:'drop',valueOffset:2},
+        'scale.y':{curveId:'grow'},
+        opacity:{curveId:'grow',timeScale:2},
+        visible:{curveId:'show'},
+      }},
+    },
+  })),
+];
+const result = await velocut.sceneEdit({assetId,expectedRevision:snapshot.revision,edits,includeSpec:false});
+if (!result.ok) throw Error(JSON.stringify(result));
+return result;
+```
+
+Use a scene duration long enough to include the final delay plus curve duration.
+For more than 500 edits, split calls; each call is its own transaction.
+`duplicate`, `duplicateMany`, `transform`, `layout` and `sceneArrange` retain
+curve references. Position/rotation placement adjusts each binding's value
+offset. Scaling multiplies its values. Absolute scaling at a sampled zero must
+be done by editing the keys/binding directly, since no scale ratio exists there.
+
+The Director's **Animation** panel edits channels, bindings, shared keys and
+object delay in the compact properties view. Bound transform fields display
+the curve ID; editing a shared curve updates all its users.
+
+Evaluation and rendering details:
+
+- Parent transforms, visibility and opacity affect descendants, but each
+  object samples its own clock; parent delays are not accumulated into children.
+- Zero scale, hidden objects and zero opacity stop drawing and picking. They
+  are excluded from automatic framing. Explicit focus by ID can still frame
+  hidden geometry for editing. `sceneInspect` retains geometric bounds and
+  adds `visible` and `opacity` (the inherited object multiplier, excluding base
+  material opacity); `quaternion` is null when the world matrix is singular.
+- Partially transparent instances retain shared geometry but use separate
+  draw calls and per-object materials. They return to opaque batches at alpha 1.
+  Fades do not cast opaque shadows; transparency uses Three.js object sorting,
+  so intersecting transparent surfaces are not order-independent transparency.
+- Group opacity also multiplies descendant light intensity. Lights use their
+  existing `intensity` keys instead of a direct opacity channel.
+- Object delays do not retime skeletal clips, mannequin pose, morph, camera,
+  light-intensity or physics tracks. Physics bodies remain active when hidden.
+  Physics props reject transform-channel animation and delayed legacy transform
+  keys; existing physics and kinematic grammar remains supported.
+- Instance/group visual or channel edits reuse renderers. Registry/geometry/
+  material changes still build a fresh candidate. Static GLB exports the sampled
+  visible geometry, scale and material alpha; it does not export animation
+  tracks. An entirely hidden selection produces an explicit empty-export error.
 
 ## Compact history storage
 

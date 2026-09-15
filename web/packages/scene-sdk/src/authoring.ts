@@ -6,6 +6,7 @@ import { validateSceneSpec, type SceneSpec, type SceneCharacter, type SceneProp,
 import { sceneBudget, type SceneGeometry } from './geometry.ts';
 import type { SceneGeometryResource } from './geometry-resource.ts';
 import type { SceneMaterialDefinition } from './materials.ts';
+import { isCurveBinding, type SceneCurve } from './animation.ts';
 
 /** Pure editing requests verified bytes only when an operation actually needs them. */
 export class GeometryDataRequired extends Error {
@@ -20,6 +21,8 @@ export type SceneObjectKind = 'character' | 'prop' | 'group' | 'light';
 export type SceneObject = SceneCharacter | SceneProp | SceneGroup | SceneLight;
 export interface SceneCopy { prefix: string; rootIds: string[]; idMap: Record<string, string> }
 export type SceneEdit =
+  | { type: 'curve.create' | 'curve.update'; id: string; curve: SceneCurve }
+  | { type: 'curve.remove'; id: string }
   | { type: 'geometry.create'; id: string; geometry: SceneGeometry }
   | { type: 'geometry.update'; id: string; geometry: SceneGeometry }
   | { type: 'geometry.clone'; id: string; newId: string }
@@ -66,7 +69,7 @@ export function normalizeSceneSpec(input: SceneSpec): SceneSpec {
   return spec;
 }
 
-const common = ['name', 'parentId', 'position', 'rotationX', 'rotationY', 'rotationZ', 'scale'];
+const common = ['name', 'parentId', 'position', 'rotationX', 'rotationY', 'rotationZ', 'scale', 'visible', 'opacity', 'animation'];
 const fields: Record<SceneObjectKind, string[]> = {
   group: common,
   light: [...common, 'type', 'color', 'intensity', 'distance', 'decay', 'angle', 'penumbra', 'shadow'],
@@ -75,7 +78,7 @@ const fields: Record<SceneObjectKind, string[]> = {
 };
 const fail = (message: string): never => { throw new Error(message); };
 
-export function applySceneEdits(input: SceneSpec, edits: SceneEdit[], geometryData: ReadonlyMap<string, SceneGeometry> = new Map()): { spec: SceneSpec; changedIds: string[]; createdIds: string[]; geometryIds: string[]; materialIds: string[]; copies: SceneCopy[] } {
+export function applySceneEdits(input: SceneSpec, edits: SceneEdit[], geometryData: ReadonlyMap<string, SceneGeometry> = new Map()): { spec: SceneSpec; changedIds: string[]; createdIds: string[]; geometryIds: string[]; materialIds: string[]; curveIds: string[]; copies: SceneCopy[] } {
   if (!Array.isArray(edits) || !edits.length || edits.length > 500) fail('edits must contain 1..500 operations');
   const initialError = validateSceneSpec(input);
   if (initialError) fail(initialError);
@@ -83,6 +86,7 @@ export function applySceneEdits(input: SceneSpec, edits: SceneEdit[], geometryDa
   const changed = new Set<string>();
   const geometryIds = new Set<string>();
   const materialIds = new Set<string>();
+  const curveIds = new Set<string>();
   const validResourceId = (id: string) => typeof id === 'string' && /^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}$/.test(id) && !['__proto__','constructor','prototype'].includes(id);
   const hasGeometry = (id: string) => Object.hasOwn(spec.geometries ?? {}, id) || Object.hasOwn(spec.geometryResources ?? {}, id);
   const cloneGeometry = (id: string, newId: string) => {
@@ -133,7 +137,16 @@ export function applySceneEdits(input: SceneSpec, edits: SceneEdit[], geometryDa
   if (expanded.length > 500) fail('expanded batch exceeds 500 operations');
   for (const edit of expanded) {
     if (!edit || typeof edit !== 'object') fail('invalid scene edit');
-    if (edit.type === 'geometry.clone') {
+    if (edit.type === 'curve.create' || edit.type === 'curve.update' || edit.type === 'curve.remove') {
+      if (!validResourceId(edit.id)) fail('invalid curve id');
+      const registry = spec.curves ??= {}, exists = Object.hasOwn(registry, edit.id);
+      if (edit.type === 'curve.create' && exists) fail('curve already exists');
+      if (edit.type !== 'curve.create' && !exists) fail('unknown curve');
+      const users = sceneObjects(spec).filter(e => Object.values(e.object.animation?.channels ?? {}).some(v => isCurveBinding(v) && v.curveId === edit.id));
+      if (edit.type === 'curve.remove') { if (users.length) fail('curve is referenced by objects'); delete registry[edit.id]; }
+      else registry[edit.id] = structuredClone(edit.curve);
+      curveIds.add(edit.id); users.forEach(e => changed.add(e.object.id!));
+    } else if (edit.type === 'geometry.clone') {
       cloneGeometry(edit.id, edit.newId);
     } else if (edit.type === 'material.create' || edit.type === 'material.update' || edit.type === 'material.remove') {
       if (!validResourceId(edit.id)) fail('invalid material id');
@@ -227,7 +240,7 @@ export function applySceneEdits(input: SceneSpec, edits: SceneEdit[], geometryDa
       }
       const transforms = edit.type === 'layout' ? layoutTransforms(edit.layout, entries.length) : entries.map(() => edit.transform);
       entries.forEach(({ kind, object }, i) => {
-        transformObject(object, kind, transforms[i], edit.type === 'transform' && (edit.relative ?? false), timeS);
+        transformObject(object, kind, transforms[i], edit.type === 'transform' && (edit.relative ?? false), timeS, spec);
         changed.add(object.id!);
       });
     } else if (edit.type === 'duplicate' || edit.type === 'duplicateMany') {
@@ -261,8 +274,8 @@ export function applySceneEdits(input: SceneSpec, edits: SceneEdit[], geometryDa
           if ('attachTo' in o && o.attachTo && mapped.has(o.attachTo.character)) o.attachTo.character = mapped.get(o.attachTo.character)!;
           if ('gaze' in o && typeof o.gaze === 'object' && mapped.has(o.gaze.character)) o.gaze.character = mapped.get(o.gaze.character)!;
           if (roots.includes(object.id!)) {
-            if (edit.type === 'duplicate' && edit.offset) transformObject(o, kind, { position: edit.offset }, true);
-            if ('transform' in request && request.transform !== undefined) transformObject(o, kind, request.transform!, request.relative ?? false, timeS);
+            if (edit.type === 'duplicate' && edit.offset) transformObject(o, kind, { position: edit.offset }, true, 0, spec);
+            if ('transform' in request && request.transform !== undefined) transformObject(o, kind, request.transform!, request.relative ?? false, timeS, spec);
           }
           append(kind, o); changed.add(o.id);
         }
@@ -298,5 +311,5 @@ export function applySceneEdits(input: SceneSpec, edits: SceneEdit[], geometryDa
     try { Object.assign(failure, { budget: sceneBudget(spec) }); } catch { /* malformed candidate has no trustworthy counts */ }
     throw failure;
   }
-  return { spec, changedIds: [...changed], createdIds: sceneObjects(spec).map(e => e.object.id!).filter(id => !initialIds.has(id)), geometryIds: [...geometryIds], materialIds: [...materialIds], copies };
+  return { spec, changedIds: [...changed], createdIds: sceneObjects(spec).map(e => e.object.id!).filter(id => !initialIds.has(id)), geometryIds: [...geometryIds], materialIds: [...materialIds], curveIds: [...curveIds], copies };
 }

@@ -10,7 +10,8 @@ import type { Animatable } from '@velocut/render-sdk';
 import { MANNEQUIN_JOINTS, POSE_PRESETS, type MannequinJoint } from './mannequin.ts';
 import { validateGeometry, sceneBudget, SCENE_LIMITS, type SceneGeometry } from './geometry.ts';
 import { validateGeometryResource, type SceneGeometryResource } from './geometry-resource.ts';
-import { validateMaterial, resolvePropAppearance, type SceneMaterialDefinition } from './materials.ts';
+import { validateMaterial, type SceneMaterialDefinition } from './materials.ts';
+import { validateCurve, validateObjectAnimation, type SceneCurve, type SceneAnimation, type AnimatedVisibility } from './animation.ts';
 
 /** Per-axis animatable 3D value (world units = meters, Y up). */
 export interface Vec3A {
@@ -48,6 +49,10 @@ export interface SceneTransform {
   rotationY?: Animatable;
   rotationZ?: Animatable;
   scale?: Scale3;
+  visible?: AnimatedVisibility;
+  /** Opacity multiplier for this object and descendant mesh materials. */
+  opacity?: Animatable;
+  animation?: SceneAnimation;
 }
 
 export interface SceneGroup extends SceneTransform {
@@ -209,6 +214,7 @@ export interface SceneSpec {
   /** Immutable project-owned geometry files; keys share the geometries namespace. */
   geometryResources?: Record<string, SceneGeometryResource>;
   materials?: Record<string, SceneMaterialDefinition>;
+  curves?: Record<string, SceneCurve>;
   durationUs: number;
   width?: number;
   height?: number;
@@ -314,6 +320,9 @@ function checkPropPhysics(p: SceneProp): string | null {
   if (typeof raw === 'object' && !Object.keys(raw).every((k) => PHYSICS_KEYS.includes(k))) {
     return `prop physics takes only { ${PHYSICS_KEYS.join(', ')} }`;
   }
+  if (Object.keys(p.animation?.channels ?? {}).some(k => k !== 'visible' && k !== 'opacity')) return 'physics transform channels are not supported; use existing baked transform fields';
+  const hasKeys = [p.position?.x,p.position?.y,p.position?.z,p.rotationX,p.rotationY,p.rotationZ].some(Array.isArray);
+  if (hasKeys && p.animation?.timeOffset) return 'physics transform keys cannot have an object time offset';
   if (p.parentId) return 'prop: physics requires a world-root object (group transforms are not baked)';
   if (p.attachTo) return 'prop: physics and attachTo cannot combine (bone-parented props are not simulated)';
   if (ph.mass != null && !(fin(ph.mass) && ph.mass > 0)) return 'prop physics.mass must be > 0 (kg)';
@@ -371,6 +380,13 @@ export function validateSceneSpec(spec: unknown): string | null {
     for (const [id, material] of Object.entries(s.materials)) {
       if (!/^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}$/.test(id) || ['__proto__','constructor','prototype'].includes(id)) return 'invalid material id';
       const error = validateMaterial(material, true); if (error) return `material '${id}': ${error}`;
+    }
+  }
+  if (s.curves != null) {
+    if (typeof s.curves !== 'object' || Array.isArray(s.curves)) return 'curves must be a registry';
+    for (const [id,curve] of Object.entries(s.curves)) {
+      if (!/^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}$/.test(id) || ['__proto__','constructor','prototype'].includes(id)) return 'invalid curve id';
+      const error = validateCurve(curve); if (error) return `curve '${id}': ${error}`;
     }
   }
   if (s.models != null) {
@@ -465,7 +481,6 @@ export function validateSceneSpec(spec: unknown): string | null {
         if (typeof p.geometryId !== 'string' || !(Object.hasOwn(s.geometries ?? {}, p.geometryId) || Object.hasOwn(s.geometryResources ?? {}, p.geometryId))) return `instance '${p.id ?? ''}' references unknown geometry`;
         if (p.physics != null || p.attachTo != null) return 'instances do not support physics or bone attachment; makeUnique first';
         if (['vertices', 'faces', 'uvs', 'points', 'depth', 'holes', 'bevel', 'path', 'radius', 'closed'].some(k => k in p)) return 'instances store geometryId only; edit the shared geometry or makeUnique';
-        if ((resolvePropAppearance(s, p).material.opacity ?? 1) !== 1) return 'instances require opaque materials; makeUnique for transparency';
         if (p.color != null && !/^#[a-f0-9]{6}$/i.test(p.color)) return 'instance color must be #RRGGBB';
       } else if (p.geometryId != null && p.model !== 'prop/mesh') return 'geometryId only applies to prop/instance or prop/mesh';
       if (p.position != null && !isVec3A(p.position)) return 'prop: invalid position';
@@ -588,6 +603,7 @@ export function validateSceneSpec(spec: unknown): string | null {
   if (s.groups != null && (!Array.isArray(s.groups) || s.groups.length > 100)) return 'groups must be an array of at most 100';
   if (s.lights != null && (!Array.isArray(s.lights) || s.lights.length > 16)) return 'lights must be an array of at most 16';
   for (const light of s.lights ?? []) {
+    if (light?.opacity != null || light?.animation?.channels?.opacity != null) return 'lights use intensity instead of opacity';
     if (!light || !light.id || !['point', 'spot', 'directional', 'ambient'].includes(light.type)) return 'light requires an id and a valid type';
     if (light.color != null && !/^#[a-f0-9]{6}$/i.test(light.color)) return 'light color must be #RRGGBB';
     if (light.intensity != null && (!isAnimatable(light.intensity) || (Array.isArray(light.intensity) ? light.intensity.map((k) => k.v) : [light.intensity]).some((v) => v < 0 || v > 100000))) return 'light intensity must be 0..100000 (constant or keyframed)';
@@ -609,6 +625,7 @@ export function validateSceneSpec(spec: unknown): string | null {
       ids.add(o.id);
     }
     if (o.name != null && typeof o.name !== 'string') return 'object name must be a string';
+    const animationError = validateObjectAnimation(o, s); if (animationError) return `object '${o.id}': ${animationError}`;
     if (o.parentId != null && (typeof o.parentId !== 'string' || !o.parentId)) return 'parentId must be a group id';
     if (o.position != null && !isVec3A(o.position)) return 'object: invalid position';
     if (o.scale != null && !isScale3(o.scale)) return 'object: invalid scale';

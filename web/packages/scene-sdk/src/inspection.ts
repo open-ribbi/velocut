@@ -1,4 +1,5 @@
 import type { Stage } from './stage.ts';
+import { objectIsVisible, objectOpacity, visibleBounds } from './visual.ts';
 
 /** Geometric evidence for placement. Bounds are evaluated at the requested
  * pose; group bounds include descendants, empty groups have null bounds. */
@@ -15,11 +16,12 @@ export function inspectStage(stage: Stage) {
     return {
       light: stage.lights.find((l) => l.spec.id === spec.id) ? { type: (spec as import('./types.ts').SceneLight).type, intensity: stage.lights.find((l) => l.spec.id === spec.id)!.light.intensity } : undefined,
       id: spec.id!, name: spec.name, kind, parentId: spec.parentId ?? ('attachTo' in spec ? spec.attachTo?.character : undefined),
+      visible: objectIsVisible(root), opacity: objectOpacity(root),
       parentMatrix: root.parent?.matrixWorld.toArray() ?? new three.Matrix4().toArray(),
       positionScale: stage.props.find((p) => p.root === root)?.attachComp ?? 1,
       position: root.getWorldPosition(new three.Vector3()).toArray(),
-      quaternion: root.getWorldQuaternion(new three.Quaternion()).toArray(),
-      scale: root.getWorldScale(new three.Vector3()).toArray(),
+      quaternion: root.matrixWorld.determinant() !== 0 ? root.getWorldQuaternion(new three.Quaternion()).toArray() : null,
+      scale: new three.Vector3().setFromMatrixScale(root.matrixWorld).toArray(),
       bounds: bounds.isEmpty() ? null : {
         min: bounds.min.toArray(), max: bounds.max.toArray(),
         size: bounds.getSize(new three.Vector3()).toArray(), center: bounds.getCenter(new three.Vector3()).toArray(),
@@ -72,7 +74,7 @@ export function constructionCamera(stage: Stage, width: number, height: number, 
   const bb = new T.Box3();
   stage.scene.updateMatrixWorld(true);
   for (const e of targets) {
-    const bounds = new T.Box3().setFromObject(e.root, true);
+    const bounds = objectId ? new T.Box3().setFromObject(e.root, true) : visibleBounds(T,e.root);
     if (bounds.isEmpty() && objectId) { const point = e.root.getWorldPosition(new T.Vector3()); bounds.setFromCenterAndSize(point, new T.Vector3(1, 1, 1)); }
     bb.union(bounds);
   }

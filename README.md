@@ -59,7 +59,7 @@ The model runs in Codex. The plugin supplies tools for scene creation, object ed
 
 ## Build scenes in the Director
 
-Create primitives, editable meshes and parametric tables, chairs or stairs. Import self-contained GLB models, adjust materials and lighting, pose characters, and direct camera shots. Transform gizmos, object properties and programmatic edits all work on the same scene data.
+Create primitives, editable meshes and parametric tables, chairs or stairs. Import self-contained GLB models, adjust materials and lighting, pose characters, and direct camera shots. Animate visibility, per-axis scale and opacity; share curves across objects with individual time offsets. Transform gizmos, object properties and programmatic edits all work on the same scene data. See [atomic animation channels](docs/integrations/atomic-api.md#animation-channels).
 
 ![Velocut Director: a furnished Sunroom scene with object hierarchy, transform gizmos and editable table properties.](docs/media/director.png)
 

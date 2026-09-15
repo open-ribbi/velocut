@@ -6,6 +6,7 @@ import { applySpecCamera, specCameraPosition } from './compile.ts';
 import { validateGlb, type SceneResources } from './models.ts';
 import type { SceneSpec } from './types.ts';
 import { resolvePropAppearance } from './materials.ts';
+import { objectIsVisible } from './visual.ts';
 
 export interface SceneGlbOptions {
   timeS?: number;
@@ -148,7 +149,7 @@ export async function exportSceneGlb(
   for (const batch of stage.instanceBatches) {
     batch.mesh.removeFromParent();
     for (const object of batch.objects) {
-      object.root.visible = true;
+      object.root.visible = objectIsVisible(object.root);
       const base = object.root.material as THREE.MeshStandardMaterial, color = resolvePropAppearance(spec, object.spec).color ?? '#8fa3bf';
       const key = `${base.uuid}:${color}`;
       let material = instanceMaterials.get(key);
@@ -156,6 +157,8 @@ export async function exportSceneGlb(
       object.root.material = material;
     }
   }
+  // Freeze evaluated visibility before pruning ancestors or baking mesh nodes.
+  stage.scene.traverse(node => { node.visible = objectIsVisible(node); });
   stage.scene.updateMatrixWorld(true);
   const entries = [...stage.groups, ...stage.characters, ...stage.props, ...stage.lights];
   for (const e of entries) {
@@ -193,6 +196,7 @@ export async function exportSceneGlb(
       ) {
         const parent = new three.Group();
         parent.name = o.name;
+        parent.visible = o.visible;
         parent.matrix.copy(o.matrix);
         parent.matrixAutoUpdate = false;
         o.parent?.add(parent);
@@ -218,6 +222,7 @@ export async function exportSceneGlb(
       // Retain any authored children while dropping unsupported light semantics.
       const group = new three.Group();
       group.name = o.name;
+      group.visible = o.visible;
       group.matrix.copy(o.matrix);
       group.matrixAutoUpdate = false;
       o.parent?.add(group);
@@ -232,7 +237,7 @@ export async function exportSceneGlb(
       aimed.target.position.set(0, 0, -1);
     }
     const mesh = o as THREE.SkinnedMesh;
-    if (mesh.isMesh) {
+    if (mesh.isMesh && objectIsVisible(mesh)) {
       meshCount++;
       vertexCount += mesh.geometry.getAttribute('position')?.count ?? 0;
       if (vertexCount > 2_000_000) throw new Error('Export exceeds 2 million vertices; choose a smaller selection');
@@ -246,7 +251,7 @@ export async function exportSceneGlb(
       if (mesh.isSkinnedMesh || mesh.morphTargetInfluences?.length) bakePose(mesh, three);
     }
   }
-  if (!meshCount) throw new Error('The export selection contains no mesh geometry');
+  if (!meshCount) throw new Error('The export selection contains no visible mesh geometry at this time');
   if (!selected && options.includeCamera !== false) {
     const camera = new three.PerspectiveCamera(
       40,

@@ -22,13 +22,9 @@ import { buildInstances, syncInstanceBatches, type InstanceBatch } from './insta
 import { resolveSceneGeometry } from './geometry-resource.ts';
 import { sceneStructureKey } from './incremental.ts';
 import { resolvePropAppearance } from './materials.ts';
-import type { SceneAssetManifest, SceneSpec, Scale3, Vec3A, SceneTransform, SceneGroup, SceneLight } from './types.ts';
-
-/** Apply a uniform or per-axis scale (missing axes stay 1). */
-function applyScale(root: THREE.Object3D, scale: Scale3): void {
-  if (typeof scale === 'number') root.scale.setScalar(scale);
-  else root.scale.set(scale.x ?? 1, scale.y ?? 1, scale.z ?? 1);
-}
+import { sampleObjectTransform } from './animation.ts';
+import { setVisualState, prepareVisualMeshes, objectOpacity } from './visual.ts';
+import type { SceneAssetManifest, SceneSpec, Vec3A, SceneTransform, SceneGroup, SceneLight } from './types.ts';
 
 export const DEFAULT_ASSET_BASE = '/scene-assets';
 
@@ -492,6 +488,16 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
     e.root.name = e.spec.id!;
     if (e.spec.parentId) parents.get(e.spec.parentId)!.add(e.root);
   }
+  for(const e of [...groups,...characters,...props,...lights])setVisualState(e.root,true,1);
+  const updateVisualMeshes=prepareVisualMeshes(scene,new Set(instances.batches.flatMap(b=>[b.mesh,...b.objects.map(o=>o.root)])));
+  function poseObject(root:THREE.Object3D,object:SceneTransform,t:number,defaultY=0){
+    const value=sampleObjectTransform(object,t,spec,defaultY);
+    root.position.set(...value.position);
+    root.rotation.set(...value.rotation.map(v=>v*Math.PI/180) as [number,number,number],'XYZ');
+    root.scale.set(...value.scale);
+    const visible=value.visible&&value.scale.every(v=>v>0);
+    setVisualState(root,visible,value.opacity);root.visible=visible&&value.opacity>0;
+  }
 
   /** Max head turn away from the body's facing (radians ≈ ±70°). */
   const GAZE_CLAMP = (70 * Math.PI) / 180;
@@ -526,20 +532,15 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
 
   function poseAt(t: number, opts?: { cameraPos?: [number, number, number] }): void {
     for (const g of groups) {
-      g.root.position.set(...sampleVec3(g.spec.position, t, 0, 0, 0));
-      applyRotation(g.root, g.spec, t);
-      applyScale(g.root, g.spec.scale ?? 1);
+      poseObject(g.root,g.spec,t);
     }
     for (const l of lights) {
-      l.root.position.set(...sampleVec3(l.spec.position, t, 0, 0, 0));
-      applyRotation(l.root, l.spec, t); applyScale(l.root, l.spec.scale ?? 1);
-      l.light.intensity = sampleAnimatable(l.spec.intensity, t, l.spec.type === 'ambient' ? 0.5 : l.spec.type === 'directional' ? 3 : 100);
+      poseObject(l.root,l.spec,t);
+      l.light.intensity = sampleAnimatable(l.spec.intensity, t, l.spec.type === 'ambient' ? 0.5 : l.spec.type === 'directional' ? 3 : 100) * objectOpacity(l.root);
     }
     for (const c of characters) {
-      const [x, y, z] = sampleVec3(c.spec.position, t, 0, 0, 0);
-      c.root.position.set(x, y, z);
-      applyRotation(c.root, c.spec, t);
-      if (c.spec.scale != null) applyScale(c.root, c.spec.scale);
+      poseObject(c.root,c.spec,t);
+      const y=c.root.position.y;
 
       // Poseable figure: every joint fully re-set from preset + overrides —
       // unset override axes fall back to the preset (sampleAnimatable's
@@ -617,14 +618,12 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
       }
     }
     for (const p of props) {
+      poseObject(p.root,p.spec,t,p.attachComp!=null?0:0.5);
       if (p.attachComp != null) {
         // Bone-local: spec meters → bone units via the compensation factor;
         // default offset 0 (the bone origin), default scale 1 m compensated.
         const k = p.attachComp;
-        const [x, y, z] = sampleVec3(p.spec.position, t, 0, 0, 0);
-        p.root.position.set(x * k, y * k, z * k);
-        applyRotation(p.root, p.spec, t);
-        applyScale(p.root, p.spec.scale ?? 1);
+        p.root.position.multiplyScalar(k);
         p.root.scale.multiplyScalar(k);
         continue;
       }
@@ -632,21 +631,17 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
         // Simulated prop: transform comes from the baked track (full 3D
         // rotation — tumbling bodies aren't yaw-only).
         samplePhysicsTrack(p.bake, t, p.root);
-        if (p.spec.scale != null) applyScale(p.root, p.spec.scale);
         continue;
       }
-      const [x, y, z] = sampleVec3(p.spec.position, t, 0, 0.5, 0);
-      p.root.position.set(x, y, z);
-      applyRotation(p.root, p.spec, t);
-      if (p.spec.scale != null) applyScale(p.root, p.spec.scale);
     }
+    updateVisualMeshes();
     syncInstanceBatches(scene, instances.batches);
   }
 
   function characterPosition(id: string, t: number): [number, number, number] | null {
     const c = characters.find((x) => x.spec.id === id);
     if (!c) return null;
-    const point = new three.Vector3(...sampleVec3(c.spec.position, t, 0, 0, 0));
+    const point = new three.Vector3(...sampleObjectTransform(c.spec,t,spec).position);
     if (c.mannequinJoints) {
       const pose = c.spec.pose;
       const preset = typeof pose === 'string' ? pose : pose?.preset;
@@ -656,8 +651,7 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
     while (parentId) {
       const group = groups.find((g) => g.spec.id === parentId)!.spec;
       const dummy = new three.Object3D();
-      dummy.position.set(...sampleVec3(group.position, t, 0, 0, 0));
-      applyRotation(dummy, group, t); applyScale(dummy, group.scale ?? 1); dummy.updateMatrix();
+      poseObject(dummy,group,t);dummy.updateMatrix();
       point.applyMatrix4(dummy.matrix);
       parentId = group.parentId;
     }

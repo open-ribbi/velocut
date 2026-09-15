@@ -22,12 +22,13 @@ test('shared material changes propagate while object overrides survive and batch
   assert.equal((batches.objects[1].root.material as THREE.MeshStandardMaterial).side,THREE.DoubleSide);
   assert.equal(base.materials!.tile.roughness,0.38);
 });
-test('material references, malformed definitions and transparent instance defaults fail atomically',()=>{
+test('material references and malformed definitions fail atomically; transparent defaults are accepted',()=>{
   assert.throws(()=>applySceneEdits(base,[{type:'material.remove',id:'tile'}]),/referenced/);
   assert.throws(()=>applySceneEdits(base,[{type:'material.create',id:'tile',material:{}}]),/exists/);
   assert.throws(()=>applySceneEdits(base,[{type:'update',id:'a',patch:{materialId:'missing'}}]),/materialId/);
-  for(const material of [{roughness:'0.3'},{roughness:2},{color:'bad'},{map:'url'},{opacity:0.4}])
+  for(const material of [{roughness:'0.3'},{roughness:2},{color:'bad'},{map:'url'}])
     assert.throws(()=>applySceneEdits(base,[{type:'material.update',id:'tile',material:material as any}]));
+  assert.equal(validateSceneSpec({...base,materials:{tile:{opacity:0.4}}}),null);
   assert.equal(validateSceneSpec({...base,materials:{tile:{opacity:0.5}},props:base.props!.map(p=>({...p,material:{opacity:1}}))}),null);
 });
 test('1000 animated tiles keep their material without repeating it in every object',()=>{

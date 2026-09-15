@@ -6,7 +6,7 @@ import type { SceneSpec } from './types.ts';
 export function sceneStructureKey(input: SceneSpec): string {
   const spec = normalizeSceneSpec(input);
   const strip = (object: Record<string, unknown>) => {
-    const { position, rotationX, rotationY, rotationZ, scale, ...rest } = object;
+    const { position, rotationX, rotationY, rotationZ, scale, visible, opacity, animation, ...rest } = object;
     return rest;
   };
   return JSON.stringify({ ...spec,

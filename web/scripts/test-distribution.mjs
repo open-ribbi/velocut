@@ -72,13 +72,14 @@ try {
   assert.match(resourceOutput, /resource jobs and duplication ok/);
   const instanceOutput = run(`
     import assert from 'node:assert/strict';
-    import {applySceneEdits,sceneBudget} from '@velocut/scene-sdk';
+    import {applySceneEdits,sceneBudget,sampleObjectTransform} from '@velocut/scene-sdk';
     import {Store,TsEngineAdapter,atomicRuntime,editScene,HistoryTree} from '@velocut/runtime';
     const geometry={vertices:[[0,0,0],[1,0,0],[0,1,0]],faces:[[0,1,2]]};
     const made=applySceneEdits({version:1,durationUs:1000000},[
       {type:'geometry.create',id:'tile',geometry},
       {type:'material.create',id:'red',material:{color:'#ff0000',roughness:.38}},
-      {type:'add',kind:'prop',object:{id:'a',model:'prop/instance',geometryId:'tile',materialId:'red'}},
+      {type:'curve.create',id:'grow',curve:{keys:[{t:0,v:0},{t:1,v:1,ease:'none'}]}},
+      {type:'add',kind:'prop',object:{id:'a',model:'prop/instance',geometryId:'tile',materialId:'red',animation:{channels:{'scale.y':{curveId:'grow'},opacity:{curveId:'grow'}}}}},
       {type:'duplicate',id:'a',newId:'b',offset:{x:2}}
     ]);
     assert.equal(sceneBudget(made.spec).used.instanceBatches,1);
@@ -90,6 +91,10 @@ try {
     assert.ok(preview.ok);assert.equal(preview.compiled,false);assert.equal(preview.budget.used.instances,1);
     assert.ok(preview.spec===undefined);assert.ok(preview.geometryIds.length);
     assert.equal(api.query({kind:'sceneMaterials',assetId}).data.items[0].objectCount,2);
+    const curves=api.query({kind:'sceneCurves',assetId});assert.ok(curves.ok);assert.equal(curves.data.items[0].objectCount,2);
+    assert.equal(curves.data.items[0].curve,undefined);assert.deepEqual(made.curveIds,['grow']);
+    const pose=sampleObjectTransform(made.spec.props[1],.5,made.spec);assert.equal(pose.scale[1],.5);assert.equal(pose.opacity,.5);
+    assert.equal(api.capabilities().data.sceneLimits.curves,null);
     const packed=store.getHistory().serializeCompact();const restored=HistoryTree.deserialize(JSON.parse(JSON.stringify(packed)));
     assert.equal(restored.all().length,store.getHistory().all().length);assert.equal(packed.historyEncoding,'spec-table-v1');
     console.log('shared geometry sdk ok');

@@ -51,7 +51,7 @@ test('instance counts above 1000 are accepted; other resource budgets remain rep
 test('invalid topology, unsupported instance overrides and render costs are rejected', () => {
   assert.match(validateSceneSpec({ ...base, geometries: { tile: { ...geometry, faces: [[0,1,1]] } } })!, /indices/);
   assert.match(validateSceneSpec({ ...base, geometries: { tile: { ...geometry, vertices: [[0,0,0],[1,0,0],[2,0,0]] } } })!, /degenerate/);
-  for (const patch of [{ physics: 'fixed' }, { material: { opacity: 0.5 } }, { vertices: geometry.vertices }, { color: 'red' }]) {
+  for (const patch of [{ physics: 'fixed' }, { vertices: geometry.vertices }, { color: 'red' }]) {
     assert.notEqual(validateSceneSpec({ ...base, props: [{ ...base.props![0], ...patch }] }), null);
   }
   const manyMaterials = { ...base, props: Array.from({ length: 129 }, (_, i) => ({ id: `i${i}`, model: 'prop/instance', geometryId: 'tile', material: { roughness: i / 129 } })) };

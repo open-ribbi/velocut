@@ -1,6 +1,7 @@
 import { sampleAnimatable, type Animatable } from '@velocut/render-sdk';
 import type { SceneObject, SceneObjectKind } from './authoring.ts';
-import type { Scale3 } from './types.ts';
+import type { Scale3, SceneSpec } from './types.ts';
+import { isCurveBinding, sampleChannel, type AnimationChannel, type ChannelValue } from './animation.ts';
 
 export type PlacementVector = { x?: number; y?: number; z?: number };
 export interface ObjectTransform {
@@ -36,23 +37,33 @@ function shifted(value: Animatable | undefined, fallback: number, amount: number
 }
 
 /** Shift animation paths rather than replacing them with constants. */
-export function transformObject(object: SceneObject, kind: SceneObjectKind, transform: ObjectTransform, relative = false, timeS = 0) {
+export function transformObject(object: SceneObject, kind: SceneObjectKind, transform: ObjectTransform, relative = false, timeS = 0, spec: Pick<SceneSpec,'curves'> = {}) {
   placementTime(timeS);
   if (!transform || typeof transform !== 'object' || Array.isArray(transform) || !Object.keys(transform).length ||
       Object.keys(transform).some(k => !['position', 'rotation', 'scale'].includes(k))) throw new Error('invalid transform');
   if ('physics' in object && object.physics && timeS !== 0) throw new Error('transform physics props at timeS:0');
+  const shift = (channel:AnimationChannel, value:Animatable|undefined, fallback:number, amount:number) => {
+    const animated=object.animation?.channels?.[channel];
+    if(animated===undefined)return shifted(value,fallback,amount,relative,timeS-(object.animation?.timeOffset ?? 0));
+    const delta=relative?amount:amount-sampleChannel(object,channel,timeS,spec,fallback);
+    const changed:ChannelValue=isCurveBinding(animated)?{...animated,valueOffset:(animated.valueOffset ?? 0)+delta}:
+      Array.isArray(animated)?animated.map(k=>({...k,v:k.v+delta})):animated+delta;
+    object.animation!.channels![channel]=changed;return value;
+  };
   if (transform.position !== undefined) {
     vector(transform.position, 'position');
     for (const axis of axes) if (transform.position[axis] !== undefined) {
       const fallback = kind === 'prop' && !('attachTo' in object && object.attachTo) && axis === 'y' ? 0.5 : 0;
-      (object.position ??= {})[axis] = shifted(object.position?.[axis], fallback, transform.position[axis], relative, timeS);
+      const key=`position.${axis}` as AnimationChannel;
+      const value=shift(key,object.position?.[axis],fallback,transform.position[axis]);
+      if (value !== undefined) (object.position ??= {})[axis]=value;
     }
   }
   if (transform.rotation !== undefined) {
     vector(transform.rotation, 'rotation');
     for (const axis of axes) if (transform.rotation[axis] !== undefined) {
       const key = { x: 'rotationX', y: 'rotationY', z: 'rotationZ' }[axis] as 'rotationX' | 'rotationY' | 'rotationZ';
-      object[key] = shifted(object[key], 0, transform.rotation[axis], relative, timeS);
+      const value=shift(key,object[key],0,transform.rotation[axis]);if(value!==undefined)object[key]=value;
     }
   }
   if (transform.scale !== undefined) {
@@ -64,6 +75,15 @@ export function transformObject(object: SceneObject, kind: SceneObjectKind, tran
       const n = typeof s === 'number' ? s : s[axis];
       if (n === undefined) continue;
       if (n <= 0) throw new Error('scale must be positive');
+      const channel=`scale.${axis}` as AnimationChannel, animated=object.animation?.channels?.[channel];
+      if(animated!==undefined){
+        const current=sampleChannel(object,channel,timeS,spec,1);
+        if(!relative&&current===0)throw new Error('sampled scale is zero; edit animation keys or binding directly');
+        const factor=relative?n:n/current;
+        object.animation!.channels![channel]=isCurveBinding(animated)?{...animated,valueScale:(animated.valueScale ?? 1)*factor,valueOffset:(animated.valueOffset ?? 0)*factor}:
+          Array.isArray(animated)?animated.map(k=>({...k,v:k.v*factor})):animated*factor;
+        continue;
+      }
       scale[axis] = relative ? (scale[axis] ?? 1) * n : n;
     }
     object.scale = scale;

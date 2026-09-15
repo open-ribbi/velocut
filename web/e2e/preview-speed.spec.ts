@@ -54,11 +54,17 @@ test('editor and Director preview rates stay separate, fit compact UI and leave 
     v.directorSession({ playing: true, timeS: 0 });
     // Allow initial layout/render work before measuring the animation loop.
     await new Promise(r => setTimeout(r, 200));
-    const start = v.directorSession().state.timeS, wall = performance.now();
+    // Director time advances in rAF. Sampling from timers can compare a stale
+    // start pose to a fresh end pose when another test holds the GPU, inflating
+    // the measured speed. Read both endpoints after the Director's frame tick.
+    const frame = () => new Promise<{timeS:number;wall:number}>(resolve => requestAnimationFrame(wall => {
+      resolve({timeS:v.directorSession().state.timeS,wall});
+    }));
+    const start = await frame();
     await new Promise(r => setTimeout(r, 400));
-    const end = v.directorSession().state.timeS;
+    const end = await frame();
     v.directorSession({ playing: false });
-    return (end - start) / ((performance.now() - wall) / 1000);
+    return (end.timeS - start.timeS) / ((end.wall - start.wall) / 1000);
   });
   expect(rate).toBeGreaterThan(3); expect(rate).toBeLessThan(5);
   const result = await page.evaluate(() => {

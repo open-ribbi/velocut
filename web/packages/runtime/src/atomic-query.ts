@@ -1,7 +1,7 @@
 import type { VDocument } from '@velocut/protocol';
 import { normalizeSceneSpec, sceneObjects, validateSceneSpec, sceneBudget } from '@velocut/scene-sdk';
 
-export type QueryKind = 'document' | 'snapshot' | 'assets' | 'tracks' | 'clips' | 'sceneObjects' | 'sceneGeometries' | 'sceneMaterials' | 'sceneBudget' | 'selection';
+export type QueryKind = 'document' | 'snapshot' | 'assets' | 'tracks' | 'clips' | 'sceneObjects' | 'sceneGeometries' | 'sceneMaterials' | 'sceneCurves' | 'sceneBudget' | 'selection';
 export interface AtomicQuery {
   kind: QueryKind;
   snapshotId?: string;
@@ -32,6 +32,7 @@ const FIELDS = {
   sceneObjects: ['id', 'kind', 'name', 'parentId', 'model', 'geometryId', 'materialId', 'object'],
   sceneGeometries: ['id', 'name', 'vertexCount', 'triangleCount', 'instanceCount', 'objectCount', 'storage', 'resource', 'geometry'],
   sceneMaterials: ['id', 'name', 'objectCount', 'material'],
+  sceneCurves: ['id', 'name', 'mode', 'keyCount', 'objectCount', 'curve'],
 };
 const DEFAULT_FIELDS = {
   assets: ['id', 'name', 'kind', 'durationUs', 'width', 'height', 'hasAudio'],
@@ -40,13 +41,14 @@ const DEFAULT_FIELDS = {
   sceneObjects: ['id', 'kind', 'name', 'parentId', 'model', 'geometryId', 'materialId'],
   sceneGeometries: ['id', 'name', 'vertexCount', 'triangleCount', 'instanceCount', 'objectCount', 'storage'],
   sceneMaterials: ['id', 'name', 'objectCount'],
+  sceneCurves: ['id', 'name', 'mode', 'keyCount', 'objectCount'],
 };
 export const QUERY_FIELDS = Object.fromEntries(Object.keys(FIELDS).map(kind => [kind, {
   allowed: FIELDS[kind as keyof typeof FIELDS], defaults: DEFAULT_FIELDS[kind as keyof typeof DEFAULT_FIELDS],
 }]));
 export const QUERY_SCHEMA = {
   type: 'object', additionalProperties: false, required: ['kind'], properties: {
-    kind: { enum: ['document', 'snapshot', 'assets', 'tracks', 'clips', 'sceneObjects', 'sceneGeometries', 'sceneMaterials', 'sceneBudget', 'selection'] },
+    kind: { enum: ['document', 'snapshot', 'assets', 'tracks', 'clips', 'sceneObjects', 'sceneGeometries', 'sceneMaterials', 'sceneCurves', 'sceneBudget', 'selection'] },
     snapshotId: { type: 'string' }, ids: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 100, uniqueItems: true },
     trackId: { type: 'string' }, assetId: { type: 'string' },
     fromUs: { type: 'integer', minimum: 0 }, toUs: { type: 'integer', minimum: 0 },
@@ -73,7 +75,7 @@ export function validateQuery(input: unknown): AtomicQuery {
     for (const key of Object.keys(q)) if (key !== 'kind' && !(q.kind === 'document' && key === 'snapshotId')) fault('invalidArg', `${q.kind} does not accept ${key}`, key);
   } else {
     if (q.kind !== 'clips' && [q.trackId, q.fromUs, q.toUs].some(v => v !== undefined)) fault('invalidArg', 'track/time filters require kind:clips');
-    if (q.assetId !== undefined && !['clips', 'sceneObjects', 'sceneGeometries', 'sceneMaterials'].includes(q.kind)) fault('invalidArg', 'assetId filter requires clips or sceneObjects');
+    if (q.assetId !== undefined && !['clips', 'sceneObjects', 'sceneGeometries', 'sceneMaterials', 'sceneCurves'].includes(q.kind)) fault('invalidArg', 'assetId filter requires clips or a scene query');
     for (const f of q.fields ?? []) if (!FIELDS[q.kind as keyof typeof FIELDS].includes(f)) fault('invalidArg', `unknown ${q.kind} field '${f}'`, 'fields');
   }
   return q;
@@ -92,9 +94,9 @@ export function queryDocument(doc: VDocument, q: AtomicQuery) {
       .filter(c => (!q.assetId || c.assetId === q.assetId) && (q.fromUs === undefined || c.startUs + c.durationUs > q.fromUs) && (q.toUs === undefined || c.startUs < q.toUs))
       .map(c => ({ ...c, trackId: t.id, endUs: c.startUs + c.durationUs })))
       .sort((a, b) => a.startUs - b.startUs || a.trackId.localeCompare(b.trackId) || a.id.localeCompare(b.id));
-  } else if (['sceneObjects', 'sceneGeometries', 'sceneMaterials', 'sceneBudget'].includes(q.kind)) {
+  } else if (['sceneObjects', 'sceneGeometries', 'sceneMaterials', 'sceneCurves', 'sceneBudget'].includes(q.kind)) {
     const asset = doc.assets.find(a => a.id === q.assetId && a.src.startsWith('scene://'));
-    if (!asset?.spec) fault('notFound', 'sceneObjects requires a scene assetId', 'assetId');
+    if (!asset?.spec) fault('notFound', 'scene queries require a scene assetId', 'assetId');
     const spec = JSON.parse(asset.spec);
     const error = validateSceneSpec(spec); if (error) fault('invalidScene', error);
     if (q.kind === 'sceneBudget') return sceneBudget(spec);
@@ -103,7 +105,11 @@ export function queryDocument(doc: VDocument, q: AtomicQuery) {
       if (p.geometryId) { counts.set(p.geometryId, (counts.get(p.geometryId) ?? 0) + 1); if (p.model === 'prop/instance') instances.set(p.geometryId, (instances.get(p.geometryId) ?? 0) + 1); }
       if (p.materialId) materials.set(p.materialId, (materials.get(p.materialId) ?? 0) + 1);
     }
-    items = q.kind === 'sceneMaterials' ? Object.entries(spec.materials ?? {}).map(([id, material]: [string, any]) => ({id, name:material.name, objectCount:materials.get(id) ?? 0, material})) : q.kind === 'sceneGeometries' ? [...Object.entries(spec.geometries ?? {}), ...Object.entries(spec.geometryResources ?? {})].map(([id, geometry]) => {
+    const curveUsers = new Map<string,Set<string>>();
+    for(const {object} of sceneObjects(spec)) for(const value of Object.values(object.animation?.channels ?? {})) {
+      if(value && typeof value === 'object' && 'curveId' in value){const ids=curveUsers.get(value.curveId)??new Set<string>();ids.add(object.id!);curveUsers.set(value.curveId,ids);}
+    }
+    items = q.kind === 'sceneCurves' ? Object.entries(spec.curves ?? {}).map(([id, raw]) => {const curve=raw as import('@velocut/scene-sdk').SceneCurve;return {id,name:curve.name,mode:curve.mode??'continuous',keyCount:curve.keys.length,objectCount:curveUsers.get(id)?.size??0,curve};}) : q.kind === 'sceneMaterials' ? Object.entries(spec.materials ?? {}).map(([id, material]: [string, any]) => ({id, name:material.name, objectCount:materials.get(id) ?? 0, material})) : q.kind === 'sceneGeometries' ? [...Object.entries(spec.geometries ?? {}), ...Object.entries(spec.geometryResources ?? {})].map(([id, geometry]) => {
       const g = geometry as import('@velocut/scene-sdk').SceneGeometry;
       const resource = spec.geometryResources?.[id];
       return { id, name: g.name, vertexCount: resource?.vertexCount ?? g.vertices.length, triangleCount: resource?.triangleCount ?? g.faces.length,

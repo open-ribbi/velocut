@@ -4,7 +4,7 @@
 // path; these are just the input widgets.
 
 import { useEffect, useState } from 'react';
-import type { Animatable } from '@velocut/render-sdk';
+import { isCurveBinding, type ChannelValue } from '@velocut/scene-sdk';
 
 /** Constant Animatable → number input; keyframed → read-only badge (edit via
  *  the JSON tab, which can express the full grammar). */
@@ -12,13 +12,18 @@ export function AnimatableField({
   value,
   fallback,
   step = 0.1,
+  min,
+  max,
   onChange,
 }: {
-  value: Animatable | undefined;
+  value: ChannelValue | undefined;
   fallback: number;
   step?: number;
+  min?: number;
+  max?: number;
   onChange: (v: number) => void;
 }) {
+  if(isCurveBinding(value))return <span className="kf-chip" title="Edit the shared curve or binding in Animation">↪ {value.curveId}</span>;
   if (Array.isArray(value)) {
     return (
       <span className="kf-chip" title="Keyframed — edit via the JSON tab">
@@ -30,6 +35,8 @@ export function AnimatableField({
     <NumberField
       value={Math.round(((value ?? fallback) as number) * 100) / 100}
       step={step}
+      min={min}
+      max={max}
       onCommit={onChange}
     />
   );
@@ -41,7 +48,7 @@ export function Vec3Row({
   onAxis,
 }: {
   label: string;
-  value: { x?: Animatable; y?: Animatable; z?: Animatable } | undefined;
+  value: { x?: ChannelValue; y?: ChannelValue; z?: ChannelValue } | undefined;
   onAxis: (axis: 'x' | 'y' | 'z', v: number) => void;
 }) {
   return (

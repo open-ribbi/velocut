@@ -393,7 +393,7 @@ export async function editScene(store: Store, opts: SceneEditOptions, dispatch?:
     const budget = sceneBudget(result.spec);
     if (opts.preflight) return { ok: true as const, assetId: opts.assetId, revision: before.revision, preview: true,
       ready: false, compiled: false, budget, changedIds: result.changedIds, createdIds: result.createdIds,
-      geometryIds: result.geometryIds, materialIds: result.materialIds, ...(opts.includeSpec ? { spec: result.spec } : {}) };
+      geometryIds: result.geometryIds, materialIds: result.materialIds, curveIds: result.curveIds, ...(opts.includeSpec ? { spec: result.spec } : {}) };
     const committed = await replaceSceneSpec(
       store,
       opts.assetId,
@@ -405,7 +405,7 @@ export async function editScene(store: Store, opts: SceneEditOptions, dispatch?:
     if (!committed.ok) return committed;
     const { spec, ...summary } = committed;
     return { ...summary, ...(opts.includeSpec === false ? {} : { spec }), budget,
-      changedIds: result.changedIds, createdIds: result.createdIds, geometryIds: result.geometryIds, materialIds: result.materialIds, copies: result.copies };
+      changedIds: result.changedIds, createdIds: result.createdIds, geometryIds: result.geometryIds, materialIds: result.materialIds, curveIds: result.curveIds, copies: result.copies };
   } catch (e) {
     return { ok: false as const, message: e instanceof Error ? e.message : String(e),
       ...(e instanceof Error && 'budget' in e ? { budget: e.budget } : {}) };
@@ -556,24 +556,14 @@ export async function arrangeScene(
           delta.z = reference!.bounds!.center[2] - object.bounds.center[2];
         }
       }
-      const inverse = new T.Matrix4().fromArray(object.parentMatrix).invert();
+      const matrix = new T.Matrix4().fromArray(object.parentMatrix);
+      if (matrix.determinant() === 0) throw new Error('cannot arrange through a parent with zero scale; choose another time');
+      const inverse = matrix.invert();
       delta
         .applyMatrix4(inverse)
         .sub(new T.Vector3().applyMatrix4(inverse))
         .divideScalar(object.positionScale);
-      const position = { ...authored.position };
-      for (const axis of ['x', 'y', 'z'] as const) {
-        if (Math.abs(delta[axis]) < 1e-9) continue;
-        const fallback =
-          object.kind === 'prop' && !('attachTo' in authored && authored.attachTo) && axis === 'y'
-            ? 0.5
-            : 0;
-        const previous = position[axis] ?? fallback;
-        position[axis] = Array.isArray(previous)
-          ? previous.map((k) => ({ ...k, v: k.v + delta[axis] }))
-          : previous + delta[axis];
-      }
-      edits.push({ type: 'update', id, patch: { position } });
+      edits.push({ type: 'transform', ids:[id], relative:true, timeS:opts.timeS ?? 0, transform:{position:{x:delta.x,y:delta.y,z:delta.z}} });
     }
     return editScene(
       store,

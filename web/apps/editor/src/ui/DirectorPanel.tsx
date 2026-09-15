@@ -1,5 +1,6 @@
 import { PreviewRateSelect } from './PreviewRateSelect';
 import { SceneExportDialog } from './SceneExportDialog';
+import { SceneAnimationFields } from './SceneAnimationFields';
 import { Icon, type IconName } from './primitives/Icon';
 // DirectorPanel — the stage view: orbit the compiled 3D scene, select any
 // character/prop and manipulate it with transform gizmos, scrub time, and see
@@ -31,6 +32,9 @@ import {
   sceneStructureKey,
   resolveSceneGeometry,
   resolvePropAppearance,
+  objectIsVisible,
+  transformObject,
+  type AnimationChannel,
   type SceneGeometry,
   nextSceneId,
   type SceneEdit,
@@ -58,14 +62,6 @@ export type Sel = {
   kind: 'character' | 'prop' | 'group' | 'light';
   id: string;
 };
-
-/** Translate an animatable axis by delta: constants move, keyframe tracks
- *  shift every key — "drag the character" means "move its whole path". */
-function shiftAxis(v: Animatable | undefined, base: number, delta: number): Animatable {
-  const r = (n: number) => Math.round(n * 100) / 100;
-  if (Array.isArray(v)) return v.map((k) => ({ ...k, v: r(k.v + delta) }));
-  return r((v ?? base) + delta);
-}
 
 /** Shot beats: explicit shot starts when a cut list exists, else all camera
  *  keyframe times. */
@@ -210,7 +206,7 @@ export function DirectorPanel({
     if (current.doc.assets.find((a) => a.id === asset.id)?.spec !== specText)
       return setError('Scene changed; try the edit again.');
     const draft = normalizeSceneSpec(JSON.parse(specText) as SceneSpec);
-    mutate(draft);
+    try { mutate(draft); } catch (error) { setError(error instanceof Error ? error.message : String(error)); return; }
     const err = validateSceneSpec(draft);
     if (err) return setError(err);
     const r = await replaceSceneSpec(store, asset.id, draft, current.revision);
@@ -408,6 +404,7 @@ export function DirectorPanel({
           (e) => e.spec.id === s.id,
         );
         if (!entry) return null;
+        if (!objectIsVisible(entry.root)) return null;
         if (s.kind === 'prop' && (entry as (typeof stage.props)[number]).attachComp != null)
           return null;
         return entry.root;
@@ -500,26 +497,12 @@ export function DirectorPanel({
         void mutateSpec((d) => {
           const o = sceneObjects(d).find((e) => e.object.id === selection.id)?.object;
           if (!o) return;
-          if (modeRef.current === 'translate') {
-            o.position ??= {};
-            if (dx) o.position.x = shiftAxis(o.position.x, 0, dx);
-            if (dy) o.position.y = shiftAxis(o.position.y, selection.kind === 'prop' ? 0.5 : 0, dy);
-            if (dz) o.position.z = shiftAxis(o.position.z, 0, dz);
-          } else if (modeRef.current === 'rotate') {
-            for (const [i, k] of (['rotationX', 'rotationY', 'rotationZ'] as const).entries()) {
-              if (rotationDelta[i]) o[k] = shiftAxis(o[k], 0, rotationDelta[i]);
-            }
-          } else {
-            const v =
-              typeof o.scale === 'number'
-                ? { x: o.scale, y: o.scale, z: o.scale }
-                : (o.scale ?? {});
-            o.scale = {
-              x: round2((v.x ?? 1) * scaling.x),
-              y: round2((v.y ?? 1) * scaling.y),
-              z: round2((v.z ?? 1) * scaling.z),
-            };
+          if (modeRef.current === 'scale' && ![scaling.x,scaling.y,scaling.z].every(Number.isFinite)) {
+            throw new Error('Edit scale keys or bindings when the sampled scale is zero.');
           }
+          transformObject(o, selection.kind, modeRef.current === 'translate' ? {position:{x:dx,y:dy,z:dz}} :
+            modeRef.current === 'rotate' ? {rotation:{x:rotationDelta[0],y:rotationDelta[1],z:rotationDelta[2]}} :
+            {scale:{x:scaling.x,y:scaling.y,z:scaling.z}}, true, tRef.current, d);
         });
         // The spec change re-runs this effect (new specText) and rebuilds;
         // selection survives via selRef.
@@ -563,7 +546,7 @@ export function DirectorPanel({
         ];
         let best: { sel: Sel; dist: number } | null = null;
         for (const cand of targets) {
-          const hits = ray.intersectObject(cand.root, true);
+          const hits = ray.intersectObject(cand.root, true).filter(hit => objectIsVisible(hit.object));
           if (hits.length && (!best || hits[0].distance < best.dist))
             best = { sel: cand.sel, dist: hits[0].distance };
         }
@@ -651,13 +634,15 @@ export function DirectorPanel({
         }
         const shotView = currentSession.view === 'shot';
         controls.enabled = !shotView && !gizmo.dragging;
-        gizmo.enabled = !shotView;
+        gizmo.enabled = !shotView && !!selectedRoot();
         gizmo.getHelper().visible = !shotView && !!selectedRoot();
         helper.visible = guidesRef.current && !shotView;
         gizmo.setMode(modeRef.current);
         gizmo.showX = true;
         gizmo.showZ = true;
         const root = selectedRoot();
+        if(root && gizmo.object !== proxy){root.parent!.add(proxy);gizmo.attach(proxy);}
+        else if(!root && gizmo.object)gizmo.detach();
         if (root) {
           if (gizmo.dragging) {
             // Object follows the gizmo's proxy (ghost preview of the edit).
@@ -1281,47 +1266,30 @@ export function DirectorPanel({
                 </div>
                 <Vec3Row
                   label="Position"
-                  value={selObj.position}
-                  onAxis={(axis, v) => mutateSel((o) => ((o.position ??= {})[axis] = v))}
+                  value={{...selObj.position,...Object.fromEntries(['x','y','z'].filter(axis=>selObj.animation?.channels?.[`position.${axis}` as AnimationChannel]!==undefined).map(axis=>[axis,selObj.animation!.channels![`position.${axis}` as AnimationChannel]]))}}
+                  onAxis={(axis, v) => mutateSel((o) => { const key=`position.${axis}` as AnimationChannel; if(o.animation?.channels?.[key]!==undefined)o.animation.channels[key]=v;else (o.position ??= {})[axis]=v; })}
                 />
                 {(['rotationX', 'rotationY', 'rotationZ'] as const).map((axis) => (
                   <div className="prop-row" key={axis}>
                     <span className="prop-label">Rotate {axis.slice(-1)}</span>
                     <AnimatableField
-                      value={selObj[axis]}
+                      value={selObj.animation?.channels?.[axis] ?? selObj[axis]}
                       fallback={0}
                       step={15}
                       onChange={(v) =>
                         mutateSel((o) => {
-                          o[axis] = v;
+                          if(o.animation?.channels?.[axis]!==undefined)o.animation.channels[axis]=v;else o[axis] = v;
                         })
                       }
                     />
                   </div>
                 ))}
-                {(['x', 'y', 'z'] as const).map((axis) => (
-                  <div className="prop-row" key={axis}>
-                    <span className="prop-label">Scale {axis.toUpperCase()}</span>
-                    <NumberField
-                      step={0.1}
-                      min={0.01}
-                      value={
-                        typeof selObj.scale === 'number'
-                          ? selObj.scale
-                          : (selObj.scale?.[axis] ?? 1)
-                      }
-                      onCommit={(v) =>
-                        mutateSel((o) => {
-                          o.scale =
-                            typeof o.scale === 'number'
-                              ? { x: o.scale, y: o.scale, z: o.scale }
-                              : { ...o.scale };
-                          o.scale[axis] = v;
-                        })
-                      }
-                    />
-                  </div>
-                ))}
+                {(['x','y','z'] as const).map(axis=><div className="prop-row" key={axis}>
+                  <span className="prop-label">Scale {axis.toUpperCase()}</span>
+                  <AnimatableField value={selObj.animation?.channels?.[`scale.${axis}`] ?? (typeof selObj.scale==='number'?selObj.scale:selObj.scale?.[axis])} fallback={1} min={0}
+                    onChange={v=>mutateSel(o=>{const key=`scale.${axis}` as AnimationChannel;if(o.animation?.channels?.[key]!==undefined||v===0){o.animation??={};o.animation.channels??={};o.animation.channels[key]=v;}else {o.scale=typeof o.scale==='number'?{x:o.scale,y:o.scale,z:o.scale}:{...o.scale};o.scale[axis]=v;}})}/>
+                </div>)}
+                {spec && <SceneAnimationFields object={selObj} spec={spec} kind={sel.kind} timeS={t} onChange={animation=>mutateSel(o=>{o.animation=animation;})} onEdit={runEdits}/>}
                 {!selLight && (
                   <button
                     className="fx-add"
