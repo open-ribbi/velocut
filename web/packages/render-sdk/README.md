@@ -26,6 +26,14 @@ renderer.render(fg, media);
 
 See the [root README](../../../README.md) and [ARCHITECTURE.md](../../../ARCHITECTURE.md).
 
+`Playback` follows the audio sample clock while it advances. If audio is
+suspended or its clock stops for 250 ms, preview time continues from the last
+audio progress using the wall clock and the selected preview rate. Recovery
+rejoins at the current preview position and discards queued or in-flight PCM
+from before the interruption. Direct `AudioEngine` integrations should treat
+`clockUs() === null` as an unavailable audio clock, including when the underlying
+`AudioContext` still reports `running`.
+
 ## Package integration
 
 Published artifacts contain ESM JavaScript, TypeScript 5.9+ declarations and

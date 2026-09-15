@@ -1,7 +1,31 @@
-import { test } from 'node:test';
+import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { Playback } from '../dist/playback.js';
 import { AudioEngine } from '../dist/audio.js';
+
+function audioContext(t: TestContext) {
+  const sources: any[] = [];
+  const ctx = {
+    currentTime: 0, state: 'running', destination: {}, resume: async () => {}, close: async () => {},
+    createGain: () => ({ connect: () => {}, disconnect: () => {}, gain: { value: 1 } }),
+    createAnalyser: () => ({ connect: () => {}, fftSize: 2048 }),
+    createBuffer: (_c: number, frames: number, sampleRate: number) => ({ duration: frames / sampleRate, copyToChannel: () => {} }),
+    createBufferSource: () => {
+      const source = { playbackRate: { value: 1 }, connect: () => {}, start: (...args: number[]) => { source.started = args; }, stop: () => { source.stopped = true; }, started: [] as number[], stopped: false, buffer: null };
+      sources.push(source); return source;
+    },
+  };
+  const original = globalThis.AudioContext;
+  globalThis.AudioContext = class { constructor() { return ctx; } } as never;
+  t.after(() => { globalThis.AudioContext = original; });
+  return { ctx, sources };
+}
+
+function transport(audio: AudioEngine) {
+  const state = { playing: false, playheadUs: 0, durationUs: 20_000_000, revision: 3 };
+  const playback = new Playback({ getState: () => state, seek: at => { state.playheadUs = at; }, setPlaying: v => { state.playing = v; }, evaluate: () => ({}) as never }, {} as never, {} as never, audio);
+  return { state, playback, time: () => playback.session().state!.timeUs };
+}
 
 test('preview clock changes slope without jumps, seeks correctly, and stops/replays at the end', t => {
   let now = 0;
@@ -52,20 +76,7 @@ test('late audio activation joins preview time without jumping backwards', t => 
 });
 
 test('audio preview rate scales the master clock and PCM schedule; stale chunks cannot replay', async t => {
-  const sources: any[] = [];
-  const ctx = {
-    currentTime: 0, state: 'running', destination: {}, resume: async () => {}, close: async () => {},
-    createGain: () => ({ connect: () => {}, disconnect: () => {}, gain: { value: 1 } }),
-    createAnalyser: () => ({ connect: () => {}, fftSize: 2048 }),
-    createBuffer: (_c: number, frames: number, sampleRate: number) => ({ duration: frames / sampleRate, copyToChannel: () => {} }),
-    createBufferSource: () => {
-      const source = { playbackRate: { value: 1 }, connect: () => {}, start: (...args: number[]) => { source.started = args; }, stop: () => { source.stopped = true; }, started: [] as number[], stopped: false, buffer: null };
-      sources.push(source); return source;
-    },
-  };
-  const original = globalThis.AudioContext;
-  globalThis.AudioContext = class { constructor() { return ctx; } } as never;
-  t.after(() => { globalThis.AudioContext = original; });
+  const { ctx, sources } = audioContext(t);
   const requests: Array<{ from: number; duration: number; resolve: (pcm: any) => void }> = [];
   const audio = new AudioEngine({ requestPcm: (_id: string, from: number, duration: number) => new Promise(resolve => requests.push({ from, duration, resolve })) } as never);
   audio.onPlay(1_000_000, 2);
@@ -93,4 +104,79 @@ test('audio preview rate scales the master clock and PCM schedule; stale chunks 
   assert.equal(sources[1].playbackRate.value, 0.5);
   audio.onSeek(4_000_000); assert.equal(audio.clockUs(), 4_000_000);
   audio.onPause(); assert.equal(audio.clockUs(), null); audio.dispose();
+});
+
+test('a running but frozen audio clock falls back at every preview rate and rejoins without losing time', t => {
+  let now = 0;
+  t.mock.method(performance, 'now', () => now);
+  const { ctx } = audioContext(t), audio = new AudioEngine({} as never);
+  const { playback: p, time, state } = transport(audio);
+  for (const rate of [0.25, 0.5, 1, 1.5, 2, 4]) {
+    p.setRate(rate); p.seek(0); p.play();
+    now += 10; ctx.currentTime += .01;
+    assert.equal(time(), 10_000 * rate);
+    now += 40; ctx.currentTime += .04;
+    assert.equal(time(), 50_000 * rate);
+    now += 10;
+    assert.equal(time(), 50_000 * rate); // Ordinary audio quanta still own the clock.
+    now += 490; // Device remains "running" but has stopped producing samples.
+    assert.equal(time(), 550_000 * rate);
+    assert.equal(time(), 550_000 * rate); // Reads do not restart the fallback clock.
+    now += 100;
+    assert.equal(time(), 650_000 * rate);
+    // No rendered frame updated the stored playhead during these reads.
+    assert.equal(state.playheadUs, 0);
+    now += 20; ctx.currentTime += .02;
+    assert.equal(time(), 670_000 * rate);
+    now += 50; ctx.currentTime += .05;
+    assert.equal(time(), 720_000 * rate);
+    p.pause(); now += 1000;
+    assert.equal(time(), 720_000 * rate);
+  }
+  assert.equal(state.revision, 3); audio.dispose();
+});
+
+test('suspended audio requires new clock progress; rate changes and seeks during loss keep their new anchors', t => {
+  let now = 0;
+  t.mock.method(performance, 'now', () => now);
+  const { ctx } = audioContext(t), audio = new AudioEngine({} as never);
+  const { playback: p, time } = transport(audio);
+  ctx.state = 'suspended'; p.setRate(2); p.play();
+  now = 500; assert.equal(time(), 1_000_000);
+  ctx.state = 'running'; now = 510; assert.equal(time(), 1_020_000);
+  ctx.currentTime = .01; now = 520; assert.equal(time(), 1_040_000);
+  ctx.state = 'suspended'; now = 530; assert.equal(time(), 1_060_000);
+  now = 1030; p.setRate(.5); assert.equal(time(), 2_060_000);
+  now = 1130; assert.equal(time(), 2_110_000);
+  p.seek(4_000_000); now = 1230; assert.equal(time(), 4_050_000);
+  ctx.state = 'running'; now = 1330; assert.equal(time(), 4_100_000);
+  ctx.currentTime = .02; now = 1340; assert.equal(time(), 4_105_000);
+  ctx.currentTime = .12; now = 1440; assert.equal(time(), 4_155_000);
+  p.pause(); audio.dispose();
+});
+
+test('clock loss stops scheduled audio and rejects in-flight PCM; recovery schedules from the current preview position', async t => {
+  let now = 0;
+  t.mock.method(performance, 'now', () => now);
+  const { ctx, sources } = audioContext(t);
+  const requests: Array<{ from: number; resolve: (pcm: any) => void }> = [];
+  const audio = new AudioEngine({ requestPcm: (_id: string, from: number) => new Promise(resolve => requests.push({ from, resolve })) } as never);
+  const { playback: p, time } = transport(audio);
+  const pcm = (startUs: number) => ({ startUs, frames: 48000, channels: 1, sampleRate: 48000, planes: [new Float32Array(48000)] });
+  const frame = (at: number) => ({ audio: [{ clipId: 'a', assetId: 'media', speed: 1, gain: 1, sourceTimeUs: at }] }) as never;
+  p.setRate(2); p.play(); now = 10; ctx.currentTime = .01;
+  audio.update(frame(time()), time()); requests[0].resolve(pcm(requests[0].from)); await Promise.resolve();
+  assert.equal(sources.length, 1);
+  now = 20; ctx.currentTime = .02; audio.update(frame(time()), time());
+  assert.equal(requests.length, 2);
+  now = 400; const fallback = time(); assert.equal(fallback, 800_000);
+  assert.equal(sources[0].stopped, true);
+  audio.update(frame(fallback), fallback); assert.equal(requests.length, 2);
+  requests[1].resolve(pcm(requests[1].from)); await Promise.resolve(); assert.equal(sources.length, 1);
+  now = 500; ctx.currentTime = .03; const resumed = time(); assert.equal(resumed, 1_000_000);
+  audio.update(frame(resumed), resumed); assert.equal(requests[2].from, resumed);
+  requests[2].resolve(pcm(resumed)); await Promise.resolve();
+  assert.equal(sources.length, 2); assert.equal(sources[1].started[0], ctx.currentTime);
+  assert.equal(sources[1].playbackRate.value, 2);
+  p.pause(); audio.dispose();
 });

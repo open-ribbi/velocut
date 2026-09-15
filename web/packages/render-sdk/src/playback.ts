@@ -47,8 +47,12 @@ export class Playback {
       // audio becomes available, instead of jumping back to the old anchor.
       this.audio!.onSeek(this.playStartUs + (now - this.playStartWall) * 1000 * this.rate);
       audioT = this.audio!.clockUs();
-    } else if (audioT === null && this.audioDriving) {
-      this.playStartUs = s.playheadUs;
+    }
+    if (audioT !== null && (!this.audioDriving || audioT !== this.playStartUs)) {
+      // Keep the fallback anchored at the last audio progress, not at the
+      // eventual stall-detection time or a possibly stale rendered playhead.
+      // Frozen reads must not keep moving this wall-clock anchor forward.
+      this.playStartUs = audioT;
       this.playStartWall = now;
     }
     this.audioDriving = audioT !== null;

@@ -21,6 +21,8 @@ import { validatePreviewRate } from './preview-rate.ts';
 const AHEAD_US = 1_200_000;
 /** One decode request covers this much source time. */
 const CHUNK_US = 500_000;
+/** Allow ordinary render quanta/jitter before treating a stopped device as lost. */
+const CLOCK_STALL_MS = 250;
 
 interface SliceChannel {
   gain: GainNode;
@@ -41,6 +43,9 @@ export class AudioEngine {
   private anchorCtxSec = 0;
   private rate = 1;
   private clockStarted = false;
+  private clockStalled = false;
+  private lastClockSec = 0;
+  private lastClockWall = 0;
   /** Bumped on pause/seek — in-flight PCM for an old anchor is discarded. */
   private generation = 0;
 
@@ -61,12 +66,25 @@ export class AudioEngine {
 
   /** Master-clock readout while playing; null when audio isn't driving. */
   clockUs(): number | null {
-    if (!this.playing || !this.ctx || this.ctx.state !== 'running') return null;
-    // Some output devices report running before their clock starts ticking.
-    // Keep using the preview's wall clock until audio actually advances.
-    if (!this.clockStarted && this.ctx.currentTime <= this.anchorCtxSec) return null;
-    this.clockStarted = true;
-    return this.anchorTlUs + (this.ctx.currentTime - this.anchorCtxSec) * 1e6 * this.rate;
+    if (!this.playing || !this.ctx) return null;
+    const now = performance.now(), seconds = this.ctx.currentTime;
+    if (this.ctx.state === 'running' && seconds > this.lastClockSec) {
+      this.lastClockSec = seconds;
+      this.lastClockWall = now;
+      this.clockStarted = true;
+      this.clockStalled = false;
+    }
+    // A device can stop advancing even while reporting "running". Give up
+    // the master clock until fresh progress is observed, and discard queued
+    // PCM so recovery cannot play audio from before the interruption.
+    if (this.clockStarted && (this.ctx.state !== 'running' || now - this.lastClockWall >= CLOCK_STALL_MS)) {
+      this.clockStarted = false;
+      this.clockStalled = true;
+      this.generation++;
+      this.teardown();
+    }
+    if (!this.clockStarted || this.ctx.state !== 'running') return null;
+    return this.anchorTlUs + (seconds - this.anchorCtxSec) * 1e6 * this.rate;
   }
 
   /** RMS of the current output — diagnostics ("is sound actually playing"). */
@@ -89,6 +107,9 @@ export class AudioEngine {
     this.anchorTlUs = timelineUs;
     this.anchorCtxSec = ctx.currentTime;
     this.clockStarted = false;
+    this.clockStalled = false;
+    this.lastClockSec = ctx.currentTime;
+    this.lastClockWall = performance.now();
     this.generation++;
   }
 
@@ -123,6 +144,9 @@ export class AudioEngine {
   /** Called by the transport every rendered frame while playing. */
   update(fg: FrameGraph, playheadUs: TimeUs) {
     if (!this.playing || !this.ctx || !this.master) return;
+    // Initial scheduling may start an output device. After a confirmed clock
+    // interruption, wait for clockUs()/Playback to observe progress and rejoin.
+    if (this.clockStalled || this.ctx.state !== 'running') return;
     const active = new Set<string>();
     for (const slice of fg.audio ?? []) {
       // Varispeed audio is out of scope for the preview mixer (v1).
