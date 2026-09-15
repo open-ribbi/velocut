@@ -410,7 +410,7 @@ export async function editScene(store: Store, opts: SceneEditOptions, dispatch?:
     const budget = sceneBudget(result.spec);
     if (opts.preflight) return { ok: true as const, assetId: opts.assetId, revision: before.revision, preview: true,
       ready: false, compiled: false, budget, changedIds: result.changedIds, createdIds: result.createdIds,
-      geometryIds: result.geometryIds, materialIds: result.materialIds, curveIds: result.curveIds, bindingIds: result.bindingIds, ...(opts.includeSpec ? { spec: result.spec } : {}) };
+      geometryIds: result.geometryIds, materialIds: result.materialIds, curveIds: result.curveIds, bindingIds: result.bindingIds, jointIds:result.jointIds, ...(opts.includeSpec ? { spec: result.spec } : {}) };
     const committed = await replaceSceneSpec(
       store,
       opts.assetId,
@@ -422,7 +422,7 @@ export async function editScene(store: Store, opts: SceneEditOptions, dispatch?:
     if (!committed.ok) return committed;
     const { spec, ...summary } = committed;
     return { ...summary, ...(opts.includeSpec === false ? {} : { spec }), budget,
-      changedIds: result.changedIds, createdIds: result.createdIds, geometryIds: result.geometryIds, materialIds: result.materialIds, curveIds: result.curveIds, bindingIds: result.bindingIds, copies: result.copies };
+      changedIds: result.changedIds, createdIds: result.createdIds, geometryIds: result.geometryIds, materialIds: result.materialIds, curveIds: result.curveIds, bindingIds: result.bindingIds, jointIds:result.jointIds, copies: result.copies };
   } catch (e) {
     return { ok: false as const, message: e instanceof Error ? e.message : String(e),
       ...(e instanceof Error && 'budget' in e ? { budget: e.budget } : {}) };

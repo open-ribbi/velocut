@@ -292,6 +292,19 @@ try {
   const held=await call('velocut_scene_spatial',{sessionId,assetId:physicsScene.assetId,timeS:2,queries:[{type:'anchors',objectId:'ball'}]});assert.ok(Math.abs(held.results[0].items[0].position[1]-1.4)<.005);
   const colliderView=await call('velocut_director',{sessionId,options:{assetId:physicsScene.assetId,objectId:'platform',colliderView:'selected'}});assert.equal(colliderView.state.colliderView,'selected');
   console.log('Packed collision shapes: hole preservation, atomic shape edits and wireframe queries passed');
+  const jointScene=await call('velocut_scene_create',{sessionId,atUs:4_000_000,spec:{version:1,durationUs:3_000_000,width:320,height:180,environment:'env/void',physics:{gravity:0},props:[
+    {id:'base',model:'prop/cube',scale:.2,position:{y:2},physics:'fixed'},
+    {id:'arm',model:'prop/cube',position:{y:1.5},physics:{type:'dynamic',mass:1},anchors:{tip:{position:[0,.5,0]}}},
+  ]}});
+  const jointEdit=await call('velocut_scene_edit',{sessionId,assetId:jointScene.assetId,expectedRevision:jointScene.revision,edits:[{type:'joint.create',id:'hinge',joint:{type:'revolute',a:{objectId:'base',position:[0,0,0]},b:{objectId:'arm',anchorId:'tip'},axis:[0,0,1],limits:[-60,60],motor:{mode:'position',targetPosition:30,stiffness:100,damping:20}}}]});
+  assert.deepEqual(jointEdit.jointIds,['hinge']);
+  const jointDefs=await call('velocut_query',{sessionId,assetId:jointScene.assetId,kind:'sceneJoints',fields:['id','joint']});assert.equal(jointDefs.data.items[0].joint.motor.targetPosition,30);
+  const jointState=await call('velocut_scene_spatial',{sessionId,assetId:jointScene.assetId,timeS:2,queries:[{type:'joints',ids:['hinge']}]});
+  assert.ok(Math.abs(jointState.results[0].items[0].coordinate-30)<.5);assert.ok(jointState.results[0].items[0].linearErrorM<.005);
+  const actualVersion=run(`import{createRequire}from'node:module';import{dirname,join}from'node:path';import{readFileSync}from'node:fs';const r=createRequire(import.meta.url),sdk=r.resolve('@velocut/scene-sdk'),physics=createRequire(sdk).resolve('@dimforge/rapier3d-compat');console.log(JSON.parse(readFileSync(join(dirname(physics),'package.json'),'utf8')).version);`).trim();
+  assert.equal(jointState.results[0].engine.version,actualVersion);
+  const jointView=await call('velocut_director',{sessionId,options:{assetId:jointScene.assetId,objectId:'arm',jointView:'selected'}});assert.equal(jointView.state.jointView,'selected');
+  console.log('Packed joints: atomic edits, motor/limit simulation, solver version and guide session passed');
   await client.close();
   client = null;
   await page.close();
@@ -403,6 +416,7 @@ window.probe=(async()=>{
       'geometry-resource-and-incremental-transform',
       'surface-local-invalidation-and-atomic-repair',
       'collision-shapes-and-compound-body-inspection',
+      'physical-joints-motors-and-solver-version',
       'shared-material-and-compact-history',
       'large-spec-no-byte-ceiling',
           'types',

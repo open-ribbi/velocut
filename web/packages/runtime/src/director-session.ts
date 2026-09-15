@@ -18,6 +18,7 @@ export interface DirectorSession {
   playing: boolean;
   rate: number;
   colliderView:'off'|'selected'|'all';
+  jointView:'off'|'selected'|'all';
   view: SceneView;
   mode: 'translate' | 'rotate' | 'scale';
   focusId: string | null;
@@ -32,6 +33,7 @@ export interface DirectorSessionOptions {
   playing?: boolean;
   rate?: number;
   colliderView?:DirectorSession['colliderView'];
+  jointView?:DirectorSession['jointView'];
   view?: SceneView;
   mode?: DirectorSession['mode'];
   /** Frame this object/group, null frames the whole scene. */
@@ -93,6 +95,7 @@ function createController(store: Store) {
               'focusId',
               'camera',
               'colliderView',
+              'jointView',
             ].includes(k),
         )
       )
@@ -117,6 +120,7 @@ function createController(store: Store) {
             playing: false,
             rate: 1,
             colliderView:'off',
+            jointView:'off',
             view: 'perspective',
             mode: 'translate',
             focusId: null,
@@ -124,6 +128,10 @@ function createController(store: Store) {
           }
         : state!;
       const next = { ...current };
+      if(opts.jointView!==undefined){
+        if(!['off','selected','all'].includes(opts.jointView))throw Error('jointView must be off, selected or all');
+        next.jointView=opts.jointView;
+      }
       if(opts.colliderView!==undefined){
         if(!['off','selected','all'].includes(opts.colliderView))throw Error('colliderView must be off, selected or all');
         next.colliderView=opts.colliderView;

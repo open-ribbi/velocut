@@ -109,7 +109,7 @@ export default defineConfig(({ command }) => ({
     noDiscovery: !!process.env.CI,
     include: [
       'react', 'react-dom', 'react-dom/client', 'react/jsx-runtime',
-      '@anthropic-ai/sdk', '@dimforge/rapier3d-compat', '@huggingface/transformers',
+      '@anthropic-ai/sdk', '@velocut/scene-sdk > @dimforge/rapier3d-compat', '@huggingface/transformers',
       'aws4fetch', 'gsap', 'mp4-muxer', 'mp4box', 'yjs', 'zod', 'three',
       'three/examples/jsm/controls/OrbitControls.js',
       'three/examples/jsm/controls/TransformControls.js',

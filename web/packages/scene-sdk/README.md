@@ -83,3 +83,11 @@ colliders preserve holes; automatic dynamic meshes remain convex hulls. Compose
 box or convex hull parts for dynamic cavities. `sceneSpatial` queries
 `colliders` and `colliderGeometry` inspect the actual collision shapes and edges;
 the Director can display the same edges without adding them to shot exports.
+
+Physical connections use the separate `joints` registry and
+`joint.create/update/remove` edits. Fixed, spherical, revolute, prismatic,
+spring, rope and generic joints participate in the same deterministic bake;
+hinge/slider limits and motors use explicit units. `sceneJoints` reads authored
+definitions, while `sceneSpatial` type `joints` reads sampled anchors, coordinates
+and geometric residuals. These are motion constraints, not structural strength
+certificates. See [the atomic guide](../../../docs/integrations/atomic-api.md#physical-joints).

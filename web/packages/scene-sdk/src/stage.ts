@@ -16,6 +16,7 @@ import { resolveActions, type ClipMeta } from './actions.ts';
 import { buildMannequin, MANNEQUIN_JOINTS, POSE_PRESETS, type MannequinJoint } from './mannequin.ts';
 import { bakePhysics, samplePhysicsTrack, type BakeTrack } from './physics.ts';
 import type {ColliderInspector} from './colliders.ts';
+import type {JointRuntime} from './joints.ts';
 import { loadImportedModel, type SceneResources } from './models.ts';
 import { normalizeSceneSpec } from './authoring.ts';
 import { validateSceneSpec } from './types.ts';
@@ -109,6 +110,8 @@ export function applyRotation(root: THREE.Object3D, spec: SceneTransform, t: num
 }
 
 export interface Stage {
+  physicsJoints?:JointRuntime[];
+  physicsVersion?:string;
   colliderInspector?:ColliderInspector;
   three: typeof THREE;
   scene: THREE.Scene;
@@ -493,12 +496,15 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
   // stays a pure sampler of t, so scrub/preview/export agree. Rapier (WASM)
   // loads only when a spec actually uses physics.
   let colliderInspector:ColliderInspector|undefined;
+  let physicsJoints:JointRuntime[]|undefined;
+  let physicsVersion:string|undefined;
   if ((spec.props ?? []).some((p) => p.physics != null)) {
     const tracks = await bakePhysics(
       spec,
       props.map((p) => ({ spec: p.spec, mesh: p.root })),
       inspector=>{colliderInspector=inspector;},
       new Set([...props,...characters,...groups,...lights].map(e=>e.root)),
+      (joints,version)=>{physicsJoints=joints;physicsVersion=version;},
     );
     props.forEach((p, i) => {
       const track = tracks[i];
@@ -692,7 +698,7 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
     lights.forEach((l,i) => { l.spec = normalized.lights![i]; });
     return true;
   }
-  const stage:Stage = { three, scene, characters, props, groups, lights, surfaceSources, surfaceGeometryKeys, colliderInspector, instanceBatches: instances.batches, canUpdateTransforms, updateTransforms,
+  const stage:Stage = { three, scene, characters, props, groups, lights, surfaceSources, surfaceGeometryKeys, colliderInspector, physicsJoints, physicsVersion, instanceBatches: instances.batches, canUpdateTransforms, updateTransforms,
     syncInstances: () => syncInstanceBatches(scene, instances.batches), poseAt, characterPosition };
   await prepareSurfaceReferences(stage);
   if(Object.keys(spec.bindings??{}).length){

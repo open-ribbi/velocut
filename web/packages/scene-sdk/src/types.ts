@@ -15,6 +15,7 @@ import { validateCurve, validateObjectAnimation, type SceneCurve, type SceneAnim
 import { validateAnchors, type SceneAnchor } from './anchors.ts';
 import {validateColliders,type SceneCollider} from './collider-spec.ts';
 import { validateBindings, type SceneBinding } from './bindings.ts';
+import {validateJoints,type SceneJoint} from './joints.ts';
 
 /** Per-axis animatable 3D value (world units = meters, Y up). */
 export interface Vec3A {
@@ -223,6 +224,7 @@ export interface SceneSpec {
   materials?: Record<string, SceneMaterialDefinition>;
   curves?: Record<string, SceneCurve>;
   bindings?: Record<string, SceneBinding>;
+  joints?: Record<string,SceneJoint>;
   durationUs: number;
   width?: number;
   height?: number;
@@ -673,6 +675,7 @@ export function validateSceneSpec(spec: unknown): string | null {
     if (cam?.lookAt && 'character' in cam.lookAt && !characterIds.has(cam.lookAt.character)) return `unknown camera character '${cam.lookAt.character}'`;
   }
   const bindingError = validateBindings(s); if (bindingError) return bindingError;
+  const jointError=validateJoints(s);if(jointError)return jointError;
   const budget = sceneBudget(s);
   if (!budget.withinLimits) {
     const v = budget.violations[0];

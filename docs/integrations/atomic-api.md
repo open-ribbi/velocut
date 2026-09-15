@@ -1068,10 +1068,124 @@ Physics & colliders panel edits body settings, individual shapes and transforms,
 and reads effective collision descriptions.
 
 Visual raycasts still inspect rendered geometry. A triangle mesh describes a
-boundary and has no solid interior. This API does not add rigid-body joints,
-contact/force diagnostics, automatic convex decomposition, or structural strength
-verification. The current deterministic physics bake and its existing duration
-behavior remain in effect.
+boundary and has no solid interior. Collision queries do not provide contact
+forces, automatic convex decomposition, or structural strength verification.
+Physical connections use the separate joint primitives below. The deterministic
+physics bake and its existing duration behavior remain in effect.
+
+### Physical joints
+
+`SceneSpec.joints` is a registry of connections between **two independent physics
+props**. `joint.create` and `joint.update` take `{id,joint}`; update replaces one
+definition. `joint.remove` takes `{id}`. Edits validate and commit atomically,
+support preflight, revision checks, undo/redo and save/reload, and return `jointIds`.
+They create Rapier impulse joints during the physics bake, not animation bindings.
+
+Every definition has `{type,a,b,name?,enabled?,contactsEnabled?}`. Each endpoint
+is `{objectId,position:[x,y,z]}` or `{objectId,anchorId}`. Points use object-local
+meters **before object scale**. Named anchors must be local anchors; only their
+position is used, not their normal/tangent. Both bodies must have physics enabled
+and have different IDs. An enabled joint needs at least one dynamic body; fixed
+and kinematic bodies can connect to dynamic bodies. `enabled` defaults true.
+`contactsEnabled` defaults false between the two connected bodies; set it true
+when their colliders should also interact.
+
+| Type | Additional fields | Meaning |
+| --- | --- | --- |
+| `fixed` | `rotationA?`, `rotationB?` | Local XYZ reference rotations in degrees; default identity. Locks all relative motion. |
+| `spherical` | None | Connects the two points, permits relative rotation. |
+| `revolute` | `axis`, `limits?`, `motor?` | One free angular coordinate, in degrees. |
+| `prismatic` | `axis`, `limits?`, `motor?` | One free translational coordinate, in meters. |
+| `rope` | `length` | Maximum anchor distance in meters; allows slack. |
+| `spring` | `length`, `stiffness`, `damping` | Rest length in meters, positive stiffness and nonnegative damping; stretches under load. |
+| `generic` | `axis`, `lockedAxes` | Lock any subset of `x,y,z,rotationX,rotationY,rotationZ`; an empty array leaves all free. |
+
+`axis` is a finite, nonzero direction normalized by the SDK. The public Rapier
+JavaScript constructor applies this **same local direction to both bodies**;
+independent hinge/slider axes are not exposed here. Axes/reference rotations do
+not inherit object scale. Generic axis names refer to the joint's frame, whose
+X direction follows `axis`. Queries return the actual solver reference frames.
+Fixed joints support independent `rotationA`/`rotationB` frames. Initial point or
+frame mismatches may move bodies when the solver starts: creation does not infer
+an offset, snap geometry, or preserve an arbitrary initial relative pose.
+
+Hinge/slider `limits:[min,max]` must be finite and ordered. Hinge limits and
+position targets use the signed `-180..180` degree coordinate; sliders use meters.
+Motors accept one of:
+
+```ts
+{mode:'position',targetPosition,stiffness,damping,model?:'force'|'acceleration'}
+{mode:'velocity',targetVelocity,damping,model?:'force'|'acceleration'}
+```
+
+Position targets must fall inside configured limits. Velocity uses degrees/s for
+hinges and m/s for sliders; use it for continuous turns. Stiffness/damping are the
+native Rapier coefficients, with angular controllers operating internally in
+radians. The default model is force-based. Settings are constant within a scene;
+this version does not add time-keyed motors, force thresholds or break events.
+
+```js
+// Both bodies and their local "hinge" anchors already exist.
+const state = await velocut.query({kind:'sceneJoints',assetId});
+if (!state.ok) throw Error(state.error.message);
+const edit = {type:'joint.create',id:'beam_hinge',joint:{
+  type:'revolute',
+  a:{objectId:'column',anchorId:'hinge'},
+  b:{objectId:'beam',anchorId:'hinge'},
+  axis:[0,0,1],limits:[-60,60],
+  motor:{mode:'position',targetPosition:45,stiffness:100,damping:20},
+}};
+const result = await velocut.sceneEdit({assetId,expectedRevision:state.revision,
+  edits:[edit],includeSpec:false});
+if (!result.ok) throw Error(result.message);
+return await velocut.sceneSpatial({assetId,timeS:2,expectedRevision:result.revision,
+  queries:[{type:'joints',ids:['beam_hinge']}]});
+```
+
+`query({kind:'sceneJoints',assetId,fields:['id','joint']})` returns paginated
+definitions without running physics. `sceneSpatial` query
+`{type:'joints',ids?,objectIds?,offset?,limit?}` reads sampled results, including:
+
+- `engine`: actual Rapier version and impulse-solver identity (null without physics).
+- Configured `enabled`/`disabled` status, endpoint identities and world positions.
+- World `frameA/frameB` quaternions `[x,y,z,w]` and applicable joint `axisA/axisB`.
+- `anchorDistanceM` and translation expressed in frame A.
+- `coordinate/unit`: signed hinge angle, slider translation, or spring/rope distance.
+- `linearErrorM`, `angularErrorDeg`, `limitError`, and spring `extensionM` where applicable; otherwise null.
+
+The point distance is **not an error for every joint**: a slider may separate
+along its free axis, a rope may be slack, and a spring may extend. Generic angular
+residuals are not reported as a scalar; inspect the returned frames. These values
+describe the sampled pose, not contact forces, bearing capacity, or structural
+safety. Unknown joint/body filters fail explicitly. Spatial pages default to 256
+and allow 1..1024 items per response; there is no new joint-count cap.
+
+Joint graphs may contain loops. Redundant/conflicting constraints can leave
+residual errors; configured `enabled` does not claim that every constraint has
+converged. Non-finite simulation poses reject compilation. The existing 60 Hz
+physics bake and 120-second bake ceiling still apply. Active motors prevent the
+resting-world early exit. No solver world or per-joint frame history is retained;
+queries derive measurements from sampled body transforms and compact setup data.
+Development prebundling resolves Rapier through the Scene SDK to avoid selecting
+a different transitive version; browser tests verify the actual solver version.
+
+Integrity and composition rules:
+
+- Removing a connected object requires `cascade:true` or removing its joints in
+  the same edit batch. Cascade removes the connected joints.
+- Referenced local anchors and body physics cannot be removed while their joint
+  remains, including disabled joints. Editing a referenced anchor position rebakes physics.
+- Copying both endpoints clones internal joints and returns `copies[].jointIdMap`.
+  Copying only one endpoint omits the external connection and reports
+  `copies[].omittedJointIds`; it does not attach the copy back to the original body.
+- `changedIds` includes connected bodies through the enabled joint graph.
+
+The compact Director has a structured joint draft/editor, endpoint/axis controls,
+limits, motor settings, enable/remove actions and an explicit inspection button.
+`directorSession({jointView:'off'|'selected'|'all'})` toggles guides without document
+changes. Guides follow the sampled bodies, are hidden in shot view and disposed
+when disabled or rebuilt. Static GLB export continues to bake the sampled pose;
+it does not export an executable physics joint graph.
 
 ### Assembly regeneration and development consistency
 

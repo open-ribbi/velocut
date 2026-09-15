@@ -3,6 +3,7 @@ import { SceneExportDialog } from './SceneExportDialog';
 import {SceneBindingFields} from './SceneBindingFields';
 import {SceneAnchorRepairs} from './SceneAnchorRepairs';
 import {ScenePhysicsFields} from './ScenePhysicsFields';
+import {SceneJointFields} from './SceneJointFields';
 import { SceneAnimationFields } from './SceneAnimationFields';
 import { Icon, type IconName } from './primitives/Icon';
 // DirectorPanel — the stage view: orbit the compiled 3D scene, select any
@@ -44,6 +45,7 @@ import {
   applySpecCamera,
   buildStage,
   createColliderOverlay,
+  createJointOverlay,
   expandShots,
   withImportedModels,
   loadSceneManifest,
@@ -577,7 +579,9 @@ export function DirectorPanel({
       });
       resize.observe(canvas);
       let colliderOverlay:ReturnType<typeof createColliderOverlay>|undefined,colliderOverlayKey='';
+      let jointOverlay:ReturnType<typeof createJointOverlay>|undefined,jointOverlayKey='';
       cleanup = () => {
+        jointOverlay?.dispose();
         colliderOverlay?.dispose();
         canvas.removeEventListener('pointerdown', onDown);
         canvas.removeEventListener('pointerup', onUp);
@@ -625,6 +629,12 @@ export function DirectorPanel({
           }
         }
         if(colliderOverlay){colliderOverlay.root.visible=currentSession.view!=='shot';colliderOverlay.update();}
+        const jointKey=JSON.stringify([currentSession.jointView,currentSession.jointView==='selected'?selRef.current?.id:null]);
+        if(jointKey!==jointOverlayKey){
+          jointOverlayKey=jointKey;jointOverlay?.dispose();jointOverlay=undefined;
+          if(currentSession.jointView==='all'||currentSession.jointView==='selected'&&selRef.current){jointOverlay=createJointOverlay(stage,currentSession.jointView==='selected'?selRef.current!.id:undefined);stage.scene.add(jointOverlay.root);}
+        }
+        if(jointOverlay){jointOverlay.root.visible=currentSession.view!=='shot';jointOverlay.update();}
         if(now>=diagnosticAt){
           diagnosticAt=now+200;
           const selectedId=selRef.current?.id??null;
@@ -1324,6 +1334,7 @@ export function DirectorPanel({
                 </div>)}
                 {spec && <SceneAnimationFields object={selObj} spec={spec} kind={sel.kind} timeS={t} onChange={animation=>mutateSel(o=>{o.animation=animation;})} onEdit={runEdits}/>}
                 {spec&&selProp&&<ScenePhysicsFields value={selProp} spec={spec} store={store} assetId={asset.id} timeS={t} onEdit={runEdits} colliderView={session.colliderView} onView={colliderView=>controller.update({colliderView})}/>}
+                {spec&&selProp?.physics&&<SceneJointFields spec={spec} objectId={selProp.id!} store={store} assetId={asset.id} timeS={t} onEdit={runEdits} jointView={session.jointView} onView={jointView=>controller.update({jointView})}/>}
                 <details className="scene-actions">
                   <summary>Anchors</summary>
                   {spatialStatus.selectedId===sel.id&&spatialStatus.anchors.map(a=><p key={a.id} className={a.status==='invalid'?'scene-error':'empty-hint'}>{a.id} · {a.kind} · {a.status}{a.message?`: ${a.message}`:''}</p>)}

@@ -3,9 +3,11 @@ import type {Stage} from './stage.ts';
 import {spatialVector, anchorIdValid, type LocalAnchor, type SurfaceAnchor, type SpatialVector} from './anchors.ts';
 import {objectIsVisible} from './visual.ts';
 import {surfaceReference, surfaceReferenceError, surfaceReferenceScopeError} from './surface-references.ts';
+import {readStageJoints} from './joint-spatial.ts';
 
 export type SpatialPoint = {position: SpatialVector; objectId?: string} | {objectId: string; anchorId: string};
 export type SceneSpatialQuery =
+  | {type:'joints';ids?:string[];objectIds?:string[];offset?:number;limit?:number}
   | {type:'colliders';objectIds?:string[];offset?:number;limit?:number}
   | {type:'colliderGeometry';objectId:string;colliderId:string;offset?:number;limit?:number;space?:'local'|'world'}
   | {type:'anchorRepair';objectId:string;anchorId:string;method:'face';ray?:never}
@@ -25,6 +27,7 @@ const pointSchema={oneOf:[objectSchema(['position'],{position:vectorSchema,objec
 export const SCENE_SPATIAL_SCHEMA=objectSchema(['assetId','queries'],{
   assetId:idSchema,timeS:{type:'number',minimum:0},expectedRevision:{type:'integer',minimum:0},
   queries:{type:'array',minItems:1,items:{oneOf:[
+    objectSchema(['type'],{type:{const:'joints'},ids:idsSchema,objectIds:idsSchema,offset:{type:'integer',minimum:0},limit:{type:'integer',minimum:1,maximum:1024}}),
     objectSchema(['type'],{type:{const:'colliders'},objectIds:idsSchema,offset:{type:'integer',minimum:0},limit:{type:'integer',minimum:1,maximum:1024}}),
     objectSchema(['type','objectId','colliderId'],{type:{const:'colliderGeometry'},objectId:idSchema,colliderId:idSchema,offset:{type:'integer',minimum:0},limit:{type:'integer',minimum:1,maximum:1024},space:{enum:['local','world']}}),
     objectSchema(['type','objectId','anchorId','method'],{type:{const:'anchorRepair'},objectId:idSchema,anchorId:idSchema,method:{const:'face'}}),
@@ -64,7 +67,10 @@ function point(value:unknown) {
 export function validateSpatialQueries(value:unknown): asserts value is SceneSpatialQuery[] {
   if (!Array.isArray(value) || !value.length) throw new Error('queries must be a nonempty array');
   for (const query of value) {
-    if(query?.type==='colliders'||query?.type==='colliderGeometry'){
+    if(query?.type==='joints'){
+      record(query,['type','ids','objectIds','offset','limit'],'joints query');if(query.ids!==undefined)ids(query.ids,'ids');
+      validateSpatialQueries([{type:'colliders',objectIds:query.objectIds,offset:query.offset,limit:query.limit}]);
+    }else if(query?.type==='colliders'||query?.type==='colliderGeometry'){
       record(query,query.type==='colliders'?['type','objectIds','offset','limit']:['type','objectId','colliderId','offset','limit','space'],'collider query');
       if(query.type==='colliders'){if(query.objectIds!==undefined)ids(query.objectIds,'objectIds');}
       else {id(query.objectId,'objectId');if(!anchorIdValid(query.colliderId))throw Error('invalid colliderId');if(query.space!==undefined&&!['local','world'].includes(query.space as string))throw Error('invalid collider space');}
@@ -293,6 +299,7 @@ export function queryStageSpatial(stage:Stage,queries:SceneSpatialQuery[]){
   validateSpatialQueries(queries);
   const {find,anchor,worldPoint,sample,raycast,repair}=createSpatialContext(stage);
   return queries.map(q=>{
+    if(q.type==='joints')return {type:q.type,...readStageJoints(stage,q)};
     if(q.type==='colliders'){
       q.objectIds?.forEach(find);
       const bodies=(stage.colliderInspector?.bodies??[]).filter(b=>!q.objectIds||q.objectIds.includes(b.objectId));

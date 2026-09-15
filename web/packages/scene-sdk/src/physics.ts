@@ -16,6 +16,8 @@ import { sampleAnimatable } from '@velocut/render-sdk/motionspec';
 import { sampleVec3 } from './stage.ts';
 import type { PropPhysics, SceneProp, SceneSpec } from './types.ts';
 import {resolveColliders,type ColliderInspector,type ColliderBodyInfo} from './colliders.ts';
+import {createPhysicsJoints} from './joint-physics.ts';
+import type {JointRuntime} from './joints.ts';
 
 type Rapier = typeof import('@dimforge/rapier3d-compat');
 
@@ -75,6 +77,7 @@ export async function bakePhysics(
   targets: Array<{ spec: SceneProp; mesh: THREE.Object3D }>,
   onColliders?: (inspector:ColliderInspector)=>void,
   authoredRoots:ReadonlySet<THREE.Object3D>=new Set(targets.map(t=>t.mesh)),
+  onJoints?:(joints:JointRuntime[],engineVersion:string)=>void,
 ): Promise<Array<BakeTrack | null>> {
   const R = await loadRapier();
   const T = await import('three');
@@ -146,12 +149,16 @@ export async function bakePhysics(
     const live = bodies.filter((b): b is Body => b != null);
     const dynamics = live.filter((b) => b.phys.type === 'dynamic');
     const kinematics = live.filter((b) => b.phys.type === 'kinematic');
+    const joints=createPhysicsJoints(R,T,world,spec,new Map(live.map(b=>[b.spec.id!,b.body])));
+    const hasMotor=joints.some(j=>j.definition.enabled!==false&&'motor' in j.definition&&j.definition.motor!==undefined);
 
     const record = (i: number): void => {
       for (const b of dynamics) {
         const tr = b.body.translation();
         const q = b.body.rotation();
-        b.track!.samples.set([tr.x, tr.y, tr.z, q.x, q.y, q.z, q.w], i * 7);
+        const sample=[tr.x,tr.y,tr.z,q.x,q.y,q.z,q.w];
+        if(!sample.every(Number.isFinite))throw Error(`physics simulation became non-finite for '${b.spec.id}'; inspect joint parameters and initial geometry`);
+        b.track!.samples.set(sample, i * 7);
       }
     };
     record(0);
@@ -189,9 +196,10 @@ export async function bakePhysics(
       // Early out once the world is at rest and nothing can wake it (no
       // kinematic movers, no pending startAt) — sampling clamps to the last
       // recorded sample, so a 60s scene with 2s of tumbling bakes 2s.
-      if (!kinematics.length && dynamics.every((d) => d.released && d.body.isSleeping())) break;
+      if (!kinematics.length && !hasMotor && dynamics.every((d) => d.released && d.body.isSleeping())) break;
     }
     for (const d of dynamics) d.track!.count = recorded;
+    onJoints?.(joints,R.version());
 
     onColliders?.({bodies:colliderBodies,lines(objectId,colliderId){
       const target=targets.find(p=>p.spec.id===objectId);if(!target)throw Error('unknown collider object');
