@@ -53,3 +53,5 @@ export { withImportedModels, validateGlb, parseSceneModel, loadImportedModel, MA
 export { exportSceneGlb, type SceneGlbOptions, type SceneGlbResult } from './export.ts';
 
 export { type ObjectTransform, type SceneLayout, type PlacementVector } from './placement.ts';
+export { sceneBudget, SCENE_LIMITS, validateGeometry, type SceneGeometry } from './geometry.ts';
+export { type InstanceBatch } from './instances.ts';

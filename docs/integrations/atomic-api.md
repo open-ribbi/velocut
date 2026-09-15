@@ -1,5 +1,7 @@
 # Atomic API foundation (unreleased)
 
+Shared geometry and instancing are described in [the instance section](#shared-native-geometry-and-instances).
+
 The runtime adds three transport-neutral methods: `capabilities`, `query` and
 `transaction`. CodeAct also gets pure `ops` and `ref` helpers. Existing methods
 and MCP tools remain supported. This is the foundation for agent composition,
@@ -36,7 +38,7 @@ const page = await velocut.query({
 });
 ```
 
-Kinds: `document`, `snapshot`, `assets`, `tracks`, `clips`, `sceneObjects`,
+Kinds: `document`, `snapshot`, `assets`, `tracks`, `clips`, `sceneObjects`, `sceneGeometries`, `sceneBudget`,
 `selection`. Entity results have `data:{items,total,nextOffset}`; continue until
 nextOffset is null. Use the same snapshotId for every page. Live pages without a
 snapshot can change between calls. Expired IDs fail instead of reading live data.
@@ -284,3 +286,117 @@ the track's current end explicitly and selects the new clip after success.
   resource import/probe/registration/duplication through the installed SDK.
 - This is an unreleased source change; it does not replace published 0.0.1
   packages or provide persistent job recovery.
+
+## Shared native geometry and instances
+
+A scene can store one editable mesh under `spec.geometries[geometryId]` and
+reference it from many props with `model:'prop/instance'` and `geometryId`.
+Geometry IDs are scene-local registry keys, not imported-media job handles.
+Vertices are stored once in the document and one BufferGeometry is built per
+geometry per stage. Compatible opaque instances share an InstancedMesh draw
+batch; each still has its own stable object ID, parent, transform and color.
+
+Existing `sceneEdit` exposes the new atomic operations:
+
+| Edit | Effect |
+| --- | --- |
+| `geometry.create {id,geometry}` | Create a definition; duplicate registry IDs fail |
+| `geometry.update {id,geometry}` | Replace its full definition; all referring instances update |
+| `geometry.remove {id}` | Remove an unreferenced definition; live references reject deletion |
+| `add {kind:'prop',object:{id,model:'prop/instance',geometryId,...}}` | Create one independently editable instance |
+| `update/transform/layout/duplicate/duplicateMany/remove` | Existing object edits work on instances; duplication preserves the shared reference |
+| `makeUnique {id}` | Copy geometry into that object's own `prop/mesh`; preserve ID, parent, transform and appearance |
+
+Every geometry definition accepts `name?`, `vertices`, `faces`, and `uvs?` with
+the existing explicit-mesh topology rules. Deleting an instance does not delete
+its geometry. `makeUnique` leaves other instances linked and does not garbage
+collect the old geometry; call `geometry.remove` explicitly when no users remain.
+
+```js
+// assetId is an existing scene asset. All sandbox RPC calls need await.
+const snap = await velocut.query({kind:'snapshot'});
+if (!snap.ok) throw new Error(snap.error.message);
+const edits = [
+  {type:'geometry.create', id:'panel', geometry:{
+    vertices:[[-0.5,0,0],[0.5,0,0],[0.5,1,0],[-0.5,1,0]],
+    faces:[[0,1,2],[0,2,3]]
+  }},
+  ...Array.from({length:100}, (_,i) => ({
+    type:'add', kind:'prop', object:{
+      id:`panel_${i}`, model:'prop/instance', geometryId:'panel',
+      position:{x:(i%10)*1.1,y:0,z:Math.floor(i/10)*1.1},
+      color:'#c98236', material:{side:'double'}
+    }
+  }))
+];
+const check = await velocut.sceneEdit({
+  assetId, expectedRevision:snap.revision, edits, preflight:true
+});
+if (!check.ok) return check;
+return await velocut.sceneEdit({
+  assetId, expectedRevision:check.revision, edits, includeSpec:false
+});
+```
+
+`preflight:true` performs structural validation and budget checks only, returns
+`ready:false, compiled:false`, and never creates a renderer or changes history.
+It is not proof that models load or that the result looks correct. `dryRun:true`
+also compiles the candidate. Commit without either flag, then observe actual
+frames. Successful preflights/edits return `budget`; failed candidate validation
+also returns it when the candidate structure permits reliable counting.
+`includeSpec:false` suppresses the full spec in edit replies. Each committed
+batch is one undo step; a script containing several batches is not one transaction.
+
+Read compact data through the existing query API (MCP: `velocut_query`):
+
+- `kind:'sceneGeometries',assetId`: paginated `id/name/vertexCount/triangleCount/instanceCount`.
+  Opt into `fields:['id','geometry']` to read vertices/faces. Reduce the page size
+  for large geometry; response budgets still apply.
+- `kind:'sceneObjects',assetId`: includes `geometryId` by default. It returns
+  authored objects without repeating their referenced geometry.
+- `kind:'sceneBudget',assetId`: counts, limits and violations, without GPU work.
+  Supports `snapshotId`, but not pagination or field projection.
+- `capabilities` includes `sceneLimits`. `sceneAssets` explains the complete edit
+  grammar. No new large workflow tool or third-party dependency is needed.
+
+Initial limits: 1000 instances plus 200 ordinary props; 64 shared geometries;
+100 groups; 128 instance draw batches; 2 million instanced triangles; and the
+existing 256 KiB total scene description. Each shared geometry has at most 4096
+vertices and 8192 triangles. Per-instance colors do not split batches; geometry
+or material differences can. Triangle/batch counters describe native instances,
+not the full GPU cost of imported GLBs, shadows or procedural primitives.
+
+Current boundaries:
+
+- Instances require opaque materials. Physics and bone attachment require
+  conversion with `makeUnique`; these cases fail explicitly instead of falling
+  back silently to expensive meshes or incorrectly sorted transparency.
+- Position/rotation animation and animated parents work with the existing
+  grammar. Scale remains constant; visibility/opacity animation is future work.
+- The Director uses logical meshes for precise selection, bounds and gizmos.
+  Shared geometry fields state how many instances will change. **Make geometry
+  unique** allows independent editing from the same properties panel.
+- Static GLB export emits individually named nodes with shared geometry and
+  per-instance appearance. It preserves selection and evaluated parent/world
+  transforms, but does not export Velocut editing recipes or animation tracks.
+- This first increment keeps the scene registry in the native document, with
+  undo/redo and project persistence. It does not yet externalize binary geometry,
+  incrementally compile changes, or claim a 10000-instance workload. A renderer
+  is still rebuilt after a scene commit. Raising numeric caps alone is not the
+  next scaling step.
+
+### Instance increment verification
+
+109 Node/TypeScript tests, 8 MCP tests and all 46 browser tests pass. Independent
+tarball installation verifies the public geometry/budget/query/preflight APIs,
+alongside the existing production/development SDK render checks. Editor, SDK,
+CLI and plugin builds and plugin validation pass.
+
+The browser acceptance fixture builds an original 36-vertex, 68-triangle barrel
+tile and places 1000 linked copies. An isolated 640×360 render with shadows off
+uses one shared geometry, one draw call and 68000 triangles. This is a rendering
+batch check, not a promise about interactive frame rate. The test also verifies
+per-object colors, render equivalence with independent meshes, animated objects
+under transformed parents, selected GLB export, shared edits, conversion to an independent
+mesh, undo/redo, persistence and the compact properties control. The 1001st
+instance fails preflight with counts and leaves the document untouched.

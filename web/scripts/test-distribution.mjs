@@ -70,6 +70,26 @@ try {
     console.log('resource jobs and duplication ok');
   `);
   assert.match(resourceOutput, /resource jobs and duplication ok/);
+  const instanceOutput = run(`
+    import assert from 'node:assert/strict';
+    import {applySceneEdits,sceneBudget} from '@velocut/scene-sdk';
+    import {Store,TsEngineAdapter,atomicRuntime,editScene} from '@velocut/runtime';
+    const geometry={vertices:[[0,0,0],[1,0,0],[0,1,0]],faces:[[0,1,2]]};
+    const made=applySceneEdits({version:1,durationUs:1000000},[
+      {type:'geometry.create',id:'tile',geometry},
+      {type:'add',kind:'prop',object:{id:'a',model:'prop/instance',geometryId:'tile'}},
+      {type:'duplicate',id:'a',newId:'b',offset:{x:2}}
+    ]);
+    assert.equal(sceneBudget(made.spec).used.instanceBatches,1);
+    const store=new Store(new TsEngineAdapter('instances',320,180,30,1));
+    const registered=store.dispatch({type:'addAsset',kind:'image',name:'Tiles',src:'scene://tiles',durationUs:1000000,width:320,height:180,spec:JSON.stringify(made.spec)});
+    assert.ok(registered.ok);const assetId=store.getState().doc.assets[0].id,api=atomicRuntime(store);
+    const geometries=api.query({kind:'sceneGeometries',assetId});assert.ok(geometries.ok);assert.equal(geometries.data.items[0].instanceCount,2);
+    const preview=await editScene(store,{assetId,preflight:true,edits:[{type:'makeUnique',id:'b'}]});
+    assert.ok(preview.ok);assert.equal(preview.compiled,false);assert.equal(preview.budget.used.instances,1);
+    console.log('shared geometry sdk ok');
+  `);
+  assert.match(instanceOutput, /shared geometry sdk ok/);
 
   await writeFile(
     resolve(workspace, 'types.ts'),
@@ -300,6 +320,7 @@ window.probe=(async()=>{
           'node-import',
       'atomic-query-transaction',
       'resource-probe-register-duplicate',
+      'shared-geometry-instances',
           'types',
           'cli-doctor',
           'http-headers-ranges',

@@ -141,6 +141,20 @@ export async function exportSceneGlb(
     'Static snapshot: rigs and morphs are baked into geometry; animation tracks, physics and parametric editing recipes are not included.',
   ];
   stage.poseAt(timeS, { cameraPos: specCameraPosition(spec, timeS) });
+  // Export logical nodes with shared geometry instead of internal GPU batches.
+  // This keeps stable IDs, per-instance color, hierarchy and selection semantics.
+  const instanceMaterials = new Map<string, THREE.MeshStandardMaterial>();
+  for (const batch of stage.instanceBatches) {
+    batch.mesh.removeFromParent();
+    for (const object of batch.objects) {
+      object.root.visible = true;
+      const base = object.root.material as THREE.MeshStandardMaterial, color = object.spec.color ?? '#8fa3bf';
+      const key = `${base.uuid}:${color}`;
+      let material = instanceMaterials.get(key);
+      if (!material) { material = base.clone(); material.color.set(color); instanceMaterials.set(key, material); }
+      object.root.material = material;
+    }
+  }
   stage.scene.updateMatrixWorld(true);
   const entries = [...stage.groups, ...stage.characters, ...stage.props, ...stage.lights];
   for (const e of entries) {

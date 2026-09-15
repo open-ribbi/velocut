@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ops, ref, ATOMIC_COMMAND_SCHEMAS } from '@velocut/protocol';
-import { Store, TsEngineAdapter, atomicRuntime, createAtomicRuntime, dispatchSceneAware } from '../dist/index.js';
+import { Store, TsEngineAdapter, atomicRuntime, createAtomicRuntime, dispatchSceneAware, editScene } from '../dist/index.js';
 
 function setup() {
   const store = new Store(new TsEngineAdapter('Atomic', 320, 180, 30, 1));
@@ -14,6 +14,36 @@ function setup() {
   return { store, runtime, trackId, assetId, clipId, plan: { runtimeId: runtime.runtimeId, expectedRevision: store.getState().revision } };
 }
 function value(result: any) { assert.equal(result.ok, true, JSON.stringify(result)); return result.data; }
+
+test('geometry queries are projected and snapshot-scoped; budget preflight needs no renderer', async () => {
+  const { store, runtime } = setup();
+  const geometry = { vertices: [[0,0,0],[1,0,0],[0,1,0]], faces: [[0,1,2]] };
+  store.dispatch({ type: 'addAsset', kind: 'video', name: 'Tiles', src: 'scene://tiles', durationUs: 1_000_000, width: 320, height: 180,
+    spec: JSON.stringify({ version: 1, durationUs: 1_000_000, geometries: { tile: geometry }, props: [{ id: 'a', model: 'prop/instance', geometryId: 'tile' }] }) });
+  const assetId = store.getState().doc.assets.at(-1)!.id;
+  const snapshot = value(runtime.query({ kind: 'snapshot' }));
+  const list = value(runtime.query({ kind: 'sceneGeometries', assetId }));
+  assert.deepEqual(list.items, [{ id: 'tile', vertexCount: 3, triangleCount: 1, instanceCount: 1 }]);
+  const read = value(runtime.query({ kind: 'sceneGeometries', assetId, fields: ['id', 'geometry'] }));
+  assert.deepEqual(read.items[0].geometry, geometry);
+  read.items[0].geometry.vertices[0][0] = 42;
+  assert.equal(value(runtime.query({ kind: 'sceneGeometries', assetId, fields: ['geometry'] })).items[0].geometry.vertices[0][0], 0);
+  assert.equal(value(runtime.query({ kind: 'sceneObjects', assetId })).items[0].geometryId, 'tile');
+  const revision = store.getState().revision;
+  const edits = [{ type: 'duplicate' as const, id: 'a', newId: 'b' }];
+  const preview: any = await editScene(store, { assetId, edits, expectedRevision: revision, preflight: true });
+  assert.equal(preview.ok, true); assert.equal(preview.compiled, false); assert.equal(preview.spec, undefined);
+  assert.equal(preview.budget.used.instances, 2); assert.equal(store.getState().revision, revision);
+  assert.equal((await editScene(store, { assetId, edits, preflight: true, dryRun: true })).ok, false);
+  const stale = await editScene(store, { assetId, edits, expectedRevision: revision - 1, preflight: true });
+  assert.equal(stale.ok, false);
+  const rejected: any = await editScene(store, { assetId, preflight: true, edits: [{ type: 'geometry.update', id: 'tile', geometry: { ...geometry, name: 'x'.repeat(300000) } as any }] });
+  assert.equal(rejected.ok, false); assert.equal(rejected.budget.withinLimits, false);
+  store.undo();
+  assert.equal(value(runtime.query({ kind: 'sceneBudget', assetId, snapshotId: snapshot.snapshotId })).used.instances, 1);
+  assert.equal(runtime.query({ kind: 'sceneBudget', assetId }).ok, false);
+  assert.equal(runtime.query({ kind: 'sceneBudget', assetId, fields: ['instances'] }).ok, false);
+});
 
 test('catalog schemas come from protocol and do not expose functions; builders only create data', () => {
   const { runtime, store } = setup();

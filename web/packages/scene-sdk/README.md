@@ -1,7 +1,7 @@
 # @velocut/scene-sdk
 
 Declarative editable 3D scenes: SceneSpec validation, pure scene edits,
-parametric assemblies, Three.js staging, GLB import, camera sampling,
+parametric assemblies, shared native geometry and instances, Three.js staging, GLB import, camera sampling,
 deterministic physics and frame rendering. ESM JS and TypeScript 5.9+ types are
 published; no Velocut checkout or Vite source aliases are required.
 
@@ -38,3 +38,17 @@ GLB Blob and format-limit warnings. Omit objectIds for the whole scene. It
 preserves hierarchy/world placement, materials, textures and the sampled
 skin/morph pose, without animation tracks or procedural editing recipes.
 See the [model export guide](../../../docs/integrations/model-export.md).
+
+## Shared geometry (unreleased)
+
+`SceneSpec.geometries` stores editable vertices/faces/UVs once. Props with
+`model:'prop/instance', geometryId` share that definition while keeping their
+own ID, transform, parent, color and material. Compatible opaque instances
+render in one batch. `applySceneEdits` supports `geometry.create`,
+`geometry.update`, `geometry.remove` and `makeUnique`; ordinary object edits
+also work on instances. `sceneBudget(spec)` exposes counts and limits.
+
+The initial budget allows 1000 instances, 64 geometries and 128 instance draw
+batches within the existing 256 KiB scene. Geometry still lives in the native
+document; edits still rebuild the stage. See the [atomic API guide](../../../docs/integrations/atomic-api.md#shared-native-geometry-and-instances)
+for preflight, query, persistence and material/physics restrictions.

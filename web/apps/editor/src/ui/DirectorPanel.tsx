@@ -681,6 +681,7 @@ export function DirectorPanel({
         orbitPosRef.current = [orbit.position.x, orbit.position.y, orbit.position.z];
         orbitTargetRef.current = [controls.target.x, controls.target.y, controls.target.z];
         orbitCameraRef.current = orbit;
+        if (gizmo.dragging) stage.syncInstances();
         renderer.setViewport(0, 0, w, h);
         if (shotView) {
           // Show the authored aspect ratio without stretching the shot.
@@ -763,8 +764,13 @@ export function DirectorPanel({
   const parentOf = (o: (typeof items)[number]['object']) =>
     o.parentId ?? ('attachTo' in o ? o.attachTo?.character : undefined);
   const outline: Array<(typeof items)[number] & { depth: number }> = [];
+  const children = new Map<string | undefined, typeof items>();
+  for (const item of items) {
+    const parent = parentOf(item.object), list = children.get(parent) ?? [];
+    list.push(item); children.set(parent, list);
+  }
   const walk = (parent: string | undefined, depth: number) => {
-    for (const item of items.filter((e) => parentOf(e.object) === parent)) {
+    for (const item of children.get(parent) ?? []) {
       outline.push({ ...item, depth });
       walk(item.object.id, depth + 1);
     }
@@ -1139,6 +1145,7 @@ export function DirectorPanel({
                           : mutateSel((o) => {
                               const p = o as NonNullable<SceneSpec['props']>[number];
                               p.model = e.target.value;
+                              delete p.geometryId;
                               delete p.vertices;
                               delete p.faces;
                               delete p.uvs;
@@ -1191,6 +1198,7 @@ export function DirectorPanel({
                             })
                       }
                     >
+                      {selProp?.model === 'prop/instance' && <option value="prop/instance">Shared geometry instance</option>}
                       {((selChar ? characterModels : propModels).length
                         ? selChar
                           ? characterModels
@@ -1304,6 +1312,17 @@ export function DirectorPanel({
                     value={selLight}
                     onChange={(patch) => mutateSel((o) => Object.assign(o, patch))}
                   />
+                )}
+                {selProp?.model === 'prop/instance' && spec?.geometries?.[selProp.geometryId!] && (
+                  <>
+                    <div className="group-title">Shared geometry · {selProp.geometryId}</div>
+                    <p className="empty-hint">Geometry edits affect all {spec.props?.filter(p => p.geometryId === selProp.geometryId).length} instances. Transform and color affect this object only.</p>
+                    <button className="fx-add" onClick={() => runEdits([{ type: 'makeUnique', id: sel.id }])}>Make geometry unique</button>
+                    <MeshFields
+                      value={{ model: 'prop/mesh', ...spec.geometries[selProp.geometryId!] }}
+                      onChange={(patch) => runEdits([{ type: 'geometry.update', id: selProp.geometryId!, geometry: { ...spec.geometries![selProp.geometryId!], ...patch } }])}
+                    />
+                  </>
                 )}
                 {selProp?.model === 'prop/mesh' && (
                   <MeshFields

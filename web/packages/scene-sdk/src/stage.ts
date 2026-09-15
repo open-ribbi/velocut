@@ -18,6 +18,7 @@ import { bakePhysics, samplePhysicsTrack, type BakeTrack } from './physics.ts';
 import { loadImportedModel, type SceneResources } from './models.ts';
 import { normalizeSceneSpec } from './authoring.ts';
 import { validateSceneSpec } from './types.ts';
+import { buildInstances, syncInstanceBatches, type InstanceBatch } from './instances.ts';
 import type { SceneAssetManifest, SceneSpec, Scale3, Vec3A, SceneTransform, SceneGroup, SceneLight } from './types.ts';
 
 /** Apply a uniform or per-axis scale (missing axes stay 1). */
@@ -109,6 +110,8 @@ export interface Stage {
   props: StageProp[];
   groups: Array<{ root: THREE.Group; spec: SceneGroup }>;
   lights: Array<{ root: THREE.Group; spec: SceneLight; light: THREE.Light }>;
+  instanceBatches: InstanceBatch[];
+  syncInstances(): void;
   /** Pose every character/prop for time t (seconds) — pure w.r.t. prior calls.
    *  Pass the shot camera's position so `gaze: 'camera'` heads can aim at it. */
   poseAt(t: number, opts?: { cameraPos?: [number, number, number] }): void;
@@ -344,7 +347,14 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
 
   // ----------------------------------------------------------------- props
   const props: StageProp[] = [];
+  const instances = buildInstances(three, spec);
+  const instanceObjects = new Map(instances.objects.map(o => [o.spec.id, o]));
+  for (const batch of instances.batches) scene.add(batch.mesh);
   for (const p of spec.props ?? []) {
+    if (p.model === 'prop/instance') {
+      const object = instanceObjects.get(p.id)!;
+      scene.add(object.root); props.push(object); continue;
+    }
     let mesh: THREE.Object3D;
     const imported = spec.models?.[p.model];
     if (imported) {
@@ -620,6 +630,7 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
       applyRotation(p.root, p.spec, t);
       if (p.spec.scale != null) applyScale(p.root, p.spec.scale);
     }
+    syncInstanceBatches(scene, instances.batches);
   }
 
   function characterPosition(id: string, t: number): [number, number, number] | null {
@@ -643,5 +654,6 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
     return point.toArray() as [number, number, number];
   }
 
-  return { three, scene, characters, props, groups, lights, poseAt, characterPosition };
+  return { three, scene, characters, props, groups, lights, instanceBatches: instances.batches,
+    syncInstances: () => syncInstanceBatches(scene, instances.batches), poseAt, characterPosition };
 }

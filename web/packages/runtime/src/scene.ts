@@ -9,6 +9,7 @@
 
 import {
   MAX_MODEL_BYTES,
+  sceneBudget,
   validateGlb,
   loadImportedModel,
   nextSceneId,
@@ -280,6 +281,10 @@ export interface SceneEditOptions {
   edits: SceneEdit[];
   /** Validate and compile the candidate without changing the document/history. */
   dryRun?: boolean;
+  /** Pure validation/cost preflight; does not compile, render or commit. */
+  preflight?: boolean;
+  /** Suppress the full candidate spec in replies for bulk authoring. */
+  includeSpec?: boolean;
 }
 type SceneDispatch = (cmd: Command) => ReturnType<Store['dispatch']>;
 
@@ -352,7 +357,14 @@ export async function replaceSceneSpec(
 export async function editScene(store: Store, opts: SceneEditOptions, dispatch?: SceneDispatch) {
   try {
     const before = readScene(store, opts.assetId);
+    if (opts.expectedRevision != null && opts.expectedRevision !== before.revision) throw new Error('conflict: document changed; read the scene again');
+    if (opts.preflight != null && typeof opts.preflight !== 'boolean' || opts.includeSpec != null && typeof opts.includeSpec !== 'boolean') throw new Error('preflight/includeSpec must be boolean');
+    if (opts.preflight && opts.dryRun) throw new Error('choose preflight or dryRun, not both');
     const result = applySceneEdits(before.spec, opts.edits);
+    const budget = sceneBudget(result.spec);
+    if (opts.preflight) return { ok: true as const, assetId: opts.assetId, revision: before.revision, preview: true,
+      ready: false, compiled: false, budget, changedIds: result.changedIds, createdIds: result.createdIds,
+      geometryIds: result.geometryIds, ...(opts.includeSpec ? { spec: result.spec } : {}) };
     const committed = await replaceSceneSpec(
       store,
       opts.assetId,
@@ -361,9 +373,13 @@ export async function editScene(store: Store, opts: SceneEditOptions, dispatch?:
       dispatch,
       opts.dryRun ?? false,
     );
-    return committed.ok ? { ...committed, changedIds: result.changedIds, createdIds: result.createdIds, copies: result.copies } : committed;
+    if (!committed.ok) return committed;
+    const { spec, ...summary } = committed;
+    return { ...summary, ...(opts.includeSpec === false ? {} : { spec }), budget,
+      changedIds: result.changedIds, createdIds: result.createdIds, geometryIds: result.geometryIds, copies: result.copies };
   } catch (e) {
-    return { ok: false as const, message: e instanceof Error ? e.message : String(e) };
+    return { ok: false as const, message: e instanceof Error ? e.message : String(e),
+      ...(e instanceof Error && 'budget' in e ? { budget: e.budget } : {}) };
   }
 }
 

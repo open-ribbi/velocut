@@ -2,6 +2,7 @@ import { createResourceJobs, RESOURCES_SCHEMA, JOBS_SCHEMA } from './resource-jo
 import { ATOMIC_COMMAND_SCHEMAS, COMMAND_CATALOG, TRANSACTION_SCHEMA, RESULT_FIELDS, commandDefinition, type NonBatch, type AtomicCommand, type Command, type Envelope, type VDocument, type TransactionRequest, type ResultField } from '@velocut/protocol';
 import { TsEngine } from '@velocut/core-ts';
 import { EFFECT_REGISTRY } from '@velocut/render-sdk';
+import { SCENE_LIMITS } from '@velocut/scene-sdk';
 import type { Store } from './store';
 import { dispatchSceneAware } from './scene';
 import { AtomicFault, fault, object, integer, validateQuery, queryDocument, documentSummary, QUERY_SCHEMA, QUERY_FIELDS } from './atomic-query';
@@ -105,7 +106,7 @@ export function createAtomicRuntime(store: Store) {
       if (q.namespace !== undefined && !['commands', 'runtime', 'legacy', 'pending', 'effects'].includes(q.namespace as string)) fault('invalidArg', 'unknown namespace');
       const offset = q.offset ?? 0, limit = q.limit ?? 50; integer(offset, 0, Number.MAX_SAFE_INTEGER, 'offset'); integer(limit, 1, 100, 'limit');
       const list = q.namespace === 'effects' ? Object.values(EFFECT_REGISTRY).map(({ name, label, params, aiHint }) => ({ name, label, params, summary: aiHint, namespace: 'effects' })) : entries.filter(e => !q.namespace || e.namespace === q.namespace);
-      return ok({ schemaVersion: 1, transport: context.transport ?? 'runtime', retention: 'in-memory Store lifetime; runtimeId changes after reload', limits: LIMITS,
+      return ok({ schemaVersion: 1, transport: context.transport ?? 'runtime', retention: 'in-memory Store lifetime; runtimeId changes after reload', limits: LIMITS, sceneLimits: SCENE_LIMITS,
         constraints: ['Command schemas describe resolved inputs; listed referenceFields also accept ref(operationId, field).', 'Asset registration is metadata only; no automatic import or insertion.', 'setAssetSpec is limited to scene assets; cloud/motion jobs are not transaction operations.', 'Ranges use integer microseconds and half-open overlap tests; scene properties remain parent-local as documented.'],
         items: list.slice(offset as number, (offset as number) + (limit as number)), total: list.length, nextOffset: (offset as number) + (limit as number) < list.length ? (offset as number) + (limit as number) : null });
     } catch (e) { return error(e); }

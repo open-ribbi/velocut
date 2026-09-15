@@ -8,6 +8,7 @@
 import { validateAssembly, type AssemblyRecipe } from './assemblies.ts';
 import type { Animatable } from '@velocut/render-sdk';
 import { MANNEQUIN_JOINTS, POSE_PRESETS, type MannequinJoint } from './mannequin.ts';
+import { validateGeometry, sceneBudget, SCENE_LIMITS, type SceneGeometry } from './geometry.ts';
 
 /** Per-axis animatable 3D value (world units = meters, Y up). */
 export interface Vec3A {
@@ -126,6 +127,8 @@ export interface PropPhysics {
 }
 
 export interface SceneProp extends SceneTransform {
+  /** prop/instance only: key in this scene's geometries registry. */
+  geometryId?: string;
   material?: SceneMaterial;
   /** Explicit editable triangle mesh (local meters, counter-clockwise faces). */
   vertices?: [number, number, number][];
@@ -198,6 +201,8 @@ export interface SceneModel {
 
 export interface SceneSpec {
   version: 1;
+  /** Editable native meshes shared by prop/instance objects. */
+  geometries?: Record<string, SceneGeometry>;
   durationUs: number;
   width?: number;
   height?: number;
@@ -340,6 +345,13 @@ export function validateSceneSpec(spec: unknown): string | null {
   if (s.fps != null && !(fin(s.fps) && s.fps >= 1 && s.fps <= 120)) return 'spec.fps must be 1..120';
   if (s.width != null && !(fin(s.width) && s.width >= 16 && s.width <= 8192)) return 'spec.width must be 16..8192';
   if (s.height != null && !(fin(s.height) && s.height >= 16 && s.height <= 8192)) return 'spec.height must be 16..8192';
+  if (s.geometries != null) {
+    if (typeof s.geometries !== 'object' || Array.isArray(s.geometries) || Object.keys(s.geometries).length > SCENE_LIMITS.geometries) return 'geometries must be a registry with at most 64 entries';
+    for (const [id, geometry] of Object.entries(s.geometries)) {
+      if (!/^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}$/.test(id) || ['__proto__', 'constructor', 'prototype'].includes(id)) return 'invalid geometry id';
+      const error = validateGeometry(geometry); if (error) return `geometry '${id}': ${error}`;
+    }
+  }
   if (s.models != null) {
     if (typeof s.models !== 'object' || Array.isArray(s.models) || Object.keys(s.models).length > 64) return 'models must be a registry with at most 64 entries';
     for (const [id, m] of Object.entries(s.models)) {
@@ -419,9 +431,17 @@ export function validateSceneSpec(spec: unknown): string | null {
   if (s.props != null) {
     // Generous cap: blockout sets (a greybox city block is easily 100 cubes)
     // are a first-class workflow; the cap only bounds compile cost.
-    if (!Array.isArray(s.props) || s.props.length > 200) return 'spec.props must be an array of at most 200';
+    if (!Array.isArray(s.props) || s.props.length > SCENE_LIMITS.props + SCENE_LIMITS.instances) return 'spec.props allows at most 200 ordinary props and 1000 instances';
+    if (s.props.filter(p => p?.model !== 'prop/instance').length > SCENE_LIMITS.props) return 'spec.props must contain at most 200 ordinary props';
     for (const p of s.props) {
       if (!p || typeof p.model !== 'string') return 'every prop needs a model id';
+      if (p.model === 'prop/instance') {
+        if (typeof p.geometryId !== 'string' || !Object.hasOwn(s.geometries ?? {}, p.geometryId)) return `instance '${p.id ?? ''}' references unknown geometry`;
+        if (p.physics != null || p.attachTo != null) return 'instances do not support physics or bone attachment; makeUnique first';
+        if (['vertices', 'faces', 'uvs', 'points', 'depth', 'holes', 'bevel', 'path', 'radius', 'closed'].some(k => k in p)) return 'instances store geometryId only; edit the shared geometry or makeUnique';
+        if (p.material?.opacity != null && p.material.opacity !== 1) return 'instances require opaque materials; makeUnique for transparency';
+        if (p.color != null && !/^#[a-f0-9]{6}$/i.test(p.color)) return 'instance color must be #RRGGBB';
+      } else if (p.geometryId != null) return 'geometryId only applies to prop/instance';
       if (p.position != null && !isVec3A(p.position)) return 'prop: invalid position';
       if (p.scale != null && !isScale3(p.scale)) return 'prop: scale must be a number or {x?,y?,z?}';
       if (p.attachTo != null) {
@@ -608,6 +628,11 @@ export function validateSceneSpec(spec: unknown): string | null {
   }
   for (const cam of [s.camera, ...(s.shots ?? []).map((shot) => shot.camera)]) {
     if (cam?.lookAt && 'character' in cam.lookAt && !characterIds.has(cam.lookAt.character)) return `unknown camera character '${cam.lookAt.character}'`;
+  }
+  const budget = sceneBudget(s);
+  if (!budget.withinLimits) {
+    const v = budget.violations[0];
+    return `scene budget exceeded: ${v.field} ${v.used} > ${v.limit}`;
   }
   return null;
 }
