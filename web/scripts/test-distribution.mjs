@@ -282,7 +282,7 @@ try {
   const roundtrip = await call('velocut_import_model', { sessionId, assetId: created.assetId, path: exportedPath });
   assert.ok(roundtrip.objectId);
   console.log('Packed CLI + MCP + scene authoring/vision passed');
-  const physicsScene=await call('velocut_scene_create',{sessionId,spec:{version:1,durationUs:3_000_000,width:320,height:180,environment:'env/grid',props:[
+  const physicsScene=await call('velocut_scene_create',{sessionId,atUs:1_000_000,spec:{version:1,durationUs:3_000_000,width:320,height:180,environment:'env/grid',props:[
     {id:'platform',model:'prop/extrude',points:[[-1,-1],[1,-1],[1,1],[-1,1]],holes:[[[-.5,-.5],[-.5,.5],[.5,.5],[.5,-.5]]],depth:.2,rotationX:-90,position:{y:1.2},physics:'fixed'},
     {id:'ball',model:'prop/sphere',scale:.2,position:{y:2.8},physics:{type:'dynamic',mass:.1,restitution:0},anchors:{center:{position:[0,0,0]}}},
   ]}});
