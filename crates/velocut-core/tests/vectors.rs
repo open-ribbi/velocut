@@ -42,7 +42,17 @@ fn run_vector(path: &PathBuf) {
     let mut engine = Engine::new("test", 1920, 1080, 30, 1);
 
     for (i, step) in v["steps"].as_array().unwrap().iter().enumerate() {
-        if let Some(cmd) = step.get("apply") {
+        if let Some(fixture) = step.get("applySpec") {
+            let mut cmd = fixture["command"].clone();
+            cmd["spec"] = Value::String(serde_json::json!({"value": fixture["repeat"].as_str().unwrap().repeat(fixture["count"].as_u64().unwrap() as usize)}).to_string());
+            let response: Value =
+                serde_json::from_str(&engine.apply_json(&cmd.to_string())).unwrap();
+            assert_eq!(response["ok"], true, "large spec rejected: {}", response);
+        } else if step.get("reload").is_some() {
+            let doc = serde_json::to_string(engine.document()).unwrap();
+            let response: Value = serde_json::from_str(&engine.load_json(&doc)).unwrap();
+            assert_eq!(response["ok"], true);
+        } else if let Some(cmd) = step.get("apply") {
             let resp: Value = serde_json::from_str(&engine.apply_json(&cmd.to_string())).unwrap();
             assert!(
                 resp["ok"].as_bool() == Some(true),
@@ -100,6 +110,16 @@ fn run_vector(path: &PathBuf) {
                 .unwrap_or_else(|| panic!("[{}] asset {} not found", name, id));
             if let Some(w) = want.get("hasAudio") {
                 assert_eq!(&asset["hasAudio"], w, "[{}] {} hasAudio", name, id);
+            }
+            if let Some(repeat) = want.get("specRepeat") {
+                let spec: Value = serde_json::from_str(asset["spec"].as_str().unwrap()).unwrap();
+                assert_eq!(
+                    spec["value"].as_str().unwrap(),
+                    repeat["value"]
+                        .as_str()
+                        .unwrap()
+                        .repeat(repeat["count"].as_u64().unwrap() as usize)
+                );
             }
             // spec: string = exact match; null = must be ABSENT (indexing a
             // missing key yields Value::Null, so one comparison covers both).

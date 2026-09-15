@@ -43,8 +43,9 @@ test('instance counts above 1000 are accepted; other resource budgets remain rep
   assert.equal(copied.spec.props!.length, 2001);
   assert.equal(sceneBudget(copied.spec).withinLimits, true);
   const oversized = { ...scene, props: props.map(p => ({ ...p, name: 'x'.repeat(300) })) };
-  assert.equal(sceneBudget(oversized).violations[0].field, 'specBytes');
-  assert.match(validateSceneSpec(oversized)!, /specBytes/);
+  assert.equal(sceneBudget(oversized).limits.specBytes, null);
+  assert.ok(sceneBudget(oversized).used.specBytes > 262144);
+  assert.equal(validateSceneSpec(oversized), null);
 });
 
 test('invalid topology, unsupported instance overrides and render costs are rejected', () => {

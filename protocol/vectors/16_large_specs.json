@@ -1,0 +1,12 @@
+{
+  "name": "large JSON specs have no byte ceiling across create, edit, undo and reload",
+  "steps": [
+    {"applySpec": {"command": {"type":"addAsset","kind":"image","src":"scene://large","name":"Large","durationUs":1000000}, "repeat":"黄鹤楼", "count":40000}},
+    {"applySpec": {"command": {"type":"setAssetSpec","assetId":"asset_1"}, "repeat":"a", "count":400000}},
+    {"undo":true},
+    {"redo":true},
+    {"reload":true},
+    {"applyErr":{"cmd":{"type":"setAssetSpec","assetId":"asset_1","spec":"{broken"},"code":"invalidArg"}}
+  ],
+  "expect": {"assets":[{"id":"asset_1","specRepeat":{"value":"a","count":400000}}]}
+}

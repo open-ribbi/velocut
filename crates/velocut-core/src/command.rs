@@ -161,7 +161,7 @@ pub enum EditCommand {
 
     /// Replace (or clear, with spec: null) a procedural asset's JSON spec.
     /// The spec is opaque; the engine enforces only the storage invariants
-    /// (valid JSON, size cap) so history snapshots stay bounded.
+    /// (valid JSON). There is no fixed spec byte ceiling.
     #[serde(rename_all = "camelCase")]
     SetAssetSpec {
         asset_id: String,
@@ -257,21 +257,8 @@ impl CmdError {
 
 pub type CmdResult = Result<Vec<Event>, CmdError>;
 
-/// Cap on a procedural spec (UTF-8 bytes) — mirror of the TS engine's
-/// MAX_SPEC_BYTES; both are pinned by the asset-spec golden vector.
-const MAX_SPEC_BYTES: usize = 262_144;
-
-/// Specs are opaque to the engine EXCEPT for two storage-level invariants it
-/// enforces authoritatively: the payload is JSON text, and it fits the cap
-/// (history nodes snapshot whole documents, so unbounded specs would bloat
-/// every layer that versions them).
+/// Specs are opaque to the engine except that the payload must be JSON text.
 fn check_spec(spec: &str) -> Result<(), CmdError> {
-    if spec.len() > MAX_SPEC_BYTES {
-        return Err(CmdError::invalid(format!(
-            "spec exceeds {} bytes",
-            MAX_SPEC_BYTES
-        )));
-    }
     if serde_json::from_str::<serde_json::Value>(spec).is_err() {
         return Err(CmdError::invalid("spec is not valid JSON"));
     }

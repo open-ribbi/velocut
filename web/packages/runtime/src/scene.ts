@@ -336,8 +336,6 @@ export async function replaceSceneSpec(
     const prepared = await externalizeSceneGeometry(store, normalizeSceneSpec(spec), !dryRun);
     const normalized = prepared.spec;
     const serialized = JSON.stringify(normalized);
-    if (new TextEncoder().encode(serialized).length > 262144)
-      throw new Error('scene spec exceeds 256 KiB');
     const live = sceneState(store).specs.get(assetId) === before.asset.spec ? sceneState(store).compiled.get(assetId) : undefined;
     const incremental = !dryRun && !!live?.canUpdateTransforms(normalized);
     if (!incremental) compiled = await compileFor(store, normalized, store.getState().doc, prepared.resources);

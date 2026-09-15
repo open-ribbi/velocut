@@ -12,7 +12,7 @@ export interface SceneGeometry {
 
 export const SCENE_LIMITS = Object.freeze({
   // null is an explicit, JSON-safe "no configured count limit".
-  specBytes: 262_144, props: 200, instances: null, geometries: 64,
+  specBytes: null, props: 200, instances: null, geometries: 64,
   groups: 100, geometryVertices: 4096, geometryTriangles: 8192,
   instanceBatches: 128, instanceTriangles: 2_000_000,
   geometryBytes: 16 * 1024 * 1024,

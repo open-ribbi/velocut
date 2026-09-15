@@ -50,7 +50,8 @@ resource-backed `makeUnique`; ordinary object edits
 also work on instances. `sceneBudget(spec)` exposes counts and limits.
 
 There is no fixed instance-count limit (`SCENE_LIMITS.instances === null`).
-The existing 64-geometry, 128-instance-batch and 256 KiB manifest budgets remain. Runtime scene edits move geometry to immutable `.vmesh` files and store
+The manifest has no fixed byte ceiling (`SCENE_LIMITS.specBytes === null`).
+The separate geometry and rendering budgets remain. Runtime scene edits move geometry to immutable `.vmesh` files and store
 references in `geometryResources`. Supply `SceneResources.geometryBytes` when
 compiling these specs directly; `resolveSceneGeometry` verifies bytes and metadata.
 `Stage.updateTransforms` and `CompiledScene.updateTransforms` retain renderers

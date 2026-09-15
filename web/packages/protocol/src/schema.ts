@@ -18,11 +18,8 @@ import { z } from 'zod';
  *  v2: Asset.spec + setAssetSpec (procedural specs live in the document). */
 export const PROTOCOL_VERSION = 2;
 
-/** Size cap for a procedural spec (UTF-8 bytes). Generous for KB-scale
- *  motion/scene JSON, small enough to keep history snapshots bounded. The
- *  ENGINES enforce this authoritatively (vector-pinned); this mirror exists
- *  so dispatch can reject early with a friendly message. */
-export const MAX_SPEC_BYTES = 262_144;
+/** No fixed procedural-spec byte ceiling. Kept as a JSON-safe discovery value. */
+export const MAX_SPEC_BYTES = null;
 
 // ------------------------------------------------------------- value types
 
@@ -112,14 +109,8 @@ export type Transition = z.infer<typeof Transition>;
 // discriminated union type-checks). Human summaries live in SUMMARIES, beside
 // the schemas — adding a command means editing only this file.
 
-/** A procedural spec payload: JSON text within the size cap. The engines
- *  re-check both properties (theirs is the vector-pinned truth); validating
- *  here too gives the agent a precise dispatch-time error. */
+/** Procedural payloads must be JSON text. Size alone does not reject a spec. */
 const SpecField = z.string().superRefine((s, ctx) => {
-  if (new TextEncoder().encode(s).length > MAX_SPEC_BYTES) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: `spec exceeds ${MAX_SPEC_BYTES} bytes` });
-    return;
-  }
   try {
     JSON.parse(s);
   } catch {

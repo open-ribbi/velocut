@@ -8,13 +8,11 @@ import { dispatchSceneAware } from './scene';
 import { AtomicFault, fault, object, integer, validateQuery, queryDocument, documentSummary, QUERY_SCHEMA, QUERY_FIELDS } from './atomic-query';
 export type { AtomicQuery } from './atomic-query';
 
-const MAX_BYTES = 256 * 1024, MAX_DOC_BYTES = 8 * 1024 * 1024;
-const LIMITS = { operations: 200, requestBytes: MAX_BYTES, responseBytes: MAX_BYTES, snapshots: 8, documentBytes: MAX_DOC_BYTES, requests: 128 };
+const LIMITS = { operations: 200, requestBytes: null, responseBytes: null, snapshots: 8, documentBytes: null, requests: 128 };
 type Result = { ok: true; data: unknown; revision: number; runtimeId: string } | {
   ok: false; error: { code: string; message: string; field?: string; operationId?: string; operationIndex?: number; retryable: boolean; outcome: 'not_committed' | 'unknown' }; runtimeId: string;
 };
 type TxOptions = { dispatch?: (command: Command) => Envelope; check?: (command: Command) => string | null; signal?: AbortSignal };
-function bytes(value: unknown) { return new TextEncoder().encode(JSON.stringify(value)).length; }
 function canonical(value: unknown, depth = 0): unknown {
   if (depth > 32) fault('invalidArg', 'request nesting exceeds 32');
   if (value === null || typeof value === 'string' || typeof value === 'boolean') return value;
@@ -50,7 +48,6 @@ export function createAtomicRuntime(store: Store) {
   const requests = new Map<string, { payload: string; state: 'pending' | 'completed'; result?: Result; promise: Promise<Result> }>();
   const ok = (data: unknown, revision = store.getState().revision): Result => {
     const result = { ok: true as const, data, revision, runtimeId };
-    if (bytes(result) > MAX_BYTES) fault('resourceLimit', 'response exceeds 256 KiB; reduce page size or project fewer fields');
     return structuredClone(result);
   };
   const error = (e: unknown, operationId?: string, operationIndex?: number, outcome: 'not_committed' | 'unknown' = 'not_committed'): Result => ({ ok: false,
@@ -58,7 +55,7 @@ export function createAtomicRuntime(store: Store) {
       ...(e instanceof AtomicFault && e.field ? { field: e.field } : {}), ...(operationId ? { operationId } : {}), ...(operationIndex !== undefined ? { operationIndex } : {}),
       retryable: e instanceof AtomicFault && e.code === 'conflict', outcome: e instanceof AtomicFault && e.code === 'staleRuntime' ? 'unknown' : outcome }, runtimeId });
   const checkRuntime = (id: unknown) => { if (id !== runtimeId) fault('staleRuntime', 'runtime changed; old requests cannot be replayed. Read state and reconcile first.', 'runtimeId'); };
-  const normalize = (input: unknown) => { const value = canonical(input); if (bytes(value) > MAX_BYTES) fault('resourceLimit', 'request exceeds 256 KiB'); return value; };
+  const normalize = (input: unknown) => canonical(input);
 
   const query = (input: unknown): Result => {
     try {
@@ -68,7 +65,6 @@ export function createAtomicRuntime(store: Store) {
       if (q.snapshotId && !snapshot) fault('snapshotExpired', 'snapshot is unavailable; never fall back to live data', 'snapshotId');
       const state = store.getState(), doc = snapshot?.doc ?? state.doc, revision = snapshot?.revision ?? state.revision;
       if (q.kind === 'snapshot') {
-        if (bytes(doc) > MAX_DOC_BYTES) fault('resourceLimit', 'document exceeds snapshot budget');
         const snapshotId = crypto.randomUUID();
         if (snapshots.size >= LIMITS.snapshots) snapshots.delete(snapshots.keys().next().value!);
         snapshots.set(snapshotId, { doc: structuredClone(doc), revision });
@@ -118,7 +114,6 @@ export function createAtomicRuntime(store: Store) {
       options.signal?.throwIfAborted();
       const before = store.getState();
       if (before.revision !== plan.expectedRevision) fault('conflict', 'document changed; query again', 'expectedRevision');
-      if (bytes(before.doc) > MAX_DOC_BYTES) fault('resourceLimit', 'document exceeds transaction budget');
       const engine = new TsEngine(); engine.load(before.doc);
       const resolved: NonBatch[] = [], results = new Map<string, Partial<Record<ResultField, string>>>();
       for (const [i, operation] of plan.operations.entries()) {
@@ -158,7 +153,7 @@ export function createAtomicRuntime(store: Store) {
       }
       operationId = undefined; operationIndex = undefined;
       const data = { state: plan.action === 'validate' ? 'validated' : 'committed', results: Object.fromEntries(results), changes: entityChanges(before.doc, engine.document()) };
-      ok(data, before.revision); // Enforce output budget before any mutation.
+      ok(data, before.revision); // Ensure the reply can be cloned before mutation.
       const dispatch = (command: Command) => {
         options.signal?.throwIfAborted();
         if (store.getState().revision !== before.revision) fault('conflict', 'document changed while preparing transaction');

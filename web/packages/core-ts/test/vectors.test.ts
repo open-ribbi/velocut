@@ -9,6 +9,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { TsEngine } from '../src/engine.ts';
 import type { Command, VDocument } from '@velocut/protocol';
+import { validateCommand } from '@velocut/protocol';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const vectorsDir = join(here, '../../../../protocol/vectors');
@@ -18,14 +19,16 @@ type Step =
   | { applyErr: { cmd: Command; code: string } }
   | { load: unknown }
   | { undo: true }
-  | { redo: true };
+  | { redo: true }
+  | { applySpec: { command: Record<string, unknown>; repeat: string; count: number } }
+  | { reload: true };
 
 interface Vector {
   name: string;
   steps: Step[];
   expect: {
     /** spec: string = exact match; null = must be ABSENT from the asset. */
-    assets?: Array<{ id: string; hasAudio?: boolean; spec?: string | null }>;
+    assets?: Array<{ id: string; hasAudio?: boolean; spec?: string | null; specRepeat?: { value: string; count: number } }>;
     clips?: Array<{
       id: string;
       trackId?: string;
@@ -67,7 +70,14 @@ for (const file of files) {
     const engine = new TsEngine('test', 1920, 1080, 30, 1);
 
     vec.steps.forEach((step, i) => {
-      if ('apply' in step) {
+      if ('applySpec' in step) {
+        const fixture = step.applySpec;
+        const command = { ...fixture.command, spec: JSON.stringify({value:fixture.repeat.repeat(fixture.count)}) } as Command;
+        assert.ok(validateCommand(command).ok, 'protocol accepts the generated large spec');
+        const response = engine.apply(command); assert.ok(response.ok, JSON.stringify(response));
+      } else if ('reload' in step) {
+        assert.ok(engine.load(engine.document()).ok);
+      } else if ('apply' in step) {
         const resp = engine.apply(step.apply);
         assert.ok(resp.ok, `step ${i}: expected ok, got ${JSON.stringify(resp)}`);
       } else if ('applyErr' in step) {
@@ -97,6 +107,7 @@ for (const file of files) {
       assert.ok(asset, `asset ${want.id} not found`);
       if (want.hasAudio !== undefined)
         assert.equal(asset!.hasAudio, want.hasAudio, `${want.id} hasAudio`);
+      if (want.specRepeat) assert.equal(JSON.parse(asset!.spec!).value, want.specRepeat.value.repeat(want.specRepeat.count));
       if (want.spec !== undefined) {
         if (want.spec === null) assert.ok(asset!.spec == null, `${want.id} spec should be absent`);
         else assert.equal(asset!.spec, want.spec, `${want.id} spec`);

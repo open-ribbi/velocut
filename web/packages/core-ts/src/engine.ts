@@ -45,18 +45,8 @@ const fail = (e: CmdError): never => {
   throw new CommandError(e);
 };
 
-/** Cap on a procedural spec (UTF-8 bytes) — mirror of the Rust engine's
- *  MAX_SPEC_BYTES; both are pinned by the asset-spec golden vector. */
-const MAX_SPEC_BYTES = 262_144;
-
-/** Specs are opaque to the engine EXCEPT for two storage-level invariants it
- *  enforces authoritatively: the payload is JSON text, and it fits the cap
- *  (history nodes snapshot whole documents, so unbounded specs would bloat
- *  every layer that versions them). Throws CommandError on violation. */
+/** Specs are opaque to the engine except that the payload must be JSON text. */
 function checkSpec(spec: string): void {
-  if (new TextEncoder().encode(spec).length > MAX_SPEC_BYTES) {
-    fail(err('invalidArg', `spec exceeds ${MAX_SPEC_BYTES} bytes`));
-  }
   try {
     JSON.parse(spec);
   } catch {

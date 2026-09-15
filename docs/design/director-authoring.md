@@ -149,7 +149,7 @@ These operations work in `sceneEdit.edits`, from the standalone SDK's
   parents and shifts local animation paths. It does not use `referenceId`.
 
 Selections reject duplicate IDs and parent/descendant overlap. Limits remain
-200 props, 100 groups, 8 characters, 16 lights, and 256 KiB per scene; assembly
+200 ordinary props, 100 groups, 8 characters and 16 lights; there is no fixed scene-text byte ceiling; assembly
 parts count as props. `duplicateMany` accepts 1..100 copy requests and at most
 500 generated objects, subject to these tighter scene limits. Layouts address
 origins, not geometry clearance; use world-bound arrangement for measured gaps.
@@ -237,7 +237,7 @@ await velocut.directorSession({ assetId, objectId: 'vase', focusId: 'table' });
   External dependencies and invalid models fail without changing the document.
 - `prop/mesh` adds explicit vertices, triangular faces and optional per-vertex UVs.
   These are editable in scripts and the Director. Limits: 4096 vertices, 8192
-  triangles, within the existing 256 KiB SceneSpec cap. This is indexed-mesh
+  triangles, without a fixed SceneSpec byte ceiling. This is indexed-mesh
   authoring, not Blender sculpting, retopology, modifier stacks or shader nodes.
 - Independent point, spot, directional and ambient lights are first-class objects
   (IDs, hierarchy, transforms, duplicate/delete, intensity keys, color, shadow,

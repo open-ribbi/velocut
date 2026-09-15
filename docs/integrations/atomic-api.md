@@ -124,8 +124,8 @@ than blindly replayed. Failed attempts are also retained. Use a new request ID
 for a corrected/new plan. No cross-project transaction or durable exactly-once
 claim is made.
 
-Limits: 200 operations/request; 256 KiB JSON request and response; 8 MiB source
-document; 8 snapshots (oldest evicted, no silent fallback); 128 retained request
+Limits: 200 operations/request; no fixed runtime JSON request, response or source-
+document byte ceilings; 8 snapshots (oldest evicted, no silent fallback); 128 retained request
 records per runtime (not silently evicted). Names/IDs: operation and request IDs
 use 1..128 ASCII letters/digits/`_.:-`, starting with a letter or digit. Entity
 pages max 100. Deeply nested or non-JSON requests are rejected. Preview and commit
@@ -367,8 +367,8 @@ Read compact data through the existing query API (MCP: `velocut_query`):
 
 There is no fixed instance-count limit (`limits.instances:null`). Other limits:
 200 ordinary props; 64 shared geometries;
-100 groups; 128 instance draw batches; 2 million instanced triangles; a 16 MiB logical referenced-geometry budget, and a
-256 KiB compact scene manifest. `used.specBytes` estimates the compact manifest;
+100 groups; 128 instance draw batches; 2 million instanced triangles; a separate 16 MiB logical referenced-geometry budget. There is no fixed scene
+manifest byte limit (`limits.specBytes:null`). `used.specBytes` estimates the compact manifest;
 `documentBytes` reports current JSON bytes, which can be larger for inline input. Each shared geometry has at most 4096
 vertices and 8192 triangles. Per-instance colors do not split batches; geometry
 or material differences can. Triangle/batch counters describe native instances,
@@ -419,13 +419,12 @@ stores Float64 positions/UVs and Uint32 triangle indices with a validated header
 so source numbers survive exact save/load round trips. Float32 conversion remains
 an operation of the renderer, not a destructive source conversion.
 
-The compact manifest still has a 256 KiB budget. Shared geometry has a separate
+The compact manifest has no fixed byte ceiling. Shared geometry has a separate
 16 MiB budget per scene; each geometry retains the 4096-vertex/8192-triangle limit.
-`sceneBudget` reports both budgets and the actual current JSON size. A large inline
-input can exceed 256 KiB while its compact manifest fits. Use CodeAct to generate
-such data inside the editor rather than a large literal MCP/transaction payload.
-Raw protocol `setAssetSpec` does not automatically externalize oversized input;
-use the scene editing APIs for that path.
+`sceneBudget` continues reporting manifest and geometry sizes. Large inline JSON
+can be used in direct commands and atomic transactions; raw `setAssetSpec` does not
+automatically externalize it. Use scene editing APIs when resource-backed geometry
+is desired, and use projection/pagination to keep replies convenient to inspect.
 
 Read and edit a small range through SDK/CodeAct or the equivalent MCP tool
 `velocut_scene_geometry`:
@@ -547,7 +546,8 @@ history retain their original references. `sceneGeometries` distinguishes
 
 There is no fixed instance-count limit. Existing limits remain 200 ordinary props,
 64 geometry definitions, 128
-shared material definitions, 128 instance draw batches and 256 KiB manifest.
+shared material definitions and 128 instance draw batches. The scene manifest has
+no fixed byte ceiling.
 Cloned definitions count toward the logical geometry count/byte budgets even
 when their immutable files initially deduplicate. Reusable animation definitions,
 visibility/scale animation and further resource scaling remain separate work.
@@ -603,6 +603,32 @@ The fixed 1000-instance ceiling has been removed from validation and budget
 preflight. `limits.instances:null` means no configured count ceiling;
 `used.instances` still reports the actual count. The former combined props-array
 length check has also been removed so it cannot reintroduce the same ceiling.
-Per-call edit/copy sizes, geometry validity, and other existing byte/render-budget
-checks are unchanged. More than 1000 instances can be authored across ordinary
+Per-call edit/copy sizes, geometry validity and separate geometry/render-budget
+checks remain. The scene manifest byte ceiling has also been removed. More than 1000 instances can be authored across ordinary
 batches; this is not a claim that every scene size fits all remaining budgets.
+
+### Scene-text byte policy
+
+The former 256 KiB procedural-spec/scene-manifest ceiling is removed from the
+protocol schema, Rust and TypeScript engines, scene preflight and scene editing.
+The runtime also removes its JSON request/response byte gates and source-document
+byte gate, so another runtime byte ceiling cannot block a large spec during
+query, snapshot or transaction. Discovery returns null for these unset limits.
+Byte counters remain available; JSON syntax, schemas, references and geometry
+validity are still checked. Transport implementations and file/resource APIs
+retain their independent behavior and limits.
+
+The shared golden vector generates large Unicode and ASCII JSON in both engines
+and checks create, replace, undo/redo, reload and invalid-JSON rejection. Runtime
+tests exercise a 9 MiB spec through transaction and snapshot/query. Browser
+coverage creates the previously oversized inline-material tile scene through
+MCP, reads its full spec, edits it through an atomic transaction, and verifies
+persistence after reload. Shared materials remain an optimization, not a
+requirement for this formerly oversized case. Rebuild the local WASM artifacts
+when updating an existing source checkout.
+
+Verification: 124 Node/TypeScript tests, 8 MCP tests, Rust golden vectors and
+strict Clippy pass. Eight relevant browser tests pass, including the oversized
+scene round trip. WASM and production packages rebuild successfully; separately
+installed npm packages accept and return a 400,000-character spec. Plugin
+validation also passes. This source change has not been published to npm.

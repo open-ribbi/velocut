@@ -95,6 +95,19 @@ try {
     console.log('shared geometry sdk ok');
   `);
   assert.match(instanceOutput, /shared geometry sdk ok/);
+  const largeSpecOutput = run(`
+    import assert from 'node:assert/strict';
+    import {validateCommand,MAX_SPEC_BYTES} from '@velocut/protocol';
+    import {Store,TsEngineAdapter,atomicRuntime} from '@velocut/runtime';
+    const store=new Store(new TsEngineAdapter('large spec',320,180,30,1)),api=atomicRuntime(store);
+    const spec=JSON.stringify({value:'a'.repeat(400000)});
+    const command={type:'addAsset',kind:'image',src:'opfs://fixture.png',name:'Large',width:16,height:16,spec};
+    assert.equal(MAX_SPEC_BYTES,null);assert.ok(validateCommand(command).ok);
+    const result=await api.transaction({action:'commit',runtimeId:api.runtimeId,expectedRevision:0,requestId:'large',operations:[{id:'asset',command}]});
+    assert.ok(result.ok);const read=api.query({kind:'assets',fields:['spec']});assert.ok(read.ok);assert.equal(read.data.items[0].spec,spec);
+    console.log('large spec roundtrip ok');
+  `);
+  assert.match(largeSpecOutput,/large spec roundtrip ok/);
 
   await writeFile(
     resolve(workspace, 'types.ts'),
@@ -338,6 +351,7 @@ window.probe=(async()=>{
       'shared-geometry-instances',
       'geometry-resource-and-incremental-transform',
       'shared-material-and-compact-history',
+      'large-spec-no-byte-ceiling',
           'types',
           'cli-doctor',
           'http-headers-ranges',

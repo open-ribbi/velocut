@@ -15,6 +15,25 @@ function setup() {
 }
 function value(result: any) { assert.equal(result.ok, true, JSON.stringify(result)); return result.data; }
 
+test('large specs, replies and snapshots are not rejected by fixed JSON byte budgets', async () => {
+  const {store,runtime}=setup();
+  const spec=JSON.stringify({value:'a'.repeat(9*1024*1024)});
+  const limits=value(runtime.capabilities());
+  assert.equal(limits.sceneLimits.specBytes,null);
+  for(const field of ['requestBytes','responseBytes','documentBytes'])assert.equal(limits.limits[field],null);
+  const request={action:'commit',runtimeId:runtime.runtimeId,requestId:'large-json',expectedRevision:store.getState().revision,operations:[
+    {id:'asset',command:{type:'addAsset',kind:'image',name:'Large spec',src:'opfs://fixture.png',width:16,height:16,durationUs:0,spec}}
+  ]};
+  const created=value(await runtime.transaction(request));const assetId=created.results.asset.assetId;
+  const snapshot=value(runtime.query({kind:'snapshot'}));
+  const read=value(runtime.query({kind:'assets',snapshotId:snapshot.snapshotId,ids:[assetId],fields:['spec']}));
+  assert.equal(read.items[0].spec.length,spec.length);assert.equal(read.items[0].spec,spec);
+  // A subsequent transaction must also accept the already-large source document.
+  value(await runtime.transaction({action:'commit',runtimeId:runtime.runtimeId,requestId:'after-large',expectedRevision:store.getState().revision,operations:[
+    {id:'track',command:{type:'addTrack',kind:'text'}}
+  ]}));
+});
+
 test('geometry queries are projected and snapshot-scoped; budget preflight needs no renderer', async () => {
   const { store, runtime } = setup();
   const geometry = { vertices: [[0,0,0],[1,0,0],[0,1,0]], faces: [[0,1,2]] };
@@ -38,7 +57,8 @@ test('geometry queries are projected and snapshot-scoped; budget preflight needs
   const stale = await editScene(store, { assetId, edits, expectedRevision: revision - 1, preflight: true });
   assert.equal(stale.ok, false);
   const rejected: any = await editScene(store, { assetId, preflight: true, edits: [{ type: 'geometry.update', id: 'tile', geometry: { ...geometry, name: 'x'.repeat(300000) } as any }] });
-  assert.equal(rejected.ok, false); assert.equal(rejected.budget.withinLimits, false);
+  assert.equal(rejected.ok, false); assert.match(rejected.message, /geometry name/);
+  assert.equal(rejected.budget.limits.specBytes, null);
   store.undo();
   assert.equal(value(runtime.query({ kind: 'sceneBudget', assetId, snapshotId: snapshot.snapshotId })).used.instances, 1);
   assert.equal(runtime.query({ kind: 'sceneBudget', assetId }).ok, false);

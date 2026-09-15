@@ -45,9 +45,21 @@ test('1000 animated detailed tiles keep original material; independent geometry 
       const inline={...spec,materials:undefined,props:props.map(({materialId,...p})=>({...p,color:material.color,material:{roughness:.38,metalness:.12,side:'double'}}))};
       const sharedBudget=sdk.sceneBudget(spec),inlineBudget=sdk.sceneBudget(inline);
       const r=await v.sceneClip({spec});if(!r.ok)throw Error(r.message);
-      return {assetId:r.assetId,sharedBudget,inlineBudget};
+      return {assetId:r.assetId,inline,sharedBudget,inlineBudget};
     },{sdkUrl,geometry:detailedTileGeometry()});
     expect(made.sharedBudget.used.specBytes).toBeLessThan(262144);expect(made.inlineBudget.used.specBytes).toBeGreaterThan(262144);
+    expect(made.inlineBudget.limits.specBytes).toBeNull();expect(made.inlineBudget.withinLimits).toBe(true);
+    const createdLarge=await call('velocut_scene_create',{sessionId,name:'Large inline-material scene',spec:made.inline,atUs:16_000_000});
+    expect(createdLarge.ok,JSON.stringify(createdLarge)).toBe(true);
+    const largeId=createdLarge.assetId;
+    const large=await call('velocut_query',{sessionId,kind:'assets',ids:[largeId],fields:['spec']});
+    expect(large.ok,JSON.stringify(large.error)).toBe(true);
+    const largeSpec=JSON.parse(large.data.items[0].spec);expect(large.data.items[0].spec.length).toBeGreaterThan(262144);
+    largeSpec.props[0].name='Edited large scene';
+    const editedLarge=await call('velocut_transaction',{sessionId,action:'commit',runtimeId:large.runtimeId,expectedRevision:large.revision,requestId:'large-scene-edit',operations:[
+      {id:'edit',command:{type:'setAssetSpec',assetId:largeId,spec:JSON.stringify(largeSpec)}}
+    ]});
+    expect(editedLarge.ok,JSON.stringify(editedLarge.error)).toBe(true);
     const assetId=made.assetId,before=await call('velocut_query',{sessionId,kind:'sceneBudget',assetId});
     const materials=await call('velocut_query',{sessionId,kind:'sceneMaterials',assetId,fields:['id','objectCount','material']});
     expect(materials.data.items[0].objectCount).toBe(1000);expect(materials.data.items[0].material.side).toBe('double');
@@ -75,6 +87,8 @@ test('1000 animated detailed tiles keep original material; independent geometry 
     const restored=await page.evaluate(({assetId,sdkUrl})=>import(sdkUrl).then(sdk=>{const v=(window as any).velocut,s=JSON.parse(v.doc().assets.find((a:any)=>a.id===assetId).spec);return {private:sdk.resolvePropAppearance(s,s.props[0]),other:sdk.resolvePropAppearance(s,s.props[1]),spec:s};}),{assetId,sdkUrl});
     expect(restored.private.color).toBe('#0000ff');expect(restored.other.color).toBe('#00ff00');expect(restored.spec.props[0].vertices).toBeUndefined();
     expect(restored.spec.geometryResources.private.src).not.toBe(restored.spec.geometryResources.tile.src);
+    const restoredLarge=await page.evaluate(assetId=>JSON.parse((window as any).velocut.doc().assets.find((a:any)=>a.id===assetId).spec),largeId);
+    expect(restoredLarge.props[0].name).toBe('Edited large scene');expect(restoredLarge.props[0].material).toEqual({roughness:.38,metalness:.12,side:'double'});
   }finally{await client.close();}
 });
 
