@@ -36,7 +36,7 @@ import {
   editScene,
   arrangeScene,
   type SceneArrangeOptions,
-  inspectScene, readSceneGeometry,
+  inspectScene, readSceneGeometry, readSceneSpatial,
   type SceneEditOptions,
   createSceneClip,
   type SceneClipOptions,
@@ -451,6 +451,7 @@ export function AgentConsole({
                 directorSession: (o) =>
                   Promise.resolve(directorSession(store, o as DirectorSessionOptions)),
                 sceneGeometry: (o: Parameters<typeof readSceneGeometry>[1]) => readSceneGeometry(store, o),
+                sceneSpatial: (o: Parameters<typeof readSceneSpatial>[1]) => readSceneSpatial(store, o),
                 sceneInspect: (o) => inspectScene(store, o as { assetId: string; timeS?: number }),
                 sceneAssets: async () => {
                   const manifest = await loadSceneManifest();

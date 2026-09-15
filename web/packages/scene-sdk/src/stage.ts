@@ -663,7 +663,9 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
     if (!canUpdateTransforms(next)) return false;
     const normalized = normalizeSceneSpec(next);
     groups.forEach((g,i) => { g.spec = normalized.groups![i]; });
-    props.forEach((p,i) => { if (p.spec.model === 'prop/instance') p.spec = normalized.props![i]; });
+    props.forEach((p,i) => { p.spec = normalized.props![i]; });
+    characters.forEach((c,i) => { c.spec = normalized.characters![i]; });
+    lights.forEach((l,i) => { l.spec = normalized.lights![i]; });
     return true;
   }
   return { three, scene, characters, props, groups, lights, instanceBatches: instances.batches, canUpdateTransforms, updateTransforms,

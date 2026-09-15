@@ -669,6 +669,118 @@ Evaluation and rendering details:
   visible geometry, scale and material alpha; it does not export animation
   tracks. An entirely hidden selection produces an explicit empty-export error.
 
+## Anchors and spatial queries
+
+These are small data operations that an Agent can compose with existing
+`transform`, `layout`, geometry and animation edits. They do not create a
+building, solve contact, or maintain an automatic dependency graph.
+
+Every object/group may define local anchors:
+
+```js
+{type:'anchor.set', id:'column', anchorId:'top',
+ anchor:{position:[0,.5,0],normal:[0,1,0],tangent:[1,0,0]}}
+{type:'anchor.remove', id:'column', anchorId:'top'}
+```
+
+`anchor.set` upserts one entry in `object.anchors`; `anchor.remove` rejects a
+missing entry. Anchors also support an optional `name`. Coordinates are before
+the object's scale, rotation and translation: on a centered unit cube scaled
+to a 3 m column, local `[0,.5,0]` follows the column top. Normal defaults to +Y;
+tangent defaults to +X, or +Z when the normal is parallel to +X. Explicit
+directions must be nonzero and independent. Anchors copy with their objects
+and persist through history. The compact Director **Anchors** panel edits the
+same data. Anchor-only edits reuse the existing stage/renderers.
+
+`sceneSpatial({assetId,timeS?,expectedRevision?,queries:[...]})` evaluates a
+batch of independent numerical queries against one captured scene and time.
+It returns `{ok,assetId,revision,timeS,results}` without a full spec or document
+changes. The runtime builds a CPU stage, with no additional WebGL renderer or
+retained query-stage cache. Pure SDK consumers can call
+`queryStageSpatial(stage, queries)` after `stage.poseAt(timeS)`.
+
+The MCP tool is `velocut_scene_spatial`; CodeAct uses `velocut.sceneSpatial`.
+`capabilities({name:'sceneSpatial'})` exposes the full input schema.
+
+| Query | Required fields | Optional fields / result |
+|---|---|---|
+| `anchors` | `objectId` | `anchorIds`; returns evaluated anchor `items` |
+| `raycast` | `origin`, `direction` | `objectIds`, `maxDistance`, `includeHidden`; nearest `hit` or null |
+| `surface` | `objectId`, `triangleIndex`, `barycentric` | `meshPath` defaults to `[]`; returns `surface` |
+| `distance` | `from`, `to` | World points, delta and distance in meters |
+| `angle` | `a`, `vertex`, `b` | Angle at vertex, 0..180 degrees; zero-length arms fail |
+
+Vectors are `[x,y,z]`. Measurement points are `{position:[x,y,z]}` in world
+space, `{objectId,position:[x,y,z]}` in object-local space, or
+`{objectId,anchorId}`. Normal and tangent are returned normalized and
+orthogonal; the supplied tangent is projected into the local anchor plane
+before transformation. `bitangent = normal × tangent`. Normal transformation uses the
+inverse transpose, including nonuniform parent scales.
+
+Ray scopes include descendants of the selected object/group IDs. Internal
+instance batches are excluded; hits identify editable logical objects.
+Geometry is tested from both sides, independently of material culling or
+texture alpha. Hidden objects are skipped unless `includeHidden:true`.
+Queries sample current triangle vertices, including skin and morph deformation.
+The surface normal follows the world triangle's winding, rather than its
+interpolated shading normal. This is geometric measurement, not pixel picking.
+
+Hit/surface data includes `objectId`, `meshPath` (child indices from that object
+root), `triangleIndex`, `vertexIndices`, `barycentric`, world position/frame,
+interpolated UV coordinates and `local`, a reusable object-local anchor
+definition. Barycentric weights must be 0..1 and sum to 1. A collapsed frame
+has `frameValid:false` and null directions. `local:null` means the object's
+world matrix cannot be inverted; do not guess an anchor from that result.
+
+For example, attach an editable anchor to a sampled roof point:
+
+```js
+const result = await velocut.sceneSpatial({assetId,timeS:2,queries:[
+  {type:'raycast',origin:[0,20,0],direction:[0,-1,0],objectIds:['roof']},
+]});
+if (!result.ok) throw Error(result.message);
+const hit = result.results[0].hit;
+if (!hit?.local || !hit.frameValid) throw Error('No usable roof surface');
+const edited = await velocut.sceneEdit({assetId,expectedRevision:result.revision,
+  includeSpec:false,edits:[
+    {type:'anchor.set',id:hit.objectId,anchorId:'seat',anchor:hit.local},
+  ]});
+if (!edited.ok) throw Error(edited.message);
+return await velocut.sceneSpatial({assetId,timeS:2,expectedRevision:edited.revision,
+  queries:[{type:'distance',from:{objectId:hit.objectId,anchorId:'seat'},
+    to:{objectId:'tile',anchorId:'bottom'}}]});
+```
+
+Agents can calculate an offset from the returned world normal and submit an
+ordinary transform edit. Object-local anchors follow object transforms and
+animation; they do not follow subsequent vertex edits or bone deformation
+inside the object. Resample and update the anchor when the geometry changes.
+`meshPath` and triangle indices are revision-scoped handles: pass the returned
+`revision` as `expectedRevision` when reusing them, and resample after topology
+changes. The result's revision identifies the captured document even if a
+concurrent edit happens while geometry is loading.
+
+### Assembly regeneration and development consistency
+
+Updating an `assembly` now merges the old recipe, current edited parts and new
+recipe. Values still equal to old generated defaults follow new parameters;
+differing values survive. Transform object fields merge per axis; arrays of
+keyframes remain whole. Names, shared material bindings, visibility, opacity,
+animation, anchors and custom geometry fields are preserved when customized.
+Custom children remain, and manually deleted generated parts stay deleted while
+they occur in the old recipe. Parts removed by a new recipe are removed.
+
+This is a value-based merge, not persistent override provenance: if an edited
+value equals the old generated default, it follows the recipe again. General
+parameter bindings and explicit ownership of fields remain separate work.
+
+The repository editor now resolves the scene SDK package root directly to its
+source entry, alongside the other live workspace SDKs. Its UI and runtime no
+longer mix current TypeScript exports with a stale scene SDK `dist`. Package
+asset subpaths retain their ordinary export resolution. Release packages still
+ship built JavaScript and types; independent tarball installation tests that
+path separately.
+
 ## Compact history storage
 
 History snapshots remain full ordinary documents in the runtime. The tree interns

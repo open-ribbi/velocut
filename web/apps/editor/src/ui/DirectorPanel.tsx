@@ -55,7 +55,7 @@ import type { Store } from '../state/store';
 import { directorController, type DirectorSession } from '../services/director-session';
 import { sceneResources } from '../services/scene-resources';
 import { importSceneModel, arrangeScene, editScene, replaceSceneSpec } from '../services/scene';
-import { LightFields, MeshFields, MaterialFields } from './SceneModelFields';
+import { LightFields, MeshFields, MaterialFields, JsonField } from './SceneModelFields';
 import { NumberField, AnimatableField, Vec3Row } from './SceneFields';
 
 export type Sel = {
@@ -1290,6 +1290,15 @@ export function DirectorPanel({
                     onChange={v=>mutateSel(o=>{const key=`scale.${axis}` as AnimationChannel;if(o.animation?.channels?.[key]!==undefined||v===0){o.animation??={};o.animation.channels??={};o.animation.channels[key]=v;}else {o.scale=typeof o.scale==='number'?{x:o.scale,y:o.scale,z:o.scale}:{...o.scale};o.scale[axis]=v;}})}/>
                 </div>)}
                 {spec && <SceneAnimationFields object={selObj} spec={spec} kind={sel.kind} timeS={t} onChange={animation=>mutateSel(o=>{o.animation=animation;})} onEdit={runEdits}/>}
+                <details className="scene-actions">
+                  <summary>Anchors</summary>
+                  <JsonField label="Object-local anchors" value={selObj.anchors??{}} onChange={value=>mutateSel(o=>{o.anchors=value as typeof o.anchors;})}/>
+                  <button className="fx-add" onClick={()=>mutateSel(o=>{
+                    let n=1;while(Object.hasOwn(o.anchors??{},`anchor_${n}`))n++;
+                    (o.anchors??={})[`anchor_${n}`]={position:[0,0,0]};
+                  })}>Add anchor</button>
+                  <div className="empty-hint">Position, normal and tangent are object-local, before animated transforms. Spatial queries return their world values.</div>
+                </details>
                 {!selLight && (
                   <button
                     className="fx-add"

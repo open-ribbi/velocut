@@ -112,6 +112,31 @@ test('arrays duplicate whole assemblies with incremental offsets and reject part
   assert.equal(JSON.stringify(made), snapshot);
 });
 
+test('recipe changes preserve animation, shared materials, local overrides and manually deleted parts', () => {
+  const made = applySceneEdits(base, [
+    {type:'material.create',id:'wood',material:{color:'#884422'}},
+    {type:'curve.create',id:'grow',curve:{keys:[{t:0,v:0},{t:1,v:1}]}},
+    {type:'assembly',id:'table',recipe:{template:'table'}},
+  ]).spec;
+  const leg = made.props!.find(p => p.id !== 'table/top')!.id!;
+  const top = made.props!.find(p => p.id === 'table/top')!;
+  const animation = {timeOffset:1,channels:{'scale.y':{curveId:'grow'}}};
+  const edited = applySceneEdits(made, [
+    {type:'update',id:'table/top',patch:{name:'Hand edited',materialId:'wood',visible:false,opacity:.5,animation,
+      position:{...top.position,x:2}}},
+    {type:'remove',id:leg},
+  ]).spec;
+  const next = applySceneEdits(edited, [{type:'assembly',id:'table',recipe:{template:'table',parameters:{width:3,height:2}}}]).spec;
+  const after = next.props!.find(p => p.id === 'table/top')!;
+  assert.equal(after.name,'Hand edited');assert.equal(after.materialId,'wood');assert.equal(after.visible,false);assert.equal(after.opacity,.5);
+  assert.deepEqual(after.animation,animation);assert.equal(after.position!.x,2);
+  assert.notEqual(after.position!.y,top.position!.y);assert.equal((after.scale as {x:number}).x,3);
+  assert.equal(next.props!.some(p=>p.id===leg),false);
+  const again = applySceneEdits(next,[{type:'assembly',id:'table',recipe:{template:'table',parameters:{width:4,height:3}}}]).spec;
+  assert.equal(again.props!.find(p=>p.id==='table/top')!.position!.x,2);
+  assert.deepEqual(edited.props!.find(p=>p.id==='table/top')!.animation,animation);
+});
+
 test('editable mesh topology rejects invalid/degenerate faces while preserving authored UVs', () => {
   const mesh = { id: 'm', model: 'prop/mesh', vertices: [[0, 0, 0], [1, 0, 0], [0, 1, 0]], faces: [[0, 1, 2]], uvs: [[0, 0], [1, 0], [0, 1]] };
   assert.equal(validateSceneSpec({ ...base, props: [mesh] }), null);

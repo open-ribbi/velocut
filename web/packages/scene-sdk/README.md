@@ -1,7 +1,8 @@
 # @velocut/scene-sdk
 
 Declarative editable 3D scenes: SceneSpec validation, pure scene edits,
-parametric assemblies, shared native geometry and instances, Three.js staging, GLB import, camera sampling,
+parametric assemblies, shared native geometry and instances, object-local anchors,
+CPU spatial queries, Three.js staging, GLB import, camera sampling,
 deterministic physics and frame rendering. ESM JS and TypeScript 5.9+ types are
 published; no Velocut checkout or Vite source aliases are required.
 

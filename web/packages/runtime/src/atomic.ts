@@ -2,7 +2,7 @@ import { createResourceJobs, RESOURCES_SCHEMA, JOBS_SCHEMA } from './resource-jo
 import { ATOMIC_COMMAND_SCHEMAS, COMMAND_CATALOG, TRANSACTION_SCHEMA, RESULT_FIELDS, commandDefinition, type NonBatch, type AtomicCommand, type Command, type Envelope, type VDocument, type TransactionRequest, type ResultField } from '@velocut/protocol';
 import { TsEngine } from '@velocut/core-ts';
 import { EFFECT_REGISTRY } from '@velocut/render-sdk';
-import { SCENE_LIMITS } from '@velocut/scene-sdk';
+import { SCENE_LIMITS, SCENE_SPATIAL_SCHEMA } from '@velocut/scene-sdk';
 import type { Store } from './store';
 import { dispatchSceneAware } from './scene';
 import { AtomicFault, fault, object, integer, validateQuery, queryDocument, documentSummary, QUERY_SCHEMA, QUERY_FIELDS } from './atomic-query';
@@ -82,7 +82,7 @@ export function createAtomicRuntime(store: Store) {
         ...names.map(name => ({ name, namespace: 'commands', category: 'command', available: name === 'registerAsset' ? mediaJobs.available() : true, transactional: true, summary: name === 'registerAsset' ? 'Register a probed project resource without inserting a clip' : COMMAND_CATALOG.find(c => c.type === name)!.summary })),
         { name: 'query', namespace: 'runtime', category: 'query', available: true, transactional: false, summary: 'Snapshot/entity queries, projection and pagination. Selection is live only.' },
         { name: 'transaction', namespace: 'runtime', category: 'command', available: true, transactional: false, summary: 'Validate/commit/status; requires runtimeId, expectedRevision and a requestId for commit.' },
-        ...['sceneEdit', 'sceneArrange', 'sceneInspect', 'sceneGeometry', 'sceneAssets', 'sceneClip', 'directorSession', 'observe'].map(name => ({ name, namespace: 'legacy', category: name.includes('Inspect') || name === 'sceneAssets' ? 'query' : name === 'observe' ? 'observe' : name === 'directorSession' ? 'session' : 'command', available: !!context.transport, transactional: false, summary: 'Existing separate API; not an operation within the new transaction.' })),
+        ...['sceneEdit', 'sceneArrange', 'sceneInspect', 'sceneGeometry', 'sceneSpatial', 'sceneAssets', 'sceneClip', 'directorSession', 'observe'].map(name => ({ name, namespace: 'legacy', category: ['sceneInspect','sceneAssets','sceneGeometry','sceneSpatial'].includes(name) ? 'query' : name === 'observe' ? 'observe' : name === 'directorSession' ? 'session' : 'command', available: !!context.transport, transactional: false, summary: 'Existing separate API; not an operation within the new transaction.' })),
         { name: 'previewSession', namespace: 'legacy', category: 'session', available: !!context.preview, transactional: false, summary: 'Requires a configured preview transport.' },
         ...['tts', 'motionClip', 'videoGen'].map(name => ({ name, namespace: 'legacy', category: 'job',
           available: !!context.transport && context.transport !== 'mcp', transactional: false,
@@ -96,7 +96,7 @@ export function createAtomicRuntime(store: Store) {
       if (q.name !== undefined) {
         if (typeof q.name !== 'string') fault('invalidArg', 'name must be a string');
         const entry = entries.find(e => e.name === q.name); if (!entry) fault('notFound', 'unknown capability');
-        return ok({ ...entry, ...(names.includes(q.name as AtomicCommand['type']) ? commandDefinition(q.name as AtomicCommand['type']) : q.name === 'query' ? { inputSchema: QUERY_SCHEMA, fieldCatalog: QUERY_FIELDS } : q.name === 'transaction' ? { inputSchema: TRANSACTION_SCHEMA } : q.name === 'resources' || q.name === 'resource.import' ? { inputSchema: RESOURCES_SCHEMA, limits: mediaJobs.limits } : q.name === 'jobs' || q.name === 'media.probe' ? { inputSchema: JOBS_SCHEMA, limits: mediaJobs.limits } : {}),
+        return ok({ ...entry, ...(names.includes(q.name as AtomicCommand['type']) ? commandDefinition(q.name as AtomicCommand['type']) : q.name === 'query' ? { inputSchema: QUERY_SCHEMA, fieldCatalog: QUERY_FIELDS } : q.name === 'sceneSpatial' ? { inputSchema: SCENE_SPATIAL_SCHEMA } : q.name === 'transaction' ? { inputSchema: TRANSACTION_SCHEMA } : q.name === 'resources' || q.name === 'resource.import' ? { inputSchema: RESOURCES_SCHEMA, limits: mediaJobs.limits } : q.name === 'jobs' || q.name === 'media.probe' ? { inputSchema: JOBS_SCHEMA, limits: mediaJobs.limits } : {}),
           ...(q.name === 'observe' ? { modes: ['frame', 'contact', 'scan', 'audio', 'shots', 'scene'], scriptImages: false } : {}) });
       }
       if (q.namespace !== undefined && !['commands', 'runtime', 'legacy', 'pending', 'effects'].includes(q.namespace as string)) fault('invalidArg', 'unknown namespace');

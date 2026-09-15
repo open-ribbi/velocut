@@ -28,6 +28,10 @@ import {
   validateSceneSpec,
   type SceneSpec,
   type CompiledScene,
+  buildStage,
+  queryStageSpatial,
+  validateSpatialQueries,
+  type SceneSpatialQuery,
 } from '@velocut/scene-sdk';
 import type { MediaLibrary } from '@velocut/render-sdk';
 import { validateCommand, type Envelope, type VDocument } from '@velocut/protocol';
@@ -425,6 +429,32 @@ export async function readSceneGeometry(store: Store, options: {
     return {ok:true as const,assetId:options.assetId,geometryId:options.geometryId,revision,attribute,
       resource:spec.geometryResources?.[options.geometryId],total:data.length,items:data.slice(offset,offset+limit),nextOffset:offset+limit<data.length?offset+limit:null};
   } catch(e) { return {ok:false as const,message:e instanceof Error?e.message:String(e)}; }
+}
+
+export interface SceneSpatialOptions {
+  assetId: string;
+  timeS?: number;
+  expectedRevision?: number;
+  queries: SceneSpatialQuery[];
+}
+
+/** One captured scene/time for a batch of independent numerical queries.
+ * No WebGL renderer/context, document writes, or retained query-stage cache. */
+export async function readSceneSpatial(store: Store, opts: SceneSpatialOptions, signal?: AbortSignal) {
+  try {
+    if (!opts || typeof opts !== 'object' || Array.isArray(opts) || Object.keys(opts).some(k=>!['assetId','timeS','expectedRevision','queries'].includes(k))) throw new Error('invalid spatial query options');
+    opts=structuredClone(opts);
+    validateSpatialQueries(opts.queries);
+    const {spec,revision}=readScene(store,opts.assetId),timeS=opts.timeS??0;
+    if(opts.expectedRevision!==undefined && (!Number.isSafeInteger(opts.expectedRevision)||opts.expectedRevision!==revision)) throw new Error('spatial revision changed; read the scene again');
+    if(!Number.isFinite(timeS)||timeS<0||timeS>spec.durationUs/1e6)throw new Error('timeS is outside the scene');
+    signal?.throwIfAborted();
+    const stage=await buildStage(spec,sceneState(store).assetBase,sceneResources(store));
+    signal?.throwIfAborted();stage.poseAt(timeS);
+    const results=queryStageSpatial(stage,opts.queries);
+    signal?.throwIfAborted();
+    return {ok:true as const,assetId:opts.assetId,revision,timeS,results};
+  } catch(e) {return {ok:false as const,message:e instanceof Error?e.message:String(e)};}
 }
 
 /** Queries use their own compiler: a concurrent preview/export cannot change

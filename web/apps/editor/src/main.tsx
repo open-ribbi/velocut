@@ -19,7 +19,7 @@ import { observeForAgent, type ObserveInput } from './services/observe';
 import { synthesizeNarration } from './services/tts';
 import { runAgentScript } from './services/script';
 import { createMotionClip, syncMotionAsset, migrateLegacyMotionSpecs, type MotionClipOptions } from './services/motion';
-import { exportSceneModel, type SceneExportOptions, bindSceneAuthoring, importSceneModel, type SceneModelImportOptions, editScene, arrangeScene, type SceneArrangeOptions, inspectScene, readSceneGeometry, type SceneEditOptions, dispatchSceneAware, checkSpecCommand, createSceneClip, pruneSceneRenderers, syncSceneAsset, type SceneClipOptions } from './services/scene';
+import { exportSceneModel, type SceneExportOptions, bindSceneAuthoring, importSceneModel, type SceneModelImportOptions, editScene, arrangeScene, type SceneArrangeOptions, inspectScene, readSceneGeometry, readSceneSpatial, type SceneEditOptions, dispatchSceneAware, checkSpecCommand, createSceneClip, pruneSceneRenderers, syncSceneAsset, type SceneClipOptions } from './services/scene';
 import { loadSceneManifest, scenePromptDoc } from '@velocut/scene-sdk';
 import { searchWeb } from './services/search';
 import { generateVideoClip, describeVideoGenChannels, sandboxVideoGen, type VideoGenClipOptions } from './services/videogen';
@@ -261,6 +261,7 @@ async function bootstrap() {
     sceneArrange: (o: SceneArrangeOptions) => arrangeScene(store, o),
     sceneEdit: (o: SceneEditOptions) => editScene(store, o),
     sceneGeometry: (o: Parameters<typeof readSceneGeometry>[1]) => readSceneGeometry(store, o),
+    sceneSpatial: (o: Parameters<typeof readSceneSpatial>[1]) => readSceneSpatial(store, o),
     sceneInspect: (o: { assetId: string; timeS?: number }) => inspectScene(store, o),
     apply: (cmd: Command | string) =>
       guardedDispatch(typeof cmd === 'string' ? JSON.parse(cmd) : cmd),
@@ -326,6 +327,7 @@ async function bootstrap() {
           sceneEdit: (o) => editScene(store, o as SceneEditOptions),
           directorSession: (o) => Promise.resolve(directorSession(store, o as DirectorSessionOptions)),
           sceneGeometry: (o: Parameters<typeof readSceneGeometry>[1]) => readSceneGeometry(store, o),
+          sceneSpatial: (o: Parameters<typeof readSceneSpatial>[1]) => readSceneSpatial(store, o),
           sceneInspect: (o) => inspectScene(store, o as { assetId: string; timeS?: number }),
           sceneAssets: async () => {
             const manifest = await loadSceneManifest();

@@ -80,6 +80,7 @@ try {
       {type:'material.create',id:'red',material:{color:'#ff0000',roughness:.38}},
       {type:'curve.create',id:'grow',curve:{keys:[{t:0,v:0},{t:1,v:1,ease:'none'}]}},
       {type:'add',kind:'prop',object:{id:'a',model:'prop/instance',geometryId:'tile',materialId:'red',animation:{channels:{'scale.y':{curveId:'grow'},opacity:{curveId:'grow'}}}}},
+      {type:'anchor.set',id:'a',anchorId:'seat',anchor:{position:[0,0,0]}},
       {type:'duplicate',id:'a',newId:'b',offset:{x:2}}
     ]);
     assert.equal(sceneBudget(made.spec).used.instanceBatches,1);
@@ -95,6 +96,8 @@ try {
     assert.equal(curves.data.items[0].curve,undefined);assert.deepEqual(made.curveIds,['grow']);
     const pose=sampleObjectTransform(made.spec.props[1],.5,made.spec);assert.equal(pose.scale[1],.5);assert.equal(pose.opacity,.5);
     assert.equal(api.capabilities().data.sceneLimits.curves,null);
+    assert.deepEqual(made.spec.props[1].anchors.seat.position,[0,0,0]);
+    assert.ok(api.capabilities({name:'sceneSpatial'}).data.inputSchema.properties.queries);
     const packed=store.getHistory().serializeCompact();const restored=HistoryTree.deserialize(JSON.parse(JSON.stringify(packed)));
     assert.equal(restored.all().length,store.getHistory().all().length);assert.equal(packed.historyEncoding,'spec-table-v1');
     console.log('shared geometry sdk ok');
@@ -224,9 +227,12 @@ try {
   });
   const geometryEdit = await call('velocut_scene_edit', {sessionId,assetId:created.assetId,includeSpec:false,edits:[
     {type:'geometry.create',id:'tile',geometry:{vertices:[[0,0,0],[1,0,0],[0,1,0]],faces:[[0,1,2]]}},
+    {type:'anchor.set',id:'cube',anchorId:'top',anchor:{position:[0,.5,0]}},
     {type:'add',kind:'prop',object:{id:'tile',model:'prop/instance',geometryId:'tile',position:{x:2},color:'#ff2222'}},
   ]});
   assert.ok(geometryEdit.ok);
+  const spatial=await call('velocut_scene_spatial',{sessionId,assetId:created.assetId,expectedRevision:geometryEdit.revision,queries:[{type:'distance',from:{objectId:'cube',anchorId:'top'},to:{position:[0,1,0]}}]});
+  assert.ok(spatial.ok);assert.equal(spatial.results[0].distance,0);
   const vertex = await call('velocut_scene_geometry', {sessionId,assetId:created.assetId,geometryId:'tile',offset:1,limit:1});
   assert.deepEqual(vertex.items,[[1,0,0]]);assert.match(vertex.resource.src,/scene-geometry-.*\.vmesh$/);
   const moved = await call('velocut_scene_edit',{sessionId,assetId:created.assetId,includeSpec:false,expectedRevision:vertex.revision,

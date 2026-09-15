@@ -1,5 +1,27 @@
 import type { SceneProp } from './types.ts';
 
+function equal(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (!a || !b || typeof a !== 'object' || typeof b !== 'object' || Array.isArray(a) !== Array.isArray(b)) return false;
+  const left = a as Record<string, unknown>, right = b as Record<string, unknown>;
+  return Object.keys(left).length === Object.keys(right).length && Object.keys(left).every(k => Object.hasOwn(right, k) && equal(left[k], right[k]));
+}
+
+/** A recipe owns only values the user has left at their generated defaults.
+ * Merge axes independently, but keep keyframe arrays and replaced models whole. */
+export function mergeAssemblyPart(before: SceneProp, edited: SceneProp, next: SceneProp): SceneProp {
+  const merge = (base: unknown, current: unknown, generated: unknown): unknown => {
+    if (equal(base, current)) return structuredClone(generated);
+    const record = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
+    if (record(base) && record(current) && record(generated)) {
+      return Object.fromEntries([...new Set([...Object.keys(base), ...Object.keys(current), ...Object.keys(generated)])]
+        .map(k => [k, merge(base[k], current[k], generated[k])]).filter(([, value]) => value !== undefined));
+    }
+    return structuredClone(current);
+  };
+  return merge(before, edited, next) as SceneProp;
+}
+
 export type AssemblyTemplate = 'table' | 'chair' | 'stairs';
 export interface AssemblyRecipe {
   template: AssemblyTemplate;

@@ -1,0 +1,218 @@
+import type * as THREE from 'three';
+import type {Stage} from './stage.ts';
+import {spatialVector, anchorIdValid, type SceneAnchor, type SpatialVector} from './anchors.ts';
+import {objectIsVisible} from './visual.ts';
+
+export type SpatialPoint = {position: SpatialVector; objectId?: string} | {objectId: string; anchorId: string};
+export type SceneSpatialQuery =
+  | {type:'anchors'; objectId:string; anchorIds?:string[]}
+  | {type:'raycast'; origin:SpatialVector; direction:SpatialVector; objectIds?:string[]; maxDistance?:number; includeHidden?:boolean}
+  | {type:'surface'; objectId:string; meshPath?:number[]; triangleIndex:number; barycentric:SpatialVector}
+  | {type:'distance'; from:SpatialPoint; to:SpatialPoint}
+  | {type:'angle'; a:SpatialPoint; vertex:SpatialPoint; b:SpatialPoint};
+
+const vectorSchema={type:'array',items:{type:'number'},minItems:3,maxItems:3};
+const idSchema={type:'string',minLength:1};
+const idsSchema={type:'array',items:idSchema,minItems:1,uniqueItems:true};
+const objectSchema=(required:string[],properties:Record<string,unknown>)=>({type:'object',additionalProperties:false,required,properties});
+const pointSchema={oneOf:[objectSchema(['position'],{position:vectorSchema,objectId:idSchema}),objectSchema(['objectId','anchorId'],{objectId:idSchema,anchorId:idSchema})]};
+export const SCENE_SPATIAL_SCHEMA=objectSchema(['assetId','queries'],{
+  assetId:idSchema,timeS:{type:'number',minimum:0},expectedRevision:{type:'integer',minimum:0},
+  queries:{type:'array',minItems:1,items:{oneOf:[
+    objectSchema(['type','objectId'],{type:{const:'anchors'},objectId:idSchema,anchorIds:idsSchema}),
+    objectSchema(['type','origin','direction'],{type:{const:'raycast'},origin:vectorSchema,direction:vectorSchema,objectIds:idsSchema,maxDistance:{type:'number',minimum:0},includeHidden:{type:'boolean'}}),
+    objectSchema(['type','objectId','triangleIndex','barycentric'],{type:{const:'surface'},objectId:idSchema,meshPath:{type:'array',items:{type:'integer',minimum:0}},triangleIndex:{type:'integer',minimum:0},barycentric:{...vectorSchema,items:{type:'number',minimum:0,maximum:1},description:'Weights sum to 1.'}}),
+    objectSchema(['type','from','to'],{type:{const:'distance'},from:pointSchema,to:pointSchema}),
+    objectSchema(['type','a','vertex','b'],{type:{const:'angle'},a:pointSchema,vertex:pointSchema,b:pointSchema}),
+  ]}},
+});
+
+function record(value: unknown, keys: string[], label: string): asserts value is Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(k => !keys.includes(k))) throw new Error(`invalid ${label} fields`);
+}
+function id(value:unknown, label:string): asserts value is string {
+  if (typeof value !== 'string' || !value.trim()) throw new Error(`${label} must be a nonempty ID`);
+}
+function vector(value:unknown, label:string): asserts value is SpatialVector {
+  if (!spatialVector(value)) throw new Error(`${label} must be a finite triple`);
+}
+function ids(value:unknown, label:string): asserts value is string[] {
+  if (!Array.isArray(value) || !value.length || new Set(value).size !== value.length) throw new Error(`${label} must contain unique IDs`);
+  value.forEach(v => id(v,label));
+}
+function point(value:unknown) {
+  record(value,['position','objectId','anchorId'],'point');
+  if (value.objectId !== undefined) id(value.objectId,'objectId');
+  if (value.anchorId !== undefined) {
+    id(value.objectId,'objectId');
+    if (!anchorIdValid(value.anchorId) || value.position !== undefined) throw new Error('anchor point needs objectId/anchorId only');
+  } else vector(value.position,'position');
+}
+
+/** Validate before loading geometry or creating a stage. No scene/count cap. */
+export function validateSpatialQueries(value:unknown): asserts value is SceneSpatialQuery[] {
+  if (!Array.isArray(value) || !value.length) throw new Error('queries must be a nonempty array');
+  for (const query of value) {
+    if (query?.type === 'anchors') {
+      record(query,['type','objectId','anchorIds'],'anchors query');id(query.objectId,'objectId');
+      if (query.anchorIds !== undefined) ids(query.anchorIds,'anchorIds');
+    } else if (query?.type === 'raycast') {
+      record(query,['type','origin','direction','objectIds','maxDistance','includeHidden'],'raycast query');
+      vector(query.origin,'origin');vector(query.direction,'direction');
+      const length = Math.hypot(...query.direction);
+      if (!Number.isFinite(length) || !length) throw new Error('ray direction must be nonzero');
+      if (query.objectIds !== undefined) ids(query.objectIds,'objectIds');
+      if (query.maxDistance !== undefined && (typeof query.maxDistance !== 'number' || !Number.isFinite(query.maxDistance) || query.maxDistance < 0)) throw new Error('maxDistance must be nonnegative meters');
+      if (query.includeHidden !== undefined && typeof query.includeHidden !== 'boolean') throw new Error('includeHidden must be boolean');
+    } else if (query?.type === 'surface') {
+      record(query,['type','objectId','meshPath','triangleIndex','barycentric'],'surface query');id(query.objectId,'objectId');
+      if (query.meshPath !== undefined && (!Array.isArray(query.meshPath) || query.meshPath.some(i => !Number.isSafeInteger(i) || i < 0))) throw new Error('meshPath must contain nonnegative child indices');
+      if (!Number.isSafeInteger(query.triangleIndex) || (query.triangleIndex as number) < 0) throw new Error('triangleIndex must be nonnegative');
+      vector(query.barycentric,'barycentric');
+      if (query.barycentric.some(v => v < 0 || v > 1) || Math.abs(query.barycentric.reduce((s,v) => s+v,0)-1) > 1e-6) throw new Error('barycentric weights must be 0..1 and sum to 1');
+    } else if (query?.type === 'distance') {
+      record(query,['type','from','to'],'distance query');point(query.from);point(query.to);
+    } else if (query?.type === 'angle') {
+      record(query,['type','a','vertex','b'],'angle query');point(query.a);point(query.vertex);point(query.b);
+    } else throw new Error('unknown spatial query type');
+  }
+}
+
+const tuple = (v:THREE.Vector3): SpatialVector => {
+  const result = v.toArray() as SpatialVector;
+  if (!result.every(Number.isFinite)) throw new Error('spatial result is not finite');
+  return result;
+};
+
+/** Operates on one already-posed stage. All results use meters and world space,
+ * except explicitly named local data and triangle barycentric coordinates. */
+export function queryStageSpatial(stage:Stage, queries:SceneSpatialQuery[]) {
+  validateSpatialQueries(queries);
+  const T=stage.three;
+  const entries=[...stage.groups,...stage.characters,...stage.props,...stage.lights];
+  const byId=new Map(entries.map(e=>[e.spec.id!,e])), authoredRoots=new Set(entries.map(e=>e.root));
+  const find=(objectId:string)=>{const e=byId.get(objectId);if(!e)throw new Error(`unknown object '${objectId}'`);return e;};
+  stage.scene.updateMatrixWorld(true);
+  stage.scene.traverse(node=>{const mesh=node as THREE.SkinnedMesh;if(mesh.isSkinnedMesh)mesh.skeleton.update();});
+  const frame=(normal:THREE.Vector3,tangent:THREE.Vector3)=>{
+    if (!normal.length() || !Number.isFinite(normal.length())) return {frameValid:false,normal:null,tangent:null,bitangent:null};
+    normal.normalize();tangent.addScaledVector(normal,-tangent.dot(normal));
+    if (!tangent.length() || !Number.isFinite(tangent.length())) return {frameValid:false,normal:null,tangent:null,bitangent:null};
+    tangent.normalize();
+    return {frameValid:true,normal:tuple(normal),tangent:tuple(tangent),bitangent:tuple(normal.clone().cross(tangent))};
+  };
+  const anchor=(objectId:string,anchorId:string)=>{
+    const e=find(objectId);
+    if (!Object.hasOwn(e.spec.anchors??{},anchorId)) throw new Error(`unknown anchor '${objectId}:${anchorId}'`);
+    const a=e.spec.anchors![anchorId],position=new T.Vector3(...a.position).applyMatrix4(e.root.matrixWorld);
+    const normal=new T.Vector3(...(a.normal??[0,1,0])).normalize();
+    const tangent=new T.Vector3(...(a.tangent??(Math.abs(normal.x)>.9?[0,0,1]:[1,0,0])));
+    // Project locally first: projecting only after a shear changes the direction.
+    tangent.addScaledVector(normal,-tangent.dot(normal)).normalize();
+    const orientation=e.root.matrixWorld.determinant()===0 ? frame(new T.Vector3(),tangent) :
+      frame(normal.applyMatrix3(new T.Matrix3().getNormalMatrix(e.root.matrixWorld)),tangent.transformDirection(e.root.matrixWorld));
+    return {objectId,anchorId,anchor:structuredClone(a),position:tuple(position),...orientation,visible:objectIsVisible(e.root)};
+  };
+  const worldPoint=(p:SpatialPoint)=>{
+    if ('anchorId' in p) return new T.Vector3(...anchor(p.objectId,p.anchorId).position);
+    const v=new T.Vector3(...p.position);if(p.objectId)v.applyMatrix4(find(p.objectId).root.matrixWorld);tuple(v);return v;
+  };
+  const resolveMesh=(objectId:string,path:number[])=>{
+    let node:THREE.Object3D=find(objectId).root;
+    for (const i of path) {if(!node.children[i])throw new Error('meshPath no longer exists; resample the surface');node=node.children[i];}
+    if (!(node as THREE.Mesh).isMesh || (node as THREE.InstancedMesh).isInstancedMesh) throw new Error('meshPath must resolve to a logical mesh');
+    return node as THREE.Mesh;
+  };
+  const range=(mesh:THREE.Mesh)=>{
+    const geometry=mesh.geometry,position=geometry.getAttribute('position');
+    if (!position) throw new Error('mesh has no positions');
+    const count=geometry.index?.count??position.count;
+    if(geometry.drawRange.start%3!==0)throw new Error('mesh drawRange is not aligned to triangles');
+    return [geometry.drawRange.start/3,Math.floor(Math.min(count,geometry.drawRange.start+geometry.drawRange.count)/3)] as const;
+  };
+  const vertexIndices=(mesh:THREE.Mesh,index:number)=>[0,1,2].map(i=>mesh.geometry.index?.getX(index*3+i)??index*3+i);
+  const vertices=(mesh:THREE.Mesh,index:number,a:THREE.Vector3,b:THREE.Vector3,c:THREE.Vector3)=>{
+    // Reuse vectors in the ray loop; do not allocate arrays per triangle.
+    const offset=index*3,attribute=mesh.geometry.index;
+    mesh.getVertexPosition(attribute?.getX(offset)??offset,a).applyMatrix4(mesh.matrixWorld);
+    mesh.getVertexPosition(attribute?.getX(offset+1)??offset+1,b).applyMatrix4(mesh.matrixWorld);
+    mesh.getVertexPosition(attribute?.getX(offset+2)??offset+2,c).applyMatrix4(mesh.matrixWorld);
+  };
+  const sample=(objectId:string,meshPath:number[],triangleIndex:number,barycentric:SpatialVector)=>{
+    const mesh=resolveMesh(objectId,meshPath),[start,end]=range(mesh);
+    if(triangleIndex<start||triangleIndex>=end)throw new Error('triangleIndex is outside the mesh draw range');
+    const a=new T.Vector3(),b=new T.Vector3(),c=new T.Vector3();
+    vertices(mesh,triangleIndex,a,b,c);
+    const indices=vertexIndices(mesh,triangleIndex),sum=barycentric.reduce((s,v)=>s+v,0);
+    const weights=barycentric.map(v=>v/sum) as SpatialVector;
+    const position=a.clone().multiplyScalar(weights[0]).addScaledVector(b,weights[1]).addScaledVector(c,weights[2]);
+    const edge=b.clone().sub(a),normal=edge.clone().cross(c.clone().sub(a));
+    const orientation=frame(normal,edge),root=find(objectId).root;
+    let local:SceneAnchor|null=null;
+    if(root.matrixWorld.determinant()!==0){
+      const inverse=root.matrixWorld.clone().invert();
+      local={position:tuple(position.clone().applyMatrix4(inverse))};
+      if(orientation.frameValid){
+        const normalMatrix=new T.Matrix3().setFromMatrix4(root.matrixWorld).transpose();
+        const localFrame=frame(new T.Vector3(...orientation.normal!).applyMatrix3(normalMatrix),new T.Vector3(...orientation.tangent!).transformDirection(inverse));
+        if(localFrame.frameValid){local.normal=localFrame.normal!;local.tangent=localFrame.tangent!;}
+      }
+    }
+    const uv=mesh.geometry.getAttribute('uv');
+    const coordinates=uv ? [indices.reduce((s,i,k)=>s+uv.getX(i)*weights[k],0),indices.reduce((s,i,k)=>s+uv.getY(i)*weights[k],0)] : null;
+    if(coordinates?.some(v=>!Number.isFinite(v)))throw new Error('surface UVs are not finite');
+    return {objectId,meshPath:[...meshPath],triangleIndex,vertexIndices:indices,barycentric:weights,position:tuple(position),...orientation,uv:coordinates,local,visible:objectIsVisible(mesh)};
+  };
+  const raycast=(q:Extract<SceneSpatialQuery,{type:'raycast'}>)=>{
+    const selected=q.objectIds?.map(objectId=>find(objectId).root);
+    const allowed=(root:THREE.Object3D)=>!selected||selected.some(target=>{for(let p:THREE.Object3D|null=root;p;p=p.parent)if(p===target)return true;return false;});
+    const ray=new T.Ray(new T.Vector3(...q.origin),new T.Vector3(...q.direction).normalize());
+    const box=new T.Box3(),a=new T.Vector3(),b=new T.Vector3(),c=new T.Vector3(),hit=new T.Vector3(),weights=new T.Vector3();
+    let distance=q.maxDistance??Infinity;
+    let nearest:{objectId:string;meshPath:number[];triangleIndex:number;barycentric:SpatialVector}|null=null;
+    const visit=(node:THREE.Object3D,path:number[],objectId:string)=>{
+      const mesh=node as THREE.Mesh;
+      if(mesh.isMesh && !(mesh as THREE.InstancedMesh).isInstancedMesh && (q.includeHidden||objectIsVisible(mesh))){
+        const [start,end]=range(mesh);
+        // Shared static geometry gets one cached local box. Deformed meshes
+        // bypass this coarse test so an animated skin cannot use stale bounds.
+        const deformed=(mesh as THREE.SkinnedMesh).isSkinnedMesh||!!mesh.morphTargetInfluences?.length;
+        if(!deformed){
+          mesh.geometry.boundingBox??=new T.Box3().setFromBufferAttribute(mesh.geometry.getAttribute('position') as THREE.BufferAttribute);
+          box.copy(mesh.geometry.boundingBox).applyMatrix4(mesh.matrixWorld);
+        }
+        if(deformed||ray.intersectsBox(box)){
+          for(let i=start;i<end;i++){
+            vertices(mesh,i,a,b,c);
+            if(!ray.intersectTriangle(a,b,c,false,hit))continue;
+            const d=ray.origin.distanceTo(hit);
+            if(d>distance||(nearest&&d===distance))continue;
+            if(!T.Triangle.getBarycoord(hit,a,b,c,weights))continue;
+            weights.set(Math.max(0,Math.min(1,weights.x)),Math.max(0,Math.min(1,weights.y)),Math.max(0,Math.min(1,weights.z)));
+            distance=d;nearest={objectId,meshPath:[...path],triangleIndex:i,barycentric:tuple(weights)};
+          }
+        }
+      }
+      node.children.forEach((child,i)=>{if(!authoredRoots.has(child))visit(child,[...path,i],objectId);});
+    };
+    for(const e of entries)if(allowed(e.root))visit(e.root,[],e.spec.id!);
+    const found=nearest as {objectId:string;meshPath:number[];triangleIndex:number;barycentric:SpatialVector}|null;
+    return found ? {...sample(found.objectId,found.meshPath,found.triangleIndex,found.barycentric),distance} : null;
+  };
+  return queries.map(q=>{
+    if(q.type==='anchors'){
+      const e=find(q.objectId),ids=q.anchorIds??Object.keys(e.spec.anchors??{});
+      return {type:q.type,items:ids.map(id=>anchor(q.objectId,id))};
+    }
+    if(q.type==='surface')return {type:q.type,surface:sample(q.objectId,q.meshPath??[],q.triangleIndex,q.barycentric)};
+    if(q.type==='raycast')return {type:q.type,hit:raycast(q)};
+    if(q.type==='distance'){
+      const from=worldPoint(q.from),to=worldPoint(q.to),delta=to.clone().sub(from),distance=delta.length();
+      if(!Number.isFinite(distance))throw new Error('distance is not finite');
+      return {type:q.type,from:tuple(from),to:tuple(to),delta:tuple(delta),distance};
+    }
+    const a=worldPoint(q.a),vertex=worldPoint(q.vertex),b=worldPoint(q.b),u=a.clone().sub(vertex),v=b.clone().sub(vertex);
+    if(!u.length()||!v.length()||!Number.isFinite(u.length())||!Number.isFinite(v.length()))throw new Error('angle needs two nonzero finite arms');
+    return {type:q.type,a:tuple(a),vertex:tuple(vertex),b:tuple(b),degrees:Math.acos(Math.max(-1,Math.min(1,u.normalize().dot(v.normalize()))))*180/Math.PI};
+  });
+}

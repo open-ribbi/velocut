@@ -86,17 +86,22 @@ export default defineConfig(({ command }) => ({
   publicDir: command === 'build' ? false : 'public',
   plugins: [react(), videoGenProxy()],
   resolve: {
-    alias: {
-      '@velocut/runtime': fileURLToPath(new URL('../../packages/runtime/src', import.meta.url)),
-      '@velocut/protocol': fileURLToPath(new URL('../../packages/protocol/src/types.ts', import.meta.url)),
-      '@velocut/core-ts': fileURLToPath(new URL('../../packages/core-ts/src/engine.ts', import.meta.url)),
-      // Specific subpath BEFORE the package alias — the plain key is a prefix
-      // match, which would mangle '@velocut/render-sdk/motionspec'.
-      '@velocut/render-sdk/motionspec': fileURLToPath(new URL('../../packages/render-sdk/src/motionspec.ts', import.meta.url)),
-      '@velocut/render-sdk': fileURLToPath(new URL('../../packages/render-sdk/src/index.ts', import.meta.url)),
-      '@velocut/agent-sdk': fileURLToPath(new URL('../../packages/agent-sdk/src/index.ts', import.meta.url)),
-      '@velocut/collab-sdk': fileURLToPath(new URL('../../packages/collab-sdk/src/index.ts', import.meta.url)),
-    },
+    alias: [
+      // The editor and runtime must read the same live scene SDK. Restrict the
+      // alias to the package root so assets/package.json keep their exports.
+      { find: /^@velocut\/scene-sdk$/, replacement: fileURLToPath(new URL('../../packages/scene-sdk/src/index.ts', import.meta.url)) },
+      ...Object.entries({
+        '@velocut/runtime': fileURLToPath(new URL('../../packages/runtime/src', import.meta.url)),
+        '@velocut/protocol': fileURLToPath(new URL('../../packages/protocol/src/types.ts', import.meta.url)),
+        '@velocut/core-ts': fileURLToPath(new URL('../../packages/core-ts/src/engine.ts', import.meta.url)),
+        // Specific subpath BEFORE the package alias — the plain key is a prefix
+        // match, which would mangle '@velocut/render-sdk/motionspec'.
+        '@velocut/render-sdk/motionspec': fileURLToPath(new URL('../../packages/render-sdk/src/motionspec.ts', import.meta.url)),
+        '@velocut/render-sdk': fileURLToPath(new URL('../../packages/render-sdk/src/index.ts', import.meta.url)),
+        '@velocut/agent-sdk': fileURLToPath(new URL('../../packages/agent-sdk/src/index.ts', import.meta.url)),
+        '@velocut/collab-sdk': fileURLToPath(new URL('../../packages/collab-sdk/src/index.ts', import.meta.url)),
+      }).map(([find, replacement]) => ({ find, replacement })),
+    ],
   },
   // Discover the lazy scene/media dependencies before users start editing.
   // Late optimizer reloads would interrupt gestures and disconnect MCP sessions.

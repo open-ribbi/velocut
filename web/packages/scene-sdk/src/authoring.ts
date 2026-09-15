@@ -1,12 +1,13 @@
 // Pure, transactional authoring. This is shared by human controls, scripts and
 // future transports. Three.js remains a derived view of the returned document.
 import { layoutTransforms, transformObject, placementTime, type ObjectTransform, type SceneLayout } from './placement.ts';
-import { assemblyParts, type AssemblyRecipe } from './assemblies.ts';
+import { assemblyParts, mergeAssemblyPart, type AssemblyRecipe } from './assemblies.ts';
 import { validateSceneSpec, type SceneSpec, type SceneCharacter, type SceneProp, type SceneGroup, type SceneLight } from './types.ts';
 import { sceneBudget, type SceneGeometry } from './geometry.ts';
 import type { SceneGeometryResource } from './geometry-resource.ts';
 import type { SceneMaterialDefinition } from './materials.ts';
 import { isCurveBinding, type SceneCurve } from './animation.ts';
+import { anchorIdValid, type SceneAnchor } from './anchors.ts';
 
 /** Pure editing requests verified bytes only when an operation actually needs them. */
 export class GeometryDataRequired extends Error {
@@ -21,6 +22,8 @@ export type SceneObjectKind = 'character' | 'prop' | 'group' | 'light';
 export type SceneObject = SceneCharacter | SceneProp | SceneGroup | SceneLight;
 export interface SceneCopy { prefix: string; rootIds: string[]; idMap: Record<string, string> }
 export type SceneEdit =
+  | { type: 'anchor.set'; id: string; anchorId: string; anchor: SceneAnchor }
+  | { type: 'anchor.remove'; id: string; anchorId: string }
   | { type: 'curve.create' | 'curve.update'; id: string; curve: SceneCurve }
   | { type: 'curve.remove'; id: string }
   | { type: 'geometry.create'; id: string; geometry: SceneGeometry }
@@ -69,7 +72,7 @@ export function normalizeSceneSpec(input: SceneSpec): SceneSpec {
   return spec;
 }
 
-const common = ['name', 'parentId', 'position', 'rotationX', 'rotationY', 'rotationZ', 'scale', 'visible', 'opacity', 'animation'];
+const common = ['name', 'parentId', 'position', 'rotationX', 'rotationY', 'rotationZ', 'scale', 'visible', 'opacity', 'animation', 'anchors'];
 const fields: Record<SceneObjectKind, string[]> = {
   group: common,
   light: [...common, 'type', 'color', 'intensity', 'distance', 'decay', 'angle', 'penumbra', 'shadow'],
@@ -137,7 +140,16 @@ export function applySceneEdits(input: SceneSpec, edits: SceneEdit[], geometryDa
   if (expanded.length > 500) fail('expanded batch exceeds 500 operations');
   for (const edit of expanded) {
     if (!edit || typeof edit !== 'object') fail('invalid scene edit');
-    if (edit.type === 'curve.create' || edit.type === 'curve.update' || edit.type === 'curve.remove') {
+    if (edit.type === 'anchor.set' || edit.type === 'anchor.remove') {
+      const {object} = find(edit.id);
+      if (!anchorIdValid(edit.anchorId)) fail('invalid anchor id');
+      if (edit.type === 'anchor.set') (object.anchors ??= {})[edit.anchorId] = structuredClone(edit.anchor);
+      else {
+        if (!Object.hasOwn(object.anchors ?? {}, edit.anchorId)) fail('unknown anchor');
+        delete object.anchors![edit.anchorId];
+      }
+      changed.add(edit.id);
+    } else if (edit.type === 'curve.create' || edit.type === 'curve.update' || edit.type === 'curve.remove') {
       if (!validResourceId(edit.id)) fail('invalid curve id');
       const registry = spec.curves ??= {}, exists = Object.hasOwn(registry, edit.id);
       if (edit.type === 'curve.create' && exists) fail('curve already exists');
@@ -199,16 +211,20 @@ export function applySceneEdits(input: SceneSpec, edits: SceneEdit[], geometryDa
       p.model = 'prop/mesh'; p.geometryId = newId; changed.add(edit.id);
     } else if (edit.type === 'assembly') {
       if (typeof edit.id !== 'string' || !edit.id.trim()) fail('assembly requires an id');
-      const parts = assemblyParts(edit.id, edit.recipe);
+      let parts = assemblyParts(edit.id, edit.recipe);
       const existing = sceneObjects(spec).find((e) => e.object.id === edit.id);
       if (existing && (existing.kind !== 'group' || !('assembly' in existing.object) || !existing.object.assembly)) fail('assembly id already belongs to another object');
       const group = existing?.object as SceneGroup | undefined;
-      const oldIds = new Set(group?.assembly ? assemblyParts(edit.id, group.assembly).map((p) => p.id) : []);
-      for (const p of parts) {
+      const previous = new Map(group?.assembly ? assemblyParts(edit.id, group.assembly).map(p => [p.id, p]) : []);
+      const oldIds = new Set(previous.keys());
+      parts = parts.flatMap(p => {
         const old = sceneObjects(spec).find((e) => e.object.id === p.id);
         if (old && !oldIds.has(p.id)) fail(`assembly part id collision '${p.id}'`);
-        if (old && old.kind === 'prop') { const prev = old.object as SceneProp; p.color = prev.color; p.material = prev.material; }
-      }
+        // A removed generated part stays removed while it remains in the recipe.
+        if (!old && previous.has(p.id)) return [];
+        if (old && old.kind !== 'prop') fail(`assembly part '${p.id}' is no longer a prop`);
+        return [old ? mergeAssemblyPart(previous.get(p.id)!, old.object as SceneProp, p) : p];
+      });
       spec.props = (spec.props ?? []).filter((p) => !oldIds.has(p.id));
       spec.props.push(...parts);
       if (group) group.assembly = structuredClone(edit.recipe);

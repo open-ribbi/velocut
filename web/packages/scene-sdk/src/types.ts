@@ -12,6 +12,7 @@ import { validateGeometry, sceneBudget, SCENE_LIMITS, type SceneGeometry } from 
 import { validateGeometryResource, type SceneGeometryResource } from './geometry-resource.ts';
 import { validateMaterial, type SceneMaterialDefinition } from './materials.ts';
 import { validateCurve, validateObjectAnimation, type SceneCurve, type SceneAnimation, type AnimatedVisibility } from './animation.ts';
+import { validateAnchors, type SceneAnchor } from './anchors.ts';
 
 /** Per-axis animatable 3D value (world units = meters, Y up). */
 export interface Vec3A {
@@ -53,6 +54,7 @@ export interface SceneTransform {
   /** Opacity multiplier for this object and descendant mesh materials. */
   opacity?: Animatable;
   animation?: SceneAnimation;
+  anchors?: Record<string, SceneAnchor>;
 }
 
 export interface SceneGroup extends SceneTransform {
@@ -625,6 +627,7 @@ export function validateSceneSpec(spec: unknown): string | null {
       ids.add(o.id);
     }
     if (o.name != null && typeof o.name !== 'string') return 'object name must be a string';
+    if (o.anchors !== undefined) { const error = validateAnchors(o.anchors); if (error) return `object '${o.id}': ${error}`; }
     const animationError = validateObjectAnimation(o, s); if (animationError) return `object '${o.id}': ${animationError}`;
     if (o.parentId != null && (typeof o.parentId !== 'string' || !o.parentId)) return 'parentId must be a group id';
     if (o.position != null && !isVec3A(o.position)) return 'object: invalid position';
