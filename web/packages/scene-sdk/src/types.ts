@@ -13,6 +13,7 @@ import { validateGeometryResource, type SceneGeometryResource } from './geometry
 import { validateMaterial, type SceneMaterialDefinition } from './materials.ts';
 import { validateCurve, validateObjectAnimation, type SceneCurve, type SceneAnimation, type AnimatedVisibility } from './animation.ts';
 import { validateAnchors, type SceneAnchor } from './anchors.ts';
+import {validateColliders,type SceneCollider} from './collider-spec.ts';
 import { validateBindings, type SceneBinding } from './bindings.ts';
 
 /** Per-axis animatable 3D value (world units = meters, Y up). */
@@ -122,6 +123,9 @@ export interface CharacterPose {
  *  platforms, sweeping arms). */
 export interface PropPhysics {
   type: 'dynamic' | 'fixed' | 'kinematic';
+  /** Named shapes attached to this ONE rigid body. Omit for automatic shape;
+   * an empty registry disables collision. Positions/rotations are object-local. */
+  colliders?: Record<string,SceneCollider>;
   /** Kilograms (dynamic; default derived from the collider volume). */
   mass?: number;
   /** Bounciness 0..1 (default 0.3). */
@@ -312,7 +316,7 @@ const isVec3A = (v: unknown): boolean => {
 };
 
 const PHYSICS_TYPES = ['dynamic', 'fixed', 'kinematic'] as const;
-const PHYSICS_KEYS = ['type', 'mass', 'restitution', 'friction', 'velocity', 'angularVelocity', 'startAt'];
+const PHYSICS_KEYS = ['type', 'mass', 'restitution', 'friction', 'velocity', 'angularVelocity', 'startAt', 'colliders'];
 const isVel3 = (v: unknown): boolean => Array.isArray(v) && v.length === 3 && v.every(fin);
 
 function checkPropPhysics(p: SceneProp): string | null {
@@ -543,6 +547,7 @@ export function validateSceneSpec(spec: unknown): string | null {
       if (p.physics != null) {
         const err = checkPropPhysics(p);
         if (err) return err;
+        const colliderError=validateColliders(p,s);if(colliderError)return colliderError;
       }
     }
   }

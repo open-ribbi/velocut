@@ -30,6 +30,8 @@ export { POSE_PRESETS, MANNEQUIN_JOINTS, MANNEQUIN_DEFAULT_COLOR, type Mannequin
 export { expandShots, CUT_EASE } from './shots.ts';
 export { scenePromptDoc } from './prompt.ts';
 export { bakePhysics, samplePhysicsTrack, propPhysics, PHYSICS_HZ, PHYSICS_MAX_S, type BakeTrack } from './physics.ts';
+export {colliderDefinitions, type SceneCollider} from './collider-spec.ts';
+export {createColliderOverlay,type ColliderInfo,type ColliderBodyInfo,type ColliderInspector} from './colliders.ts';
 export { compileSceneSpec, applySpecCamera, specCameraPosition, type CompiledScene } from './compile.ts';
 export {
   buildStage,

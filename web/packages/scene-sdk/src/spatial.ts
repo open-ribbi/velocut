@@ -6,6 +6,8 @@ import {surfaceReference, surfaceReferenceError, surfaceReferenceScopeError} fro
 
 export type SpatialPoint = {position: SpatialVector; objectId?: string} | {objectId: string; anchorId: string};
 export type SceneSpatialQuery =
+  | {type:'colliders';objectIds?:string[];offset?:number;limit?:number}
+  | {type:'colliderGeometry';objectId:string;colliderId:string;offset?:number;limit?:number;space?:'local'|'world'}
   | {type:'anchorRepair';objectId:string;anchorId:string;method:'face';ray?:never}
   | {type:'anchorRepair';objectId:string;anchorId:string;method:'raycast';ray:{origin:SpatialVector;direction:SpatialVector;maxDistance?:number;includeHidden?:boolean}}
   | {type:'bindings'; ids?:string[]}
@@ -23,6 +25,8 @@ const pointSchema={oneOf:[objectSchema(['position'],{position:vectorSchema,objec
 export const SCENE_SPATIAL_SCHEMA=objectSchema(['assetId','queries'],{
   assetId:idSchema,timeS:{type:'number',minimum:0},expectedRevision:{type:'integer',minimum:0},
   queries:{type:'array',minItems:1,items:{oneOf:[
+    objectSchema(['type'],{type:{const:'colliders'},objectIds:idsSchema,offset:{type:'integer',minimum:0},limit:{type:'integer',minimum:1,maximum:1024}}),
+    objectSchema(['type','objectId','colliderId'],{type:{const:'colliderGeometry'},objectId:idSchema,colliderId:idSchema,offset:{type:'integer',minimum:0},limit:{type:'integer',minimum:1,maximum:1024},space:{enum:['local','world']}}),
     objectSchema(['type','objectId','anchorId','method'],{type:{const:'anchorRepair'},objectId:idSchema,anchorId:idSchema,method:{const:'face'}}),
     objectSchema(['type','objectId','anchorId','method','ray'],{type:{const:'anchorRepair'},objectId:idSchema,anchorId:idSchema,method:{const:'raycast'},ray:objectSchema(['origin','direction'],{origin:vectorSchema,direction:vectorSchema,maxDistance:{type:'number',minimum:0},includeHidden:{type:'boolean'}})}),
     objectSchema(['type'],{type:{const:'bindings'},ids:idsSchema}),
@@ -60,7 +64,12 @@ function point(value:unknown) {
 export function validateSpatialQueries(value:unknown): asserts value is SceneSpatialQuery[] {
   if (!Array.isArray(value) || !value.length) throw new Error('queries must be a nonempty array');
   for (const query of value) {
-    if(query?.type==='anchorRepair'){
+    if(query?.type==='colliders'||query?.type==='colliderGeometry'){
+      record(query,query.type==='colliders'?['type','objectIds','offset','limit']:['type','objectId','colliderId','offset','limit','space'],'collider query');
+      if(query.type==='colliders'){if(query.objectIds!==undefined)ids(query.objectIds,'objectIds');}
+      else {id(query.objectId,'objectId');if(!anchorIdValid(query.colliderId))throw Error('invalid colliderId');if(query.space!==undefined&&!['local','world'].includes(query.space as string))throw Error('invalid collider space');}
+      if(query.offset!==undefined&&(!Number.isSafeInteger(query.offset)||(query.offset as number)<0)||query.limit!==undefined&&(!Number.isSafeInteger(query.limit)||(query.limit as number)<1||(query.limit as number)>1024))throw Error('collider query range requires offset >= 0 and limit 1..1024');
+    }else if(query?.type==='anchorRepair'){
       record(query,['type','objectId','anchorId','method','ray'],'anchorRepair query');id(query.objectId,'objectId');
       if(!anchorIdValid(query.anchorId))throw new Error('invalid anchorId');
       if(query.method==='face'){if(query.ray!==undefined)throw new Error('face repair does not accept ray');}
@@ -284,6 +293,25 @@ export function queryStageSpatial(stage:Stage,queries:SceneSpatialQuery[]){
   validateSpatialQueries(queries);
   const {find,anchor,worldPoint,sample,raycast,repair}=createSpatialContext(stage);
   return queries.map(q=>{
+    if(q.type==='colliders'){
+      q.objectIds?.forEach(find);
+      const bodies=(stage.colliderInspector?.bodies??[]).filter(b=>!q.objectIds||q.objectIds.includes(b.objectId));
+      const all=bodies.flatMap(b=>b.colliders.map(c=>({...c,bodyType:b.bodyType,bodyMass:b.mass,automatic:b.automatic})));
+      const offset=q.offset??0,limit=q.limit??256;
+      return {type:q.type,total:all.length,nextOffset:offset+limit<all.length?offset+limit:null,
+        bodies:bodies.map(({colliders,...b})=>({...b,colliderCount:colliders.length})),items:structuredClone(all.slice(offset,offset+limit))};
+    }
+    if(q.type==='colliderGeometry'){
+      const root=find(q.objectId).root,inspector=stage.colliderInspector;
+      if(!inspector)throw Error('object has no physics colliders');
+      const lines=inspector.lines(q.objectId,q.colliderId),total=lines.length/6,offset=q.offset??0,limit=q.limit??256;
+      const matrix=new stage.three.Matrix4().compose(root.position,root.quaternion,new stage.three.Vector3(1,1,1)),v=new stage.three.Vector3(),items:number[][]=[];
+      for(let i=offset;i<Math.min(total,offset+limit);i++){
+        const segment:number[]=[];
+        for(let j=0;j<2;j++){v.fromArray(lines,i*6+j*3);if(q.space!=='local')v.applyMatrix4(matrix);segment.push(v.x,v.y,v.z);}items.push(segment);
+      }
+      return {type:q.type,objectId:q.objectId,colliderId:q.colliderId,space:q.space??'world',format:'lineSegments' as const,total,nextOffset:offset+limit<total?offset+limit:null,items};
+    }
     if(q.type==='anchorRepair')return {type:q.type,objectId:q.objectId,anchorId:q.anchorId,...repair(q)};
     if(q.type==='bindings')return {type:q.type,items:structuredClone((stage.bindingStatuses??[]).filter(b=>!q.ids||q.ids.includes(b.id)))};
     if(q.type==='anchors'){

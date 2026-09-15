@@ -2,6 +2,7 @@ import { PreviewRateSelect } from './PreviewRateSelect';
 import { SceneExportDialog } from './SceneExportDialog';
 import {SceneBindingFields} from './SceneBindingFields';
 import {SceneAnchorRepairs} from './SceneAnchorRepairs';
+import {ScenePhysicsFields} from './ScenePhysicsFields';
 import { SceneAnimationFields } from './SceneAnimationFields';
 import { Icon, type IconName } from './primitives/Icon';
 // DirectorPanel — the stage view: orbit the compiled 3D scene, select any
@@ -42,6 +43,7 @@ import {
   type SceneEdit,
   applySpecCamera,
   buildStage,
+  createColliderOverlay,
   expandShots,
   withImportedModels,
   loadSceneManifest,
@@ -574,7 +576,9 @@ export function DirectorPanel({
         orbit.updateProjectionMatrix();
       });
       resize.observe(canvas);
+      let colliderOverlay:ReturnType<typeof createColliderOverlay>|undefined,colliderOverlayKey='';
       cleanup = () => {
+        colliderOverlay?.dispose();
         canvas.removeEventListener('pointerdown', onDown);
         canvas.removeEventListener('pointerup', onUp);
         gizmo.dispose();
@@ -613,6 +617,14 @@ export function DirectorPanel({
         stage.poseAt(tRef.current, {
           cameraPos: specCameraPosition(parsed, tRef.current),
         });
+        const colliderKey=JSON.stringify([currentSession.colliderView,currentSession.colliderView==='selected'?selRef.current?.id:null]);
+        if(colliderKey!==colliderOverlayKey){
+          colliderOverlayKey=colliderKey;colliderOverlay?.dispose();colliderOverlay=undefined;
+          if(currentSession.colliderView==='all'||currentSession.colliderView==='selected'&&selRef.current){
+            try{colliderOverlay=createColliderOverlay(stage,currentSession.colliderView==='selected'?selRef.current!.id:undefined);stage.scene.add(colliderOverlay.root);}catch(e){setError(e instanceof Error?e.message:String(e));}
+          }
+        }
+        if(colliderOverlay){colliderOverlay.root.visible=currentSession.view!=='shot';colliderOverlay.update();}
         if(now>=diagnosticAt){
           diagnosticAt=now+200;
           const selectedId=selRef.current?.id??null;
@@ -1311,6 +1323,7 @@ export function DirectorPanel({
                     onChange={v=>mutateSel(o=>{const key=`scale.${axis}` as AnimationChannel;if(o.animation?.channels?.[key]!==undefined||v===0){o.animation??={};o.animation.channels??={};o.animation.channels[key]=v;}else {o.scale=typeof o.scale==='number'?{x:o.scale,y:o.scale,z:o.scale}:{...o.scale};o.scale[axis]=v;}})}/>
                 </div>)}
                 {spec && <SceneAnimationFields object={selObj} spec={spec} kind={sel.kind} timeS={t} onChange={animation=>mutateSel(o=>{o.animation=animation;})} onEdit={runEdits}/>}
+                {spec&&selProp&&<ScenePhysicsFields value={selProp} spec={spec} store={store} assetId={asset.id} timeS={t} onEdit={runEdits} colliderView={session.colliderView} onView={colliderView=>controller.update({colliderView})}/>}
                 <details className="scene-actions">
                   <summary>Anchors</summary>
                   {spatialStatus.selectedId===sel.id&&spatialStatus.anchors.map(a=><p key={a.id} className={a.status==='invalid'?'scene-error':'empty-hint'}>{a.id} · {a.kind} · {a.status}{a.message?`: ${a.message}`:''}</p>)}

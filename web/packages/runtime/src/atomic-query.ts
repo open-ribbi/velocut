@@ -1,5 +1,5 @@
 import type { VDocument } from '@velocut/protocol';
-import { normalizeSceneSpec, sceneObjects, validateSceneSpec, sceneBudget } from '@velocut/scene-sdk';
+import { normalizeSceneSpec, sceneObjects, validateSceneSpec, sceneBudget, colliderDefinitions } from '@velocut/scene-sdk';
 
 export type QueryKind = 'document' | 'snapshot' | 'assets' | 'tracks' | 'clips' | 'sceneObjects' | 'sceneGeometries' | 'sceneMaterials' | 'sceneCurves' | 'sceneBindings' | 'sceneBudget' | 'selection';
 export interface AtomicQuery {
@@ -104,7 +104,10 @@ export function queryDocument(doc: VDocument, q: AtomicQuery) {
     if (q.kind === 'sceneBudget') return sceneBudget(spec);
     const counts = new Map<string, number>(), instances = new Map<string, number>(), materials = new Map<string, number>();
     for (const p of spec.props ?? []) {
-      if (p.geometryId) { counts.set(p.geometryId, (counts.get(p.geometryId) ?? 0) + 1); if (p.model === 'prop/instance') instances.set(p.geometryId, (instances.get(p.geometryId) ?? 0) + 1); }
+      const geometryRefs=new Set<string>(p.geometryId?[p.geometryId]:[]);
+      for(const c of Object.values(colliderDefinitions(p)))if('geometryId' in c&&c.geometryId)geometryRefs.add(c.geometryId);
+      for(const id of geometryRefs)counts.set(id,(counts.get(id)??0)+1);
+      if(p.geometryId&&p.model==='prop/instance')instances.set(p.geometryId,(instances.get(p.geometryId)??0)+1);
       if (p.materialId) materials.set(p.materialId, (materials.get(p.materialId) ?? 0) + 1);
     }
     const curveUsers = new Map<string,Set<string>>();

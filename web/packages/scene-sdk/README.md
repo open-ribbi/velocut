@@ -76,3 +76,10 @@ hosts resolve only the files required by the edit plan automatically.
 
 Native local patches preserve surface-reference witnesses; full replacements remain strict.
 Synchronous edit fingerprints use [@noble/hashes](https://github.com/paulmillr/noble-hashes) SHA-256, matching the existing WebCrypto resource and topology formats.
+
+Physics props support named `physics.colliders` on one rigid body and atomic
+`collider.create/update/remove/reset` edits. Automatic static/kinematic mesh
+colliders preserve holes; automatic dynamic meshes remain convex hulls. Compose
+box or convex hull parts for dynamic cavities. `sceneSpatial` queries
+`colliders` and `colliderGeometry` inspect the actual collision shapes and edges;
+the Director can display the same edges without adding them to shot exports.

@@ -15,6 +15,7 @@ import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { resolveActions, type ClipMeta } from './actions.ts';
 import { buildMannequin, MANNEQUIN_JOINTS, POSE_PRESETS, type MannequinJoint } from './mannequin.ts';
 import { bakePhysics, samplePhysicsTrack, type BakeTrack } from './physics.ts';
+import type {ColliderInspector} from './colliders.ts';
 import { loadImportedModel, type SceneResources } from './models.ts';
 import { normalizeSceneSpec } from './authoring.ts';
 import { validateSceneSpec } from './types.ts';
@@ -108,6 +109,7 @@ export function applyRotation(root: THREE.Object3D, spec: SceneTransform, t: num
 }
 
 export interface Stage {
+  colliderInspector?:ColliderInspector;
   three: typeof THREE;
   scene: THREE.Scene;
   characters: StageCharacter[];
@@ -490,10 +492,13 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
   // Props that opted in get simulated ONCE here (deterministic bake); poseAt
   // stays a pure sampler of t, so scrub/preview/export agree. Rapier (WASM)
   // loads only when a spec actually uses physics.
+  let colliderInspector:ColliderInspector|undefined;
   if ((spec.props ?? []).some((p) => p.physics != null)) {
     const tracks = await bakePhysics(
       spec,
       props.map((p) => ({ spec: p.spec, mesh: p.root })),
+      inspector=>{colliderInspector=inspector;},
+      new Set([...props,...characters,...groups,...lights].map(e=>e.root)),
     );
     props.forEach((p, i) => {
       const track = tracks[i];
@@ -687,7 +692,7 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
     lights.forEach((l,i) => { l.spec = normalized.lights![i]; });
     return true;
   }
-  const stage:Stage = { three, scene, characters, props, groups, lights, surfaceSources, surfaceGeometryKeys, instanceBatches: instances.batches, canUpdateTransforms, updateTransforms,
+  const stage:Stage = { three, scene, characters, props, groups, lights, surfaceSources, surfaceGeometryKeys, colliderInspector, instanceBatches: instances.batches, canUpdateTransforms, updateTransforms,
     syncInstances: () => syncInstanceBatches(scene, instances.batches), poseAt, characterPosition };
   await prepareSurfaceReferences(stage);
   if(Object.keys(spec.bindings??{}).length){

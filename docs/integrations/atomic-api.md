@@ -989,6 +989,90 @@ files keep the existing format. Pure synchronous edit hashing uses the MIT
 [@noble/hashes SHA-256 implementation](https://github.com/paulmillr/noble-hashes);
 resource and renderer checks remain compatible with WebCrypto SHA-256.
 
+### Collision shapes and compound bodies
+
+`physics.colliders` is a registry on each physics prop. Every entry belongs to
+the **same rigid body**, so a compound shape moves as one object. Omitting the
+registry supplies `default:{shape:'auto'}`; an explicit empty registry disables
+collision. Body mass is distributed among its colliders by volume; a dynamic
+body without colliders defaults to 1 kg unless `physics.mass` is specified.
+
+Automatic cubes, uniform spheres, circular pillars and cones keep analytic
+shapes. Other **fixed/kinematic** props now use triangle meshes, preserving
+holes and recesses. Other dynamic props retain convex hulls and return a warning
+that cavities may be filled. To retain an older static hull approximation,
+select `convexHull` explicitly. Dynamic triangle meshes are rejected: use convex
+parts attached to one body. These choices follow [Rapier's collider guidance](https://rapier.rs/docs/user_guides/javascript/colliders/).
+
+Supported definitions:
+
+```ts
+{shape:'auto', name?}
+{shape:'box', halfExtents:[x,y,z], position?, rotation?, name?}
+{shape:'sphere', radius, position?, rotation?, name?}
+{shape:'mesh'|'convexHull', geometryId?, position?, rotation?, name?}
+```
+
+Positions and sizes use object-local meters before object scale; rotation is XYZ
+Euler degrees. An explicit sphere requires uniform object scale. Rotated boxes
+under nonuniform scale use an exact convex hull to retain the resulting shear.
+For mesh/hull shapes, omit `geometryId` to use the visual mesh or supply a native
+geometry registry ID. Collision-only geometry references are counted, protected
+from deletion and follow native geometry edits, including immutable resources.
+Auto shapes take no custom pose; choose an explicit shape to supply one.
+
+```js
+// Replace the implicit collider with independent parts on one body.
+const result = await velocut.sceneEdit({assetId,expectedRevision,edits:[
+  {type:'collider.remove',id:'beam',colliderId:'default'},
+  {type:'collider.create',id:'beam',colliderId:'left',collider:{
+    shape:'box',halfExtents:[.25,.1,1],position:[-.75,0,0],
+  }},
+  {type:'collider.create',id:'beam',colliderId:'right',collider:{
+    shape:'box',halfExtents:[.25,.1,1],position:[.75,0,0],
+  }},
+],includeSpec:false});
+if (!result.ok) throw Error(result.message);
+```
+
+`collider.create/update` require `{id,colliderId,collider}`; `update` replaces one
+definition. `collider.remove` requires `{id,colliderId}`. `collider.reset` requires
+`{id}` and restores the implicit automatic shape. Physics must first be enabled
+with the ordinary object update primitive. First edits materialize the implicit
+`default`, so adding a part does not silently remove an existing collider.
+All operations support ordinary atomic commit, revision checks, undo and redo.
+
+Read-only queries share the scene's captured revision and sampled time:
+
+```js
+await velocut.sceneSpatial({assetId,timeS:2,queries:[
+  {type:'colliders',objectIds:['beam'],offset:0,limit:50},
+  {type:'colliderGeometry',objectId:'beam',colliderId:'left',space:'world',offset:0,limit:256},
+]});
+await velocut.directorSession({assetId,objectId:'beam',colliderView:'selected'});
+```
+
+`colliders` returns actual effective shape, vertex/triangle counts (zero for
+analytic primitives), collider mass and warnings, with body mass/count summaries.
+`colliderGeometry` returns Rapier debug line segments `[ax,ay,az,bx,by,bz]`,
+`total`, and `nextOffset`; it does not return visual mesh triangles. `space`
+defaults to world; local segments already include object scale. Both queries
+page at 256 by default, with at most 1024 items per response and no new scene
+capacity limit. Unknown object/collider IDs fail explicitly.
+
+Director `colliderView:'off'|'selected'|'all'` controls inspection wireframes
+without document edits. They follow sampled body poses, are hidden in shot view,
+and are disposed on disable/rebuild. Inspection geometry is generated on demand;
+no physics world or per-frame collision-mesh history is retained. The compact
+Physics & colliders panel edits body settings, individual shapes and transforms,
+and reads effective collision descriptions.
+
+Visual raycasts still inspect rendered geometry. A triangle mesh describes a
+boundary and has no solid interior. This API does not add rigid-body joints,
+contact/force diagnostics, automatic convex decomposition, or structural strength
+verification. The current deterministic physics bake and its existing duration
+behavior remain in effect.
+
 ### Assembly regeneration and development consistency
 
 Updating an `assembly` now merges the old recipe, current edited parts and new

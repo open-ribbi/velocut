@@ -15,6 +15,7 @@ import type * as THREE from 'three';
 import { sampleAnimatable } from '@velocut/render-sdk/motionspec';
 import { sampleVec3 } from './stage.ts';
 import type { PropPhysics, SceneProp, SceneSpec } from './types.ts';
+import {resolveColliders,type ColliderInspector,type ColliderBodyInfo} from './colliders.ts';
 
 type Rapier = typeof import('@dimforge/rapier3d-compat');
 
@@ -51,40 +52,6 @@ export function propPhysics(p: SceneProp): PropPhysics | null {
   return typeof p.physics === 'string' ? { type: p.physics } : p.physics;
 }
 
-const scale3 = (s: SceneProp['scale']): [number, number, number] => {
-  if (typeof s === 'number') return [s, s, s];
-  return [s?.x ?? 1, s?.y ?? 1, s?.z ?? 1];
-};
-
-/** Collider matching the prop's visual geometry. Exact primitives where the
- *  shape allows; otherwise a convex hull of the scaled mesh vertices (torus,
- *  hemisphere, lathe, extrude — note a hull fills concavities: a torus
- *  collides as a solid puck). */
-function colliderDescFor(R: Rapier, p: SceneProp, mesh: THREE.Object3D) {
-  const [sx, sy, sz] = scale3(p.scale);
-  if (p.model === 'prop/cube') return R.ColliderDesc.cuboid(0.5 * sx, 0.5 * sy, 0.5 * sz);
-  if (p.model === 'prop/sphere' && sx === sy && sy === sz) return R.ColliderDesc.ball(0.5 * sx);
-  if (p.model === 'prop/pillar' && sx === sz) return R.ColliderDesc.cylinder(1 * sy, 0.3 * sx);
-  if (p.model === 'prop/cone' && sx === sz) return R.ColliderDesc.cone(0.5 * sy, 0.5 * sx);
-  mesh.updateWorldMatrix(true, true);
-  const inverse = mesh.matrixWorld.clone().invert();
-  const points: number[] = [];
-  mesh.traverse((node) => {
-    const geometry = (node as THREE.Mesh).geometry;
-    const pos = geometry?.getAttribute('position');
-    if (!pos) return;
-    const e = inverse.clone().multiply(node.matrixWorld).elements;
-    for (let i = 0; i < pos.count; i++) {
-      const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
-      points.push((e[0]*x+e[4]*y+e[8]*z+e[12])*sx,
-        (e[1]*x+e[5]*y+e[9]*z+e[13])*sy, (e[2]*x+e[6]*y+e[10]*z+e[14])*sz);
-    }
-  });
-  const hull = points.length ? R.ColliderDesc.convexHull(new Float32Array(points)) : null;
-  if (!hull) throw new Error(`prop '${p.id ?? p.model}' has no non-degenerate collision geometry`);
-  return hull;
-}
-
 // XYZ Euler → quaternion, matching Three.js Object3D.rotation exactly.
 function rotationQuat(p: SceneProp, t: number) {
   const h = Math.PI / 360;
@@ -106,8 +73,12 @@ function rotationQuat(p: SceneProp, t: number) {
 export async function bakePhysics(
   spec: SceneSpec,
   targets: Array<{ spec: SceneProp; mesh: THREE.Object3D }>,
+  onColliders?: (inspector:ColliderInspector)=>void,
+  authoredRoots:ReadonlySet<THREE.Object3D>=new Set(targets.map(t=>t.mesh)),
 ): Promise<Array<BakeTrack | null>> {
   const R = await loadRapier();
+  const T = await import('three');
+  const colliderBodies:ColliderBodyInfo[]=[];
   const g = spec.physics?.gravity ?? 9.81;
   const world = new R.World({ x: 0, y: -g, z: 0 });
   world.timestep = 1 / PHYSICS_HZ;
@@ -154,11 +125,19 @@ export async function bakePhysics(
         }
       }
       const body = world.createRigidBody(desc);
-      const col = colliderDescFor(R, p, mesh)
-        .setRestitution(phys.restitution ?? 0.3)
-        .setFriction(phys.friction ?? 0.6);
-      if (phys.mass != null) col.setMass(phys.mass);
-      world.createCollider(col, body);
+      const resolved=resolveColliders(R,T,spec,p,mesh,authoredRoots);
+      const colliders=resolved.map(c=>world.createCollider(c.desc.setRestitution(phys.restitution??.3).setFriction(phys.friction??.6),body));
+      const volumeMass=colliders.reduce((n,c)=>n+c.mass(),0);
+      // mass describes the whole body, not each child collider. Retain the
+      // relative volume weighting and inertia of differently sized parts.
+      if(phys.mass!==undefined&&volumeMass>0)for(const c of colliders)c.setMass(phys.mass*c.mass()/volumeMass);
+      if(phys.type==='dynamic'&&!volumeMass)body.setAdditionalMass(phys.mass??1,true);
+      body.recomputeMassPropertiesFromColliders();
+      colliderBodies.push({objectId:p.id!,bodyType:phys.type,automatic:phys.colliders===undefined,mass:body.mass(),
+        colliders:resolved.map(({desc,...info},i)=>{
+          const c=colliders[i];
+          return {...info,vertexCount:(c.vertices()?.length??0)/3,triangleCount:(c.indices()?.length??0)/3,mass:c.mass()};
+        })});
       const track: BakeTrack | null =
         phys.type === 'dynamic' ? { samples: new Float32Array(count * 7), count } : null;
       bodies.push({ body, phys, spec: p, track, released: !held });
@@ -214,6 +193,13 @@ export async function bakePhysics(
     }
     for (const d of dynamics) d.track!.count = recorded;
 
+    onColliders?.({bodies:colliderBodies,lines(objectId,colliderId){
+      const target=targets.find(p=>p.spec.id===objectId);if(!target)throw Error('unknown collider object');
+      const shape=resolveColliders(R,T,spec,target.spec,target.mesh,authoredRoots,colliderId)[0];if(!shape)throw Error('unknown collider');
+      const debug=new R.World({x:0,y:0,z:0});
+      try{const body=debug.createRigidBody(R.RigidBodyDesc.fixed());debug.createCollider(shape.desc,body);return new Float32Array(debug.debugRender().vertices);}
+      finally{debug.free();}
+    }});
     return bodies.map((b) => (b ? b.track : null));
   } finally {
     world.free();

@@ -17,6 +17,7 @@ export interface DirectorSession {
   timeS: number;
   playing: boolean;
   rate: number;
+  colliderView:'off'|'selected'|'all';
   view: SceneView;
   mode: 'translate' | 'rotate' | 'scale';
   focusId: string | null;
@@ -30,6 +31,7 @@ export interface DirectorSessionOptions {
   timeS?: number;
   playing?: boolean;
   rate?: number;
+  colliderView?:DirectorSession['colliderView'];
   view?: SceneView;
   mode?: DirectorSession['mode'];
   /** Frame this object/group, null frames the whole scene. */
@@ -90,6 +92,7 @@ function createController(store: Store) {
               'mode',
               'focusId',
               'camera',
+              'colliderView',
             ].includes(k),
         )
       )
@@ -113,6 +116,7 @@ function createController(store: Store) {
             timeS: 0,
             playing: false,
             rate: 1,
+            colliderView:'off',
             view: 'perspective',
             mode: 'translate',
             focusId: null,
@@ -120,6 +124,10 @@ function createController(store: Store) {
           }
         : state!;
       const next = { ...current };
+      if(opts.colliderView!==undefined){
+        if(!['off','selected','all'].includes(opts.colliderView))throw Error('colliderView must be off, selected or all');
+        next.colliderView=opts.colliderView;
+      }
       if (opts.rate !== undefined) {
         validatePreviewRate(opts.rate);
         next.rate = opts.rate;

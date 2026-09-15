@@ -12,6 +12,7 @@ import {activeBinding,assertBindingWrite,type SceneBinding} from './bindings.ts'
 import {advanceSurfacePatch,pinLegacyGeometryReferences} from './surface-patches.ts';
 import {nativeGeometryKey,nativeTopologyKey,propGeometryKey} from './geometry-fingerprint.ts';
 import {GEOMETRY_SOURCE} from './geometry-resource.ts';
+import {colliderDefinitions,usesColliderGeometry,type SceneCollider} from './collider-spec.ts';
 
 /** Pure editing requests verified bytes only when an operation actually needs them. */
 export class GeometryDataRequired extends Error {
@@ -26,6 +27,9 @@ export type SceneObjectKind = 'character' | 'prop' | 'group' | 'light';
 export type SceneObject = SceneCharacter | SceneProp | SceneGroup | SceneLight;
 export interface SceneCopy { prefix: string; rootIds: string[]; idMap: Record<string, string>; bindingIdMap?: Record<string,string> }
 export type SceneEdit =
+  | {type:'collider.create'|'collider.update';id:string;colliderId:string;collider:SceneCollider}
+  | {type:'collider.remove';id:string;colliderId:string}
+  | {type:'collider.reset';id:string}
   | {type:'binding.create'|'binding.update';id:string;binding:SceneBinding}
   | {type:'binding.remove';id:string}
   | { type: 'anchor.set'; id: string; anchorId: string; anchor: SceneAnchor }
@@ -148,7 +152,23 @@ export function applySceneEdits(input: SceneSpec, edits: SceneEdit[], geometryDa
   if (expanded.length > 500) fail('expanded batch exceeds 500 operations');
   for (const edit of expanded) {
     if (!edit || typeof edit !== 'object') fail('invalid scene edit');
-    if (edit.type === 'binding.create' || edit.type === 'binding.update' || edit.type === 'binding.remove') {
+    if (edit.type === 'collider.create' || edit.type === 'collider.update' || edit.type === 'collider.remove' || edit.type === 'collider.reset') {
+      const entry=find(edit.id),p=entry.object as SceneProp;
+      if(entry.kind!=='prop'||!p.physics)throw new Error('collider edits require a physics prop');
+      const definitions=structuredClone(colliderDefinitions(p));
+      if(typeof p.physics==='string')p.physics={type:p.physics};
+      if(edit.type==='collider.reset')delete p.physics.colliders;
+      else {
+        if(!anchorIdValid(edit.colliderId))fail('invalid collider id');
+        const exists=Object.hasOwn(definitions,edit.colliderId);
+        if(edit.type==='collider.create'&&exists)fail('collider already exists');
+        if(edit.type!=='collider.create'&&!exists)fail('unknown collider');
+        if(edit.type==='collider.remove')delete definitions[edit.colliderId];
+        else definitions[edit.colliderId]=structuredClone(edit.collider);
+        p.physics.colliders=definitions;
+      }
+      changed.add(edit.id);
+    } else if (edit.type === 'binding.create' || edit.type === 'binding.update' || edit.type === 'binding.remove') {
       if(!validResourceId(edit.id))fail('invalid binding id');
       const registry=spec.bindings??={},old=Object.hasOwn(registry,edit.id)?registry[edit.id]:undefined;
       if(edit.type==='binding.create'&&old)fail('binding already exists');
@@ -211,16 +231,16 @@ export function applySceneEdits(input: SceneSpec, edits: SceneEdit[], geometryDa
         seen.add(update.index); data![update.index] = structuredClone(update.value) as [number, number, number];
       }
       advanceSurfacePatch(spec,edit.id,beforeGeometry,g!);
-      geometryIds.add(edit.id); for (const p of spec.props ?? []) if (p.geometryId === edit.id) changed.add(p.id!);
+      geometryIds.add(edit.id); for (const p of spec.props ?? []) if (p.geometryId === edit.id||usesColliderGeometry(p,edit.id)) changed.add(p.id!);
     } else if (edit.type === 'geometry.create' || edit.type === 'geometry.update' || edit.type === 'geometry.remove') {
       if (typeof edit.id !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}$/.test(edit.id) || ['__proto__', 'constructor', 'prototype'].includes(edit.id)) fail('invalid geometry id');
       const registry = spec.geometries ??= {};
       const exists = Object.hasOwn(registry, edit.id) || Object.hasOwn(spec.geometryResources ?? {}, edit.id);
       if (edit.type === 'geometry.create' && exists) fail(`geometry '${edit.id}' already exists`);
       if (edit.type !== 'geometry.create' && !exists) fail(`unknown geometry '${edit.id}'`);
-      const users = (spec.props ?? []).filter(p => p.geometryId === edit.id);
+      const users = (spec.props ?? []).filter(p => p.geometryId === edit.id||usesColliderGeometry(p,edit.id));
       if (edit.type === 'geometry.remove') {
-        if (users.length) fail(`geometry '${edit.id}' is referenced by ${users.length} instances`);
+        if (users.length) fail(`geometry '${edit.id}' is referenced by ${users.length} objects (visuals or colliders)`);
         delete registry[edit.id];
       } else {
         if(exists){const key=registry[edit.id]?nativeGeometryKey(registry[edit.id]):GEOMETRY_SOURCE.exec(spec.geometryResources![edit.id].src)![1];pinLegacyGeometryReferences(spec,edit.id,key);}

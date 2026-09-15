@@ -63,9 +63,11 @@ export function scenePromptDoc(manifest: SceneAssetManifest): string {
   );
   lines.push(
     'Physics (per-prop opt-in, baked deterministically): physics: "dynamic" | "fixed" | "kinematic" | ' +
-      '{type, mass?, restitution?, friction?, velocity?, angularVelocity?, startAt?}. ' +
+      '{type, mass?, restitution?, friction?, velocity?, angularVelocity?, startAt?, colliders?}. ' +
       'Reach for it when motion should EMERGE (falls, collapses, impacts, rolling, scattering); ' +
       'keep keyframes for choreographed moves. Characters are not simulated.',
   );
+  lines.push('Collision shapes: physics.colliders:{colliderId:definition} puts all parts on ONE rigid body. Omit for implicit default:{shape:"auto"}; {} disables collision. Automatic primitives stay analytic, other fixed/kinematic objects use triangle meshes preserving holes, dynamic objects use a convex hull (fills cavities). Definitions: {shape:"auto",name?}; {shape:"box",halfExtents:[x,y,z],position?,rotation?,name?}; {shape:"sphere",radius,position?,rotation?,name?}; {shape:"mesh"|"convexHull",geometryId?,position?,rotation?,name?}. Positions and sizes are object-local meters before object scale, rotation is XYZ degrees. Omit geometryId to use the visual mesh. Dynamic triangle meshes are rejected; compose convex parts instead. Explicit spheres require uniform scale. Body mass is distributed across parts by volume; an empty dynamic body defaults to 1 kg.');
+  lines.push('Collider primitives: sceneEdit {type:"collider.create"|"collider.update",id:objectId,colliderId,collider}, {type:"collider.remove",id,colliderId}, {type:"collider.reset",id}. Physics must already be enabled. First edits materialize the implicit default, so remove default in the same batch when composing replacement parts. reset restores automatic selection. Queries in sceneSpatial: {type:"colliders",objectIds?,offset?,limit?} returns actual shapes/counts/masses/warnings plus body summaries; {type:"colliderGeometry",objectId,colliderId,space?:"local"|"world",offset?,limit?} returns paged actual Rapier line segments [ax,ay,az,bx,by,bz]. Local lines already include object scale. Paging defaults to 256, max 1024 per response, not a scene-capacity limit. directorSession({colliderView:"off"|"selected"|"all"}) toggles workspace wireframes, hidden in shot view. Geometry raycasts still measure visible geometry; collider boundaries do not certify solid containment or structural safety.');
   return lines.join('\n');
 }

@@ -282,6 +282,16 @@ try {
   const roundtrip = await call('velocut_import_model', { sessionId, assetId: created.assetId, path: exportedPath });
   assert.ok(roundtrip.objectId);
   console.log('Packed CLI + MCP + scene authoring/vision passed');
+  const physicsScene=await call('velocut_scene_create',{sessionId,spec:{version:1,durationUs:3_000_000,width:320,height:180,environment:'env/grid',props:[
+    {id:'platform',model:'prop/extrude',points:[[-1,-1],[1,-1],[1,1],[-1,1]],holes:[[[-.5,-.5],[-.5,.5],[.5,.5],[.5,-.5]]],depth:.2,rotationX:-90,position:{y:1.2},physics:'fixed'},
+    {id:'ball',model:'prop/sphere',scale:.2,position:{y:2.8},physics:{type:'dynamic',mass:.1,restitution:0},anchors:{center:{position:[0,0,0]}}},
+  ]}});
+  const physical=await call('velocut_scene_spatial',{sessionId,assetId:physicsScene.assetId,timeS:2,queries:[{type:'colliders',objectIds:['platform']},{type:'anchors',objectId:'ball'},{type:'colliderGeometry',objectId:'platform',colliderId:'default',limit:2}]});
+  assert.equal(physical.results[0].items[0].effectiveShape,'mesh');assert.ok(Math.abs(physical.results[1].items[0].position[1]-.1)<.005);assert.equal(physical.results[2].items.length,2);
+  await call('velocut_scene_edit',{sessionId,assetId:physicsScene.assetId,expectedRevision:physical.revision,edits:[{type:'collider.update',id:'platform',colliderId:'default',collider:{shape:'convexHull'}}]});
+  const held=await call('velocut_scene_spatial',{sessionId,assetId:physicsScene.assetId,timeS:2,queries:[{type:'anchors',objectId:'ball'}]});assert.ok(Math.abs(held.results[0].items[0].position[1]-1.4)<.005);
+  const colliderView=await call('velocut_director',{sessionId,options:{assetId:physicsScene.assetId,objectId:'platform',colliderView:'selected'}});assert.equal(colliderView.state.colliderView,'selected');
+  console.log('Packed collision shapes: hole preservation, atomic shape edits and wireframe queries passed');
   await client.close();
   client = null;
   await page.close();
@@ -392,6 +402,7 @@ window.probe=(async()=>{
       'shared-geometry-instances',
       'geometry-resource-and-incremental-transform',
       'surface-local-invalidation-and-atomic-repair',
+      'collision-shapes-and-compound-body-inspection',
       'shared-material-and-compact-history',
       'large-spec-no-byte-ceiling',
           'types',
