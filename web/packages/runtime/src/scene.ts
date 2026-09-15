@@ -629,6 +629,7 @@ export function dispatchSceneAware(
   store: Store,
   cmd: Command,
   dispatch: SceneDispatch = (c) => store.dispatch(c),
+  options: { dryRun?: boolean } = {},
 ): Envelope | Promise<Envelope> {
   const touchesScene = (c: Command): boolean => {
     if (c?.type === 'batch') return Array.isArray(c.commands) && c.commands.some(touchesScene);
@@ -639,7 +640,16 @@ export function dispatchSceneAware(
         .doc.assets.some((a) => a.id === c.assetId && a.src.startsWith('scene://'));
     return false;
   };
-  if (!touchesScene(cmd)) return dispatch(cmd);
+  if (!touchesScene(cmd)) {
+    if (!options.dryRun) return dispatch(cmd);
+    const valid = validateCommand(cmd);
+    if (!valid.ok) return { ok: false, error: { code: valid.code, message: valid.message } };
+    return import('@velocut/core-ts').then(({ TsEngine }) => {
+      const engine = new TsEngine(); engine.load(store.getState().doc);
+      const result = engine.apply(cmd);
+      return result.ok ? { ...result, revision: store.getState().revision } : result;
+    });
+  }
   return (async () => {
     const prepared: Array<{ asset: Asset; compiled: CompiledScene }> = [];
     try {
@@ -671,6 +681,7 @@ export function dispatchSceneAware(
       }
       if (store.getState().revision !== before.revision)
         throw new Error('conflict: document changed while compiling the batch');
+      if (options.dryRun) return { ...simulated, revision: before.revision };
       const result = dispatch(cmd);
       if (!result.ok) return result;
       for (const { asset, compiled } of prepared) {

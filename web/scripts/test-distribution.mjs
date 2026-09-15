@@ -44,12 +44,12 @@ try {
   for (const p of manifest.packages)
     assert.ok((await realpath(resolve(workspace, 'node_modules', p.name))).startsWith(workspace));
   const output = run(
-    `import {TsEngine} from '@velocut/core-ts';import {validateCommand, BRIDGE_PROTOCOL_VERSION} from '@velocut/protocol';import {normalizeSceneSpec,applySceneEdits} from '@velocut/scene-sdk';import {Store,TsEngineAdapter} from '@velocut/runtime';const e=new TsEngine('packed',320,180,30,1);if(!e.apply({type:'addTrack',kind:'video'}).ok)throw Error('apply');const s=new Store(new TsEngineAdapter('runtime',320,180,30,1));s.dispatch({type:'addTrack',kind:'video'});s.undo();if(s.getState().doc.tracks.length)throw Error('undo');if(BRIDGE_PROTOCOL_VERSION!==2)throw Error('protocol');console.log('node sdk ok');`,
+    `import {TsEngine} from '@velocut/core-ts';import {validateCommand, BRIDGE_PROTOCOL_VERSION} from '@velocut/protocol';import {normalizeSceneSpec,applySceneEdits} from '@velocut/scene-sdk';import {Store,TsEngineAdapter,atomicRuntime} from '@velocut/runtime';import {ops,ref} from '@velocut/protocol';const e=new TsEngine('packed',320,180,30,1);if(!e.apply({type:'addTrack',kind:'video'}).ok)throw Error('apply');const s=new Store(new TsEngineAdapter('runtime',320,180,30,1));s.dispatch({type:'addTrack',kind:'video'});s.undo();if(s.getState().doc.tracks.length)throw Error('undo');if(BRIDGE_PROTOCOL_VERSION!==2)throw Error('protocol');const a=atomicRuntime(s);const snap=a.query({kind:'snapshot'});if(!snap.ok)throw Error('snapshot');const result=await a.transaction({action:'commit',requestId:'packed-atomic',runtimeId:snap.runtimeId,expectedRevision:snap.revision,operations:[{id:'track',command:ops.addTrack({kind:'text'})},{id:'title',command:ops.addTextClip({trackId:ref('track','trackId'),startUs:0,durationUs:1000000,text:{content:'Packed'}})}]});if(!result.ok||!result.data.results.title.clipId)throw Error('atomic composition');if(!a.capabilities({name:'splitClip'}).data.inputSchema)throw Error('atomic schema');console.log('node sdk ok');`,
   );
   assert.match(output, /node sdk ok/);
   await writeFile(
     resolve(workspace, 'types.ts'),
-    `import {TsEngine} from '@velocut/core-ts';import {RendererClient,MediaLibrary} from '@velocut/render-sdk';import {SceneSpec} from '@velocut/scene-sdk';import {Store,TsEngineAdapter,configureSceneStorage} from '@velocut/runtime';const e=new TsEngine('typecheck',320,180,30,1);const s:SceneSpec={version:1,durationUs:1000000};const m:MediaLibrary=new MediaLibrary();const r:RendererClient=new RendererClient();const store=new Store(new TsEngineAdapter('runtime',320,180,30,1));void [e,s,m,r,store,configureSceneStorage];`,
+    `import {TsEngine} from '@velocut/core-ts';import {RendererClient,MediaLibrary} from '@velocut/render-sdk';import {SceneSpec} from '@velocut/scene-sdk';import {Store,TsEngineAdapter,configureSceneStorage,type AtomicQuery} from '@velocut/runtime';import {ops,ref,type AtomicPlan} from '@velocut/protocol';const q:AtomicQuery={kind:'clips',fields:['id']};const plan:AtomicPlan={runtimeId:'runtime',expectedRevision:0,operations:[{id:'clip',command:ops.addClip({trackId:ref('track','trackId'),assetId:'asset',startUs:0})}]};void [q,plan];const e=new TsEngine('typecheck',320,180,30,1);const s:SceneSpec={version:1,durationUs:1000000};const m:MediaLibrary=new MediaLibrary();const r:RendererClient=new RendererClient();const store=new Store(new TsEngineAdapter('runtime',320,180,30,1));void [e,s,m,r,store,configureSceneStorage];`,
   );
   await writeFile(
     resolve(workspace, 'tsconfig.json'),
@@ -274,6 +274,7 @@ window.probe=(async()=>{
         packages: manifest.packages.map((p) => ({ name: p.name, sha256: p.sha256 })),
         checks: [
           'node-import',
+      'atomic-query-transaction',
           'types',
           'cli-doctor',
           'http-headers-ranges',

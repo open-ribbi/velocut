@@ -28,6 +28,14 @@ render readiness, undo/redo/reload, and browser rendering. Verify human edits to
 AI-authored objects and subsequent agent edits to those same objects. Track
 unfinished requirements explicitly; passing schema tests alone is not completion.
 
+## Atomic timeline composition (unreleased)
+
+The shared runtime now exposes `capabilities`, `query`, `transaction`, and pure
+`ops`/`ref` builders to CodeAct. Use these for schema discovery, stable paginated
+snapshot reads and dependent timeline commands in one undoable transaction.
+Existing scene APIs remain separate. See the [atomic API reference](../integrations/atomic-api.md)
+for real examples, runtime-scoped retry records, limits and availability.
+
 ## Implemented authoring surface
 
 All methods below are available in the editor's `window.velocut` and in the

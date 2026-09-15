@@ -19,6 +19,7 @@ import type {
 } from './schema.ts';
 
 export * from './schema.ts';
+export * from './atomic.ts';
 
 export type TimeUs = number; // integer microseconds
 

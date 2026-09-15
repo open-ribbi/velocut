@@ -1,3 +1,4 @@
+import { atomicRuntime } from './atomic';
 import { createClipReferences } from './clip-references';
 import type { Command } from '@velocut/protocol';
 import type { MediaLibrary, Observer, Playback, PreviewSessionOptions } from '@velocut/render-sdk';
@@ -38,8 +39,10 @@ export function createProjectHost(
   playback?: Playback,
 ) {
   const references = createClipReferences(store);
+  const atomic = atomicRuntime(store);
   const info = () => ({
     ...references.summary(),
+    runtimeId: atomic.runtimeId,
     projectId: project.id,
     projectName: project.name,
     documentName: store.getState().doc.name,
@@ -96,6 +99,12 @@ export function createProjectHost(
     };
     const a = (args ?? {}) as Record<string, unknown>;
     switch (method) {
+      case 'capabilities':
+        return { ...info(), ...atomic.capabilities(args ?? {}, { preview: !!playback, transport: 'mcp' }) };
+      case 'query':
+        return { ...info(), ...atomic.query(args) };
+      case 'transaction':
+        return { ...info(), ...await atomic.transaction(args, { dispatch, check: commandRestriction, signal }) };
       case 'references':
         return { ...info(), ...references.read(sessionId) };
       case 'document':
@@ -173,6 +182,9 @@ export function createProjectHost(
           evaluate: store.evaluate,
           seek: (timeUs) => playback ? playback.seek(timeUs) : store.seek(timeUs),
           previewSession: local('previewSession'),
+          capabilities: local('capabilities'),
+          query: local('query'),
+          transaction: local('transaction'),
           apply: (cmd) => guarded(cmd as Command),
           sceneAssets: local('sceneAssets'),
           sceneClip: local('sceneClip'),

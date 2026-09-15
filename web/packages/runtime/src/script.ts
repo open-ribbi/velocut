@@ -1,3 +1,4 @@
+import { COMMAND_CATALOG } from '@velocut/protocol';
 // services/script.ts — host-side execution of velocut_script programs.
 //
 // This is the velocut analog of "write a shell script, run it once": the agent
@@ -28,6 +29,9 @@ import type { ScriptResult } from './results';
  *  forget (`velocut.apply(cmd)` without await) still executes in order because
  *  the channel preserves message order and the host processes RPCs serially. */
 export interface ScriptApi {
+  capabilities(opts?: unknown): unknown;
+  query(opts: unknown): unknown;
+  transaction(opts: unknown): unknown;
   previewSession(opts?: unknown): unknown;
   /** Execute one protocol command; returns the engine envelope (events carry
    *  freshly-minted ids). Same path as velocut_apply. */
@@ -101,6 +105,9 @@ const RPC_METHODS = [
   'sceneInspect',
   'directorSession',
   'previewSession',
+  'capabilities',
+  'query',
+  'transaction',
   'videoGen',
   'videoGenChannels',
   'uploadFrame',
@@ -161,6 +168,12 @@ const SANDBOX_RUNTIME = `
   }
   var velocut = {};
   RPC.forEach(function (m) { velocut[m] = function () { return rpc(m, Array.prototype.slice.call(arguments)); }; });
+  velocut.ops = {};
+  ${JSON.stringify(COMMAND_CATALOG.filter(c => c.type !== 'batch').map(c => c.type))}.forEach(function(type) {
+    velocut.ops[type] = function(args) { return Object.assign({}, structuredClone(args), {type:type}); };
+  });
+  Object.freeze(velocut.ops);
+  velocut.ref = function(operationId, field) { return {$ref:{operationId:operationId, field:field}}; };
   function jsonSafe(v) { try { return JSON.parse(JSON.stringify(v == null ? null : v)); } catch (e) { return String(v); } }
   function onPortMessage(ev) {
     var d = ev.data || {};

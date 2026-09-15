@@ -1,3 +1,5 @@
+import { atomicRuntime } from '@velocut/runtime';
+import { ops, ref } from '@velocut/protocol';
 import type { PreviewSessionOptions } from '@velocut/render-sdk';
 import { createCodexHost } from './services/codex-host';
 import { createCodexConnection } from './services/codex-connection';
@@ -245,6 +247,10 @@ async function bootstrap() {
   container.registerValue(TOKENS.CodexConnection, codexConnection);
   (window as any).velocut = {
     codex: codexConnection,
+    ops, ref,
+    capabilities: (o?: unknown) => atomicRuntime(store).capabilities(o, { preview: true, transport: 'editor' }),
+    query: (o: unknown) => atomicRuntime(store).query(o),
+    transaction: (o: unknown) => atomicRuntime(store).transaction(o),
     previewSession: (o?: PreviewSessionOptions) => playback.session(o),
     directorSession: (o?: DirectorSessionOptions) => directorSession(store, o),
     sceneImportModel: (o: SceneModelImportOptions) => importSceneModel(store, o),
@@ -302,6 +308,9 @@ async function bootstrap() {
           evaluate: (t: number) => store.evaluate(t),
           document: () => store.getState().doc,
           seek: (t: number) => playback.seek(t),
+          capabilities: (o) => atomicRuntime(store).capabilities(o, { preview: true, transport: 'editor-script' }),
+          query: (o) => atomicRuntime(store).query(o),
+          transaction: (o) => atomicRuntime(store).transaction(o),
           previewSession: (o) => playback.session(o as PreviewSessionOptions),
           motionClip: (o) => createMotionClip(store, media, o as MotionClipOptions),
           sceneClip: (o) => createSceneClip(store, media, o as SceneClipOptions),

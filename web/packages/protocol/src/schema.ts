@@ -244,7 +244,11 @@ const NonBatchSchema = z.discriminatedUnion('type', [
   cSetTrackLocked,
   cSetAssetSpec,
 ]);
-type NonBatch = z.infer<typeof NonBatchSchema>;
+export type NonBatch = z.infer<typeof NonBatchSchema>;
+/** The same schemas drive validation and the atomic capability catalogue. */
+export const COMMAND_SCHEMAS = Object.fromEntries(
+  NonBatchSchema.options.map(schema => [schema.shape.type.value, schema]),
+) as unknown as Record<NonBatch['type'], z.AnyZodObject>;
 
 /** type → one-line summary for the agent prompt's command table. */
 const SUMMARIES: Record<string, string> = {

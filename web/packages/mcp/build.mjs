@@ -19,7 +19,7 @@ const sceneGuide = await readFile(
 );
 await writeFile(
   resolve(out, 'skills/director/references/scene-api.md'),
-  sceneGuide.replaceAll('../integrations/codex-plugin.md', 'codex-plugin.md'),
+  sceneGuide.replaceAll('../integrations/codex-plugin.md', 'codex-plugin.md').replaceAll('../integrations/atomic-api.md', 'atomic-api.md'),
 );
 await cp(
   resolve(root, '../../../docs/integrations/codex-plugin.md'),
@@ -86,3 +86,5 @@ await writeFile(
   `# Velocut Codex plugin\n\nRequires Node.js 22.6+ and a running local Velocut editor. Install this plugin and start a new Codex task. Ask Codex to connect to Velocut; open its pairing link, then edit the explicitly selected project. The model runs in Codex; the editor handles deterministic authoring and rendering. No additional model API key is required.\n\nThis package is self-contained: its MCP entry is scripts/server.cjs and its bundled runtime is scripts/runtime.cjs. It binds only to an ephemeral loopback port and stops with its MCP process. Pairing is temporary; use the editor's Codex control to disconnect. No model bytes are uploaded to an external service by the plugin.\n`,
 );
 console.log(out);
+
+await cp(resolve(root, '../../../docs/integrations/atomic-api.md'), resolve(out, 'skills/director/references/atomic-api.md'));

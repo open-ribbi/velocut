@@ -1,3 +1,4 @@
+import { atomicRuntime } from '@velocut/runtime';
 import { Icon } from './primitives/Icon';
 import { directorSession, type DirectorSessionOptions } from '../services/director-session';
 // ui/AgentConsole.tsx — chat with the editing agent.
@@ -388,6 +389,9 @@ export function AgentConsole({
                 evaluate: store.evaluate,
                 document: () => store.getState().doc,
                 seek: (t) => playback.seek(t),
+                capabilities: (o) => atomicRuntime(store).capabilities(o, { preview: true, transport: 'builtin-agent' }),
+                query: (o) => atomicRuntime(store).query(o),
+                transaction: (o) => atomicRuntime(store).transaction(o, { dispatch: cmd => store.dispatch(cmd, { kind: 'ai', peerId: store.getLocalUser().peerId, name: 'AI', model: cfg.model }, text) }),
                 previewSession: (o) => playback.session(o as PreviewSessionOptions),
                 motionClip: (o) => createMotionClip(store, media, o as MotionClipOptions),
                 sceneClip: (o) =>

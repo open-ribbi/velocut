@@ -14,3 +14,4 @@ export * from './director-session';
 export { observeForAgent, type ObserveInput } from './observe';
 export { createProjectHost } from './host';
 export { runAgentScript, type ScriptApi } from './script';
+export { atomicRuntime, createAtomicRuntime, type AtomicQuery } from './atomic';
