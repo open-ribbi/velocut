@@ -26,6 +26,8 @@ import { sampleObjectTransform } from './animation.ts';
 import {prepareSurfaceReferences} from './surface-references.ts';
 import {createBindingEvaluator} from './binding-evaluator.ts';
 import type {BindingStatus} from './bindings.ts';
+import {nativeGeometryKey} from './geometry-fingerprint.ts';
+import {GEOMETRY_SOURCE} from './geometry-resource.ts';
 import { setVisualState, prepareVisualMeshes, objectOpacity } from './visual.ts';
 import type { SceneAssetManifest, SceneSpec, Vec3A, SceneTransform, SceneGroup, SceneLight } from './types.ts';
 
@@ -114,6 +116,7 @@ export interface Stage {
   lights: Array<{ root: THREE.Group; spec: SceneLight; light: THREE.Light }>;
   instanceBatches: InstanceBatch[];
   surfaceSources?: Map<string,string>;
+  surfaceGeometryKeys?: Map<string,string>;
   bindingStatuses?: BindingStatus[];
   invalidBindingObjects?: Set<string>;
   syncInstances(): void;
@@ -133,6 +136,13 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
   spec = normalizeSceneSpec(spec);
   const structureKey = sceneStructureKey(spec);
   const surfaceSources=new Map([...spec.props??[],...spec.characters??[]].map(o=>[o.id!,spec.models?.[o.model]?.src??('geometryId' in o&&o.geometryId?'native-mesh':o.model)]));
+  const geometryKeys=new Map(Object.entries(spec.geometryResources??{}).map(([id,r])=>[id,GEOMETRY_SOURCE.exec(r.src)![1]]));
+  for(const [id,g] of Object.entries(spec.geometries??{}))geometryKeys.set(id,nativeGeometryKey(g));
+  const surfaceGeometryKeys=new Map<string,string>();
+  for(const p of spec.props??[]){
+    if(p.geometryId)surfaceGeometryKeys.set(p.id!,geometryKeys.get(p.geometryId)!);
+    else if(p.model==='prop/mesh'&&p.vertices&&p.faces)surfaceGeometryKeys.set(p.id!,nativeGeometryKey({vertices:p.vertices,faces:p.faces,uvs:p.uvs}));
+  }
   for (const id of Object.keys(spec.geometryResources ?? {})) (spec.geometries ??= {})[id] = await resolveSceneGeometry(spec, id, resources);
   delete spec.geometryResources;
   const three = await import('three');
@@ -677,7 +687,7 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
     lights.forEach((l,i) => { l.spec = normalized.lights![i]; });
     return true;
   }
-  const stage:Stage = { three, scene, characters, props, groups, lights, surfaceSources, instanceBatches: instances.batches, canUpdateTransforms, updateTransforms,
+  const stage:Stage = { three, scene, characters, props, groups, lights, surfaceSources, surfaceGeometryKeys, instanceBatches: instances.batches, canUpdateTransforms, updateTransforms,
     syncInstances: () => syncInstanceBatches(scene, instances.batches), poseAt, characterPosition };
   await prepareSurfaceReferences(stage);
   if(Object.keys(spec.bindings??{}).length){

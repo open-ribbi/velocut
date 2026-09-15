@@ -32,6 +32,7 @@ import {
   queryStageSpatial,
   validateSpatialQueries,
   type SceneSpatialQuery,
+  assertLegacyGeometryReplacement,
 } from '@velocut/scene-sdk';
 import type { MediaLibrary } from '@velocut/render-sdk';
 import { validateCommand, type Envelope, type VDocument } from '@velocut/protocol';
@@ -333,6 +334,7 @@ export async function replaceSceneSpec(
       throw new Error('conflict: document changed; read the scene again');
     const error = validateSceneSpec(spec);
     if (error) throw new Error(error);
+    assertLegacyGeometryReplacement(before.spec,spec);
     // Metadata changes need a timeline resize transaction, not an opaque spec edit.
     for (const k of ['durationUs', 'width', 'height', 'fps'] as const) {
       if (spec[k] !== before.spec[k]) throw new Error(`change ${k} by creating a new scene clip`);
@@ -379,6 +381,7 @@ export async function replaceSceneSpec(
 export async function editScene(store: Store, opts: SceneEditOptions, dispatch?: SceneDispatch) {
   try {
     const before = readScene(store, opts.assetId);
+    if(opts.edits?.some(edit=>edit.type==='anchor.rebind')&&opts.expectedRevision===undefined)throw new Error('anchor.rebind requires expectedRevision from its repair preview');
     if (opts.expectedRevision != null && opts.expectedRevision !== before.revision) throw new Error('conflict: document changed; read the scene again');
     if (opts.preflight != null && typeof opts.preflight !== 'boolean' || opts.includeSpec != null && typeof opts.includeSpec !== 'boolean') throw new Error('preflight/includeSpec must be boolean');
     if (opts.preflight && opts.dryRun) throw new Error('choose preflight or dryRun, not both');
@@ -392,6 +395,16 @@ export async function editScene(store: Store, opts: SceneEditOptions, dispatch?:
         // patch of the newly named resource in the same atomic edit batch.
         const data = await resolveSceneGeometry({version:1,durationUs:1,geometryResources:{[error.id]:error.resource}}, error.id, sceneResources(store));
         geometryData.set(error.resource.src, data);
+      }
+    }
+    const repairs=opts.edits.filter(edit=>edit.type==='anchor.rebind');
+    if(repairs.length){
+      // Candidate references are checked against the final batch geometry,
+      // without a renderer or writes, including during preflight.
+      const stage=await buildStage(result.spec,sceneAssetBase(store),sceneResources(store));
+      const results=queryStageSpatial(stage,repairs.map(edit=>({type:'anchors' as const,objectId:edit.id,anchorIds:[edit.anchorId]})));
+      for(const r of results){
+        if(r.type==='anchors'&&r.items[0]?.status==='invalid')throw new Error(`repair candidate is stale or invalid: ${r.items[0].message}`);
       }
     }
     const budget = sceneBudget(result.spec);
@@ -755,6 +768,7 @@ export function dispatchSceneAware(
         const spec = JSON.parse(asset.spec);
         const error = validateSceneSpec(spec);
         if (error) throw new Error(error);
+        if(previous?.spec&&previous.src.startsWith('scene://'))assertLegacyGeometryReplacement(JSON.parse(previous.spec),spec);
         if (Math.round(spec.durationUs) !== asset.durationUs)
           throw new Error('scene duration must agree with its asset metadata');
         prepared.push({ asset, compiled: await compileFor(store, spec, candidate) });

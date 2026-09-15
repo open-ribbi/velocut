@@ -705,7 +705,8 @@ The MCP tool is `velocut_scene_spatial`; CodeAct uses `velocut.sceneSpatial`.
 
 | Query | Required fields | Optional fields / result |
 |---|---|---|
-| `anchors` | `objectId` | `anchorIds`; returns evaluated anchor `items` |
+| `anchors` | `objectId` | `anchorIds`, `status:valid|invalid`; returns evaluated anchor `items` |
+| `anchorRepair` | `objectId`, `anchorId`, `method:face|raycast` | Explicit `ray` for raycast; read-only candidate and proposed edit |
 | `raycast` | `origin`, `direction` | `objectIds`, `maxDistance`, `includeHidden`; nearest `hit` or null |
 | `surface` | `objectId`, `triangleIndex`, `barycentric` | `meshPath` defaults to `[]`; returns `surface` |
 | `distance` | `from`, `to` | World points, delta and distance in meters |
@@ -805,18 +806,24 @@ A live anchor has this shape:
 
 ```ts
 {kind:'surface', name?, tangent?, surface:{
-  sourceKey, topologyKey, meshPath, triangleIndex, barycentric
+  sourceKey, topologyKey, meshPath, triangleIndex, barycentric,
+  geometryKey?, vertexIndices?
 }}
 ```
 
-Use keys returned by the query. They identify the model source and triangle
-connectivity, without pinning vertex positions. A SHA-256 connectivity digest
-is prepared once per shared stage geometry, outside the animation loop. Native
-meshes with unchanged connectivity follow vertex edits; native `makeUnique`
-can retain attachments when the connectivity matches. Skin/morph and node
-animation are sampled too. Changing connectivity, draw range or an imported
-model source invalidates the attachment. A topology-preserving replacement is
-treated as deformation; this is not semantic matching of architectural parts.
+Use keys returned by the query. Source identity and whole-topology checks remain
+in place. New native references also carry the immutable geometry content hash
+(`geometryKey`) and an ordered three-vertex witness (`vertexIndices`). Verified
+`geometry.patch` operations advance the whole-mesh proofs while retaining that
+witness. Vertex deformation keeps attachments live; changing a referenced face's
+ordered indices invalidates that face's anchors. Unrelated face patches leave
+other attachments valid. Digests are prepared outside the animation loop.
+
+Native `geometry.update`, raw geometry replacement and vertex reindexing do not
+advance these proofs. Changed native geometry bytes invalidate their references,
+even if index numbers were reused. Byte-identical replacements and `makeUnique`
+can retain attachments. Imported GLB source changes remain strict; skin/morph and
+node animation continue to be sampled. This is not semantic part matching.
 Surface references cannot cross another authored object's root: attach to the
 logical mesh owner returned by raycast.
 
@@ -896,6 +903,91 @@ These relationships maintain points and frames. They do not certify solid
 contact, penetration depth, tenon fit, wall thickness or tile overlap, and they
 do not implement a general nonlinear constraint solver or arbitrary parameter
 expression graph.
+
+### Local invalidation and repair workflow
+
+Known patches keep vertex and face **slots** stable. They may update coordinates,
+UVs or existing face entries, but cannot insert/remove/reindex slots. The SDK
+verifies each affected geometry's exact pre-patch content and topology before
+advancing any reference. The stored ordered face witness is never silently
+changed. A previously failed face remains failed through unrelated patches;
+restoring its original ordered indices can restore it. Use full replacement for
+renumbering, rather than disguising a remap as coordinate patches.
+
+Legacy references without content keys/witnesses retain whole-topology checks.
+A known patch upgrades a legacy reference only after an exact topology match;
+it does not blindly repair already-mismatched references. An explicit face
+preview can upgrade a currently valid legacy reference. Raw full-spec geometry
+replacement with unchanged unversioned legacy references is rejected until they
+are upgraded. The `geometry.update` edit pins legacy references to the old native
+geometry version, allowing the replacement to commit with explicit invalid
+attachments rather than falsely accepting reused indices.
+
+The workflow has separate read and write primitives:
+
+```js
+const state = await velocut.sceneSpatial({assetId,timeS:20,queries:[
+  {type:'anchors',objectId:'roof',status:'invalid'},
+]});
+if (!state.ok) throw Error(state.message);
+const ids = state.results[0].items.filter(a=>a.kind==='surface').map(a=>a.anchorId);
+if (!ids.length) return {repaired:0};
+const preview = await velocut.sceneSpatial({assetId,timeS:20,
+  expectedRevision:state.revision,
+  queries:ids.map(anchorId=>({type:'anchorRepair',objectId:'roof',anchorId,method:'face'})),
+});
+if (!preview.ok) throw Error(preview.message);
+return preview; // Inspect candidates before choosing edits to commit.
+```
+
+`method:'face'` checks source, full geometry version and whole topology, then
+requires the current face to contain the same three original vertex IDs. It
+reorders barycentric weights by vertex identity, preserving the reference point
+when winding/order changes. It does not infer a new face after reindexing or
+connectivity replacement. `method:'raycast'` instead requires an explicit
+`ray:{origin,direction,maxDistance?,includeHidden?}`. Its hit must belong to the
+same object; it never moves an anchor or binding onto an arbitrary neighbor.
+Upstream invalid bindings must be repaired before sampling a dependent object.
+
+A result has `status:'candidate'` and `candidate`, or `status:'unavailable'` with
+an explanation. The candidate includes its proposed anchor, world point/frame,
+`windingReversed`, `orientationChanged`, and an `edit`. A cyclic face permutation
+can preserve the normal but change the default edge tangent, so it still needs
+orientation review. With an explicit stable tangent, an unchanged frame need
+not be flagged. For ray repairs the old frame comparison can be unknown (null).
+These diagnostics describe the proposed frame, not solid contact or fit.
+
+After choosing candidates:
+
+```js
+const edits = selectedCandidates.map(c=>c.edit);
+const check = await velocut.sceneEdit({assetId,expectedRevision:preview.revision,
+  edits,preflight:true,includeSpec:false});
+if (!check.ok) throw Error(check.message);
+return await velocut.sceneEdit({assetId,expectedRevision:preview.revision,
+  edits,includeSpec:false});
+```
+
+The edit is `{type:'anchor.rebind',id,anchorId,expected,surface}`. It compares the
+old `SurfaceReference` and replaces only `anchor.surface`. Current names and
+tangent overrides, binding IDs/offsets, materials and animations remain intact.
+Runtime commits require the preview's `expectedRevision` and validate candidate
+references against the **final batch geometry**, including during preflight.
+Any stale or invalid candidate rejects the whole batch. Pure SDK callers can
+supply verified resource geometry via the existing `GeometryDataRequired` replay
+mechanism. Imports/procedural meshes additionally need runtime stage validation.
+
+The compact Anchors panel offers invalid/all-surface scope, paginated previews,
+frame values and selection before commit. Orientation-changing candidates are
+not preselected. The all-surface scope can explicitly upgrade valid old
+references. The existing 500-edit transaction limit applies; pagination limits
+only the displayed rows, not scene capacity. Unavailable repairs require an
+explicit resample. Undo/redo and reload preserve both the repair and its proofs.
+
+No new scene, anchor or instance count/byte cap is introduced. Native geometry
+files keep the existing format. Pure synchronous edit hashing uses the MIT
+[@noble/hashes SHA-256 implementation](https://github.com/paulmillr/noble-hashes);
+resource and renderer checks remain compatible with WebCrypto SHA-256.
 
 ### Assembly regeneration and development consistency
 

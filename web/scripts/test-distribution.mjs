@@ -228,7 +228,7 @@ try {
     },
   });
   const geometryEdit = await call('velocut_scene_edit', {sessionId,assetId:created.assetId,includeSpec:false,edits:[
-    {type:'geometry.create',id:'tile',geometry:{vertices:[[0,0,0],[1,0,0],[0,1,0]],faces:[[0,1,2]]}},
+    {type:'geometry.create',id:'tile',geometry:{vertices:[[0,0,0],[1,0,0],[0,1,0],[1,1,0]],faces:[[0,1,2],[1,3,2]]}},
     {type:'anchor.set',id:'cube',anchorId:'top',anchor:{position:[0,.5,0]}},
     {type:'add',kind:'prop',object:{id:'tile',model:'prop/instance',geometryId:'tile',position:{x:2},color:'#ff2222'}},
   ]});
@@ -245,6 +245,29 @@ try {
   const bound=await call('velocut_scene_spatial',{sessionId,assetId:created.assetId,queries:[{type:'bindings'},{type:'distance',from:{objectId:'cube',anchorId:'top'},to:{objectId:'tile',anchorId:'seat'}}]});
   assert.ok(bound.ok);assert.equal(bound.results[0].items[0].status,'valid');assert.equal(bound.results[1].distance,0);
   const bindingList=await call('velocut_query',{sessionId,kind:'sceneBindings',assetId:created.assetId});assert.equal(bindingList.data.total,1);
+  const sampled=await call('velocut_scene_spatial',{sessionId,assetId:created.assetId,queries:[{type:'surface',objectId:'tile',triangleIndex:0,barycentric:[.2,.3,.5]}]});
+  const surfaceAnchor=sampled.results[0].surface.surfaceAnchor;
+  assert.match(surfaceAnchor.surface.geometryKey,/^[0-9a-f]{64}$/);assert.deepEqual(surfaceAnchor.surface.vertexIndices,[0,1,2]);
+  const attached=await call('velocut_scene_edit',{sessionId,assetId:created.assetId,expectedRevision:sampled.revision,includeSpec:false,edits:[
+    {type:'anchor.set',id:'tile',anchorId:'surface',anchor:{...surfaceAnchor,name:'Keep this name',tangent:[1,0,0]}},
+    {type:'geometry.patch',id:'tile',attribute:'faces',updates:[{index:1,value:[1,2,3]}]},
+  ]});
+  assert.ok(attached.ok);
+  const unaffected=await call('velocut_scene_spatial',{sessionId,assetId:created.assetId,queries:[{type:'anchors',objectId:'tile',status:'invalid'}]});
+  assert.equal(unaffected.results[0].items.length,0);
+  await call('velocut_scene_edit',{sessionId,assetId:created.assetId,expectedRevision:unaffected.revision,includeSpec:false,edits:[
+    {type:'geometry.patch',id:'tile',attribute:'faces',updates:[{index:0,value:[0,2,1]}]},
+  ]});
+  const repairs=await call('velocut_scene_spatial',{sessionId,assetId:created.assetId,queries:[{type:'anchorRepair',objectId:'tile',anchorId:'surface',method:'face'}]});
+  const repair=repairs.results[0];assert.equal(repair.currentStatus,'invalid');assert.equal(repair.status,'candidate');
+  assert.equal(repair.candidate.orientationChanged,true);assert.deepEqual(repair.candidate.edit.surface.barycentric,[.2,.5,.3]);
+  const fixed=await call('velocut_scene_edit',{sessionId,assetId:created.assetId,expectedRevision:repairs.revision,includeSpec:false,edits:[repair.candidate.edit]});
+  assert.ok(fixed.ok);assert.equal(fixed.updateMode,'transforms');
+  const repaired=await call('velocut_scene_spatial',{sessionId,assetId:created.assetId,queries:[{type:'anchors',objectId:'tile'},{type:'bindings'}]});
+  const resultAnchor=repaired.results[0].items.find(a=>a.anchorId==='surface');
+  assert.equal(resultAnchor.status,'valid');assert.equal(resultAnchor.anchor.name,'Keep this name');assert.deepEqual(resultAnchor.anchor.tangent,[1,0,0]);
+  assert.equal(repaired.results[1].items[0].status,'valid');
+  console.log('Packed surface references: local face invalidation, preview and atomic rebind passed');
   const observed = await client.callTool({
     name: 'velocut_observe',
     arguments: { sessionId, mode: 'scene', source: { assetId: created.assetId }, view: 'front' },
@@ -368,6 +391,7 @@ window.probe=(async()=>{
       'resource-probe-register-duplicate',
       'shared-geometry-instances',
       'geometry-resource-and-incremental-transform',
+      'surface-local-invalidation-and-atomic-repair',
       'shared-material-and-compact-history',
       'large-spec-no-byte-ceiling',
           'types',

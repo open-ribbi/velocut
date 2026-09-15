@@ -1,6 +1,7 @@
 import { PreviewRateSelect } from './PreviewRateSelect';
 import { SceneExportDialog } from './SceneExportDialog';
 import {SceneBindingFields} from './SceneBindingFields';
+import {SceneAnchorRepairs} from './SceneAnchorRepairs';
 import { SceneAnimationFields } from './SceneAnimationFields';
 import { Icon, type IconName } from './primitives/Icon';
 // DirectorPanel — the stage view: orbit the compiled 3D scene, select any
@@ -1319,6 +1320,7 @@ export function DirectorPanel({
                     (o.anchors??={})[`anchor_${n}`]={position:[0,0,0]};
                   })}>Add anchor</button>
                   <div className="empty-hint">Local anchors follow object transforms. Surface anchors follow mesh deformation; topology changes require rebinding.</div>
+                  <SceneAnchorRepairs store={store} assetId={asset.id} objectId={sel.id} timeS={t} specText={specText}/>
                 </details>
                 {spec&&<SceneBindingFields spec={spec} objectId={sel.id} statuses={spatialStatus.selectedId===sel.id?spatialStatus.bindings:[]} onEdit={runEdits}/>}
                 {!selLight && (

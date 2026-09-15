@@ -73,3 +73,6 @@ resource storage and allowing ordinary-mesh transparency/physics. Clone and patc
 can compose in one runtime scene edit. The pure `applySceneEdits` function accepts
 an optional verified geometry-data map for resource-backed index patches; runtime
 hosts resolve only the files required by the edit plan automatically.
+
+Native local patches preserve surface-reference witnesses; full replacements remain strict.
+Synchronous edit fingerprints use [@noble/hashes](https://github.com/paulmillr/noble-hashes) SHA-256, matching the existing WebCrypto resource and topology formats.

@@ -1,13 +1,15 @@
 import type * as THREE from 'three';
 import type {Stage} from './stage.ts';
-import {spatialVector, anchorIdValid, type LocalAnchor, type SpatialVector} from './anchors.ts';
+import {spatialVector, anchorIdValid, type LocalAnchor, type SurfaceAnchor, type SpatialVector} from './anchors.ts';
 import {objectIsVisible} from './visual.ts';
-import {surfaceReference, surfaceReferenceError} from './surface-references.ts';
+import {surfaceReference, surfaceReferenceError, surfaceReferenceScopeError} from './surface-references.ts';
 
 export type SpatialPoint = {position: SpatialVector; objectId?: string} | {objectId: string; anchorId: string};
 export type SceneSpatialQuery =
+  | {type:'anchorRepair';objectId:string;anchorId:string;method:'face';ray?:never}
+  | {type:'anchorRepair';objectId:string;anchorId:string;method:'raycast';ray:{origin:SpatialVector;direction:SpatialVector;maxDistance?:number;includeHidden?:boolean}}
   | {type:'bindings'; ids?:string[]}
-  | {type:'anchors'; objectId:string; anchorIds?:string[]}
+  | {type:'anchors'; objectId:string; anchorIds?:string[];status?:'valid'|'invalid'}
   | {type:'raycast'; origin:SpatialVector; direction:SpatialVector; objectIds?:string[]; maxDistance?:number; includeHidden?:boolean}
   | {type:'surface'; objectId:string; meshPath?:number[]; triangleIndex:number; barycentric:SpatialVector}
   | {type:'distance'; from:SpatialPoint; to:SpatialPoint}
@@ -21,8 +23,10 @@ const pointSchema={oneOf:[objectSchema(['position'],{position:vectorSchema,objec
 export const SCENE_SPATIAL_SCHEMA=objectSchema(['assetId','queries'],{
   assetId:idSchema,timeS:{type:'number',minimum:0},expectedRevision:{type:'integer',minimum:0},
   queries:{type:'array',minItems:1,items:{oneOf:[
+    objectSchema(['type','objectId','anchorId','method'],{type:{const:'anchorRepair'},objectId:idSchema,anchorId:idSchema,method:{const:'face'}}),
+    objectSchema(['type','objectId','anchorId','method','ray'],{type:{const:'anchorRepair'},objectId:idSchema,anchorId:idSchema,method:{const:'raycast'},ray:objectSchema(['origin','direction'],{origin:vectorSchema,direction:vectorSchema,maxDistance:{type:'number',minimum:0},includeHidden:{type:'boolean'}})}),
     objectSchema(['type'],{type:{const:'bindings'},ids:idsSchema}),
-    objectSchema(['type','objectId'],{type:{const:'anchors'},objectId:idSchema,anchorIds:idsSchema}),
+    objectSchema(['type','objectId'],{type:{const:'anchors'},objectId:idSchema,anchorIds:idsSchema,status:{enum:['valid','invalid']}}),
     objectSchema(['type','origin','direction'],{type:{const:'raycast'},origin:vectorSchema,direction:vectorSchema,objectIds:idsSchema,maxDistance:{type:'number',minimum:0},includeHidden:{type:'boolean'}}),
     objectSchema(['type','objectId','triangleIndex','barycentric'],{type:{const:'surface'},objectId:idSchema,meshPath:{type:'array',items:{type:'integer',minimum:0}},triangleIndex:{type:'integer',minimum:0},barycentric:{...vectorSchema,items:{type:'number',minimum:0,maximum:1},description:'Weights sum to 1.'}}),
     objectSchema(['type','from','to'],{type:{const:'distance'},from:pointSchema,to:pointSchema}),
@@ -56,10 +60,17 @@ function point(value:unknown) {
 export function validateSpatialQueries(value:unknown): asserts value is SceneSpatialQuery[] {
   if (!Array.isArray(value) || !value.length) throw new Error('queries must be a nonempty array');
   for (const query of value) {
-    if (query?.type === 'bindings') {
+    if(query?.type==='anchorRepair'){
+      record(query,['type','objectId','anchorId','method','ray'],'anchorRepair query');id(query.objectId,'objectId');
+      if(!anchorIdValid(query.anchorId))throw new Error('invalid anchorId');
+      if(query.method==='face'){if(query.ray!==undefined)throw new Error('face repair does not accept ray');}
+      else if(query.method==='raycast'){record(query.ray,['origin','direction','maxDistance','includeHidden'],'repair ray');validateSpatialQueries([{type:'raycast',...query.ray}]);}
+      else throw new Error('anchorRepair method must be face or raycast');
+    } else if (query?.type === 'bindings') {
       record(query,['type','ids'],'bindings query');if(query.ids!==undefined)ids(query.ids,'ids');
     } else if (query?.type === 'anchors') {
-      record(query,['type','objectId','anchorIds'],'anchors query');id(query.objectId,'objectId');
+      record(query,['type','objectId','anchorIds','status'],'anchors query');
+      if(query.status!==undefined&&!['valid','invalid'].includes(query.status as string))throw new Error('anchor status must be valid or invalid');id(query.objectId,'objectId');
       if (query.anchorIds !== undefined) ids(query.anchorIds,'anchorIds');
     } else if (query?.type === 'raycast') {
       record(query,['type','origin','direction','objectIds','maxDistance','includeHidden'],'raycast query');
@@ -118,11 +129,7 @@ export function createSpatialContext(stage:Stage) {
     if(stage.invalidBindingObjects?.has(objectId))return invalid('object has an invalid or suspended binding dependency');
     if(a.kind==='surface'){
       try{
-        const mesh=resolveMesh(objectId,a.surface.meshPath,true);
-        const error=surfaceReferenceError(stage,objectId,mesh,a.surface);if(error)return invalid(error);
-        const value=sample(objectId,a.surface.meshPath,a.surface.triangleIndex,a.surface.barycentric,false);
-        const orientation=a.tangent&&value.normal ? frame(new T.Vector3(...value.normal),new T.Vector3(...a.tangent).transformDirection(e.root.matrixWorld)) : value;
-        return {objectId,anchorId,kind,anchor:a,status:'valid' as const,message:undefined,position:value.position,normal:orientation.normal,tangent:orientation.tangent,bitangent:orientation.bitangent,frameValid:orientation.frameValid,visible:value.visible};
+        return {objectId,anchorId,kind,anchor:a,status:'valid' as const,message:undefined,...surfaceAnchorFrame(objectId,a)};
       }catch(e){return invalid(e instanceof Error?e.message:String(e));}
     }
     const position=new T.Vector3(...a.position).applyMatrix4(e.root.matrixWorld);
@@ -193,6 +200,13 @@ export function createSpatialContext(stage:Stage) {
     if(coordinates?.some(v=>!Number.isFinite(v)))throw new Error('surface UVs are not finite');
     return {objectId,meshPath:[...meshPath],triangleIndex,vertexIndices:indices,barycentric:weights,position:tuple(position),...orientation,uv:coordinates,local,surfaceAnchor:reference?{kind:'surface' as const,surface:reference}:null,visible:objectIsVisible(mesh)};
   };
+  const surfaceAnchorFrame=(objectId:string,a:SurfaceAnchor)=>{
+    const mesh=resolveMesh(objectId,a.surface.meshPath,true),root=find(objectId).root;
+    const error=surfaceReferenceError(stage,objectId,mesh,a.surface);if(error)throw new Error(error);
+    const value=sample(objectId,a.surface.meshPath,a.surface.triangleIndex,a.surface.barycentric,false);
+    const orientation=a.tangent&&value.normal ? frame(new T.Vector3(...value.normal),new T.Vector3(...a.tangent).transformDirection(root.matrixWorld)) : value;
+    return {position:value.position,normal:orientation.normal,tangent:orientation.tangent,bitangent:orientation.bitangent,frameValid:orientation.frameValid,visible:value.visible};
+  };
   const raycast=(q:Extract<SceneSpatialQuery,{type:'raycast'}>)=>{
     const selected=q.objectIds?.map(objectId=>find(objectId).root);
     const allowed=(root:THREE.Object3D)=>!selected||selected.some(target=>{for(let p:THREE.Object3D|null=root;p;p=p.parent)if(p===target)return true;return false;});
@@ -229,17 +243,52 @@ export function createSpatialContext(stage:Stage) {
     const found=nearest as {objectId:string;meshPath:number[];triangleIndex:number;barycentric:SpatialVector}|null;
     return found ? {...sample(found.objectId,found.meshPath,found.triangleIndex,found.barycentric),distance} : null;
   };
-  return {entries,find,anchor,worldPoint,resolveMesh,sample,raycast,reset};
+  const repair=(q:Extract<SceneSpatialQuery,{type:'anchorRepair'}>)=>{
+    const object=find(q.objectId).spec,current=object.anchors?.[q.anchorId];
+    if(!current||current.kind!=='surface')throw new Error('anchorRepair requires an existing surface anchor');
+    const currentStatus=anchor(q.objectId,q.anchorId);
+    const unavailable=(message:string)=>({status:'unavailable' as const,currentStatus:currentStatus.status,message,candidate:null});
+    try{
+      if(stage.invalidBindingObjects?.has(q.objectId))return unavailable('repair upstream binding dependencies before sampling this object');
+      let reference:SurfaceAnchor|null=null,windingReversed:boolean|null=null,orientationChanged:boolean|null=null;
+      if(q.method==='raycast'){
+        const hit=raycast({type:'raycast',...q.ray,objectIds:[q.objectId]});
+        if(!hit?.surfaceAnchor)return unavailable('repair ray did not hit an attachable surface');
+        if(hit.objectId!==q.objectId)return unavailable('repair ray hit a different mesh owner; choose another ray');
+        reference=hit.surfaceAnchor;
+      }else{
+        const r=current.surface,mesh=resolveMesh(q.objectId,r.meshPath,true);
+        const error=surfaceReferenceScopeError(stage,q.objectId,mesh,r);if(error)return unavailable(error+'; use an explicit raycast repair');
+        const [start,end]=range(mesh);if(r.triangleIndex<start||r.triangleIndex>=end)return unavailable('referenced face no longer exists; use an explicit raycast repair');
+        const indices=vertexIndices(mesh,r.triangleIndex),expected=r.vertexIndices??indices;
+        if(indices.some(i=>!expected.includes(i)))return unavailable('referenced face no longer uses its original vertices; use an explicit raycast repair');
+        const permutation=indices.map(i=>expected.indexOf(i));
+        const barycentric=permutation.map(i=>r.barycentric[i]) as SpatialVector;
+        let inversions=0;for(let i=0;i<3;i++)for(let j=i+1;j<3;j++)if(permutation[i]>permutation[j])inversions++;
+        windingReversed=inversions%2===1;
+        orientationChanged=windingReversed||(!current.tangent&&permutation.some((v,i)=>v!==i));
+        reference=sample(q.objectId,r.meshPath,r.triangleIndex,barycentric).surfaceAnchor;
+      }
+      if(!reference)return unavailable('surface reference is unavailable');
+      const next:SurfaceAnchor={...structuredClone(current),surface:reference.surface};
+      const evaluated=surfaceAnchorFrame(q.objectId,next);
+      if(!evaluated.frameValid)return unavailable('candidate frame is collapsed; choose another time, ray or tangent');
+      return {status:'candidate' as const,currentStatus:currentStatus.status,message:windingReversed?'face winding reversed; inspect the new normal before committing':orientationChanged?'face order changes the tangent frame; inspect orientation before committing':undefined,
+        candidate:{anchor:next,...evaluated,windingReversed,orientationChanged,edit:{type:'anchor.rebind' as const,id:q.objectId,anchorId:q.anchorId,expected:structuredClone(current.surface),surface:structuredClone(next.surface)}}};
+    }catch(error){return unavailable(error instanceof Error?error.message:String(error));}
+  };
+  return {entries,find,anchor,worldPoint,resolveMesh,sample,raycast,repair,reset};
 }
 
 export function queryStageSpatial(stage:Stage,queries:SceneSpatialQuery[]){
   validateSpatialQueries(queries);
-  const {find,anchor,worldPoint,sample,raycast}=createSpatialContext(stage);
+  const {find,anchor,worldPoint,sample,raycast,repair}=createSpatialContext(stage);
   return queries.map(q=>{
+    if(q.type==='anchorRepair')return {type:q.type,objectId:q.objectId,anchorId:q.anchorId,...repair(q)};
     if(q.type==='bindings')return {type:q.type,items:structuredClone((stage.bindingStatuses??[]).filter(b=>!q.ids||q.ids.includes(b.id)))};
     if(q.type==='anchors'){
       const e=find(q.objectId),ids=q.anchorIds??Object.keys(e.spec.anchors??{});
-      return {type:q.type,items:ids.map(id=>structuredClone(anchor(q.objectId,id)))};
+      return {type:q.type,items:ids.map(id=>anchor(q.objectId,id)).filter(a=>!q.status||a.status===q.status).map(a=>structuredClone(a))};
     }
     if(q.type==='surface')return {type:q.type,surface:sample(q.objectId,q.meshPath??[],q.triangleIndex,q.barycentric)};
     if(q.type==='raycast')return {type:q.type,hit:raycast(q)};

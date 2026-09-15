@@ -66,3 +66,4 @@ export { encodeGeometry, decodeGeometry, geometryHash, resolveSceneGeometry, GEO
 
 export {prepareSurfaceReferences} from './surface-references.ts';
 export {activeBinding,type SceneBinding,type AnchorRef,type BindingStatus} from './bindings.ts';
+export {assertLegacyGeometryReplacement} from './geometry-fingerprint.ts';

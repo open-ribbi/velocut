@@ -17,6 +17,10 @@ export interface SurfaceReference {
   barycentric: SpatialVector;
   sourceKey: string;
   topologyKey: string;
+  /** Native immutable geometry version; advanced only by verified local patches. */
+  geometryKey?: string;
+  /** Ordered vertex identities expected at triangleIndex. */
+  vertexIndices?: [number,number,number];
 }
 export interface SurfaceAnchor {
   kind: 'surface'; name?: string; surface: SurfaceReference;
@@ -28,12 +32,19 @@ export type SceneAnchor = LocalAnchor | SurfaceAnchor;
 export function validateSurfaceReference(value: unknown): string | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return 'surface reference must be an object';
   const r = value as SurfaceReference;
-  if (Object.keys(r).some(k => !['meshPath','triangleIndex','barycentric','sourceKey','topologyKey'].includes(k))) return 'unknown surface reference field';
+  if (Object.keys(r).some(k => !['meshPath','triangleIndex','barycentric','sourceKey','topologyKey','geometryKey','vertexIndices'].includes(k))) return 'unknown surface reference field';
   if (!Array.isArray(r.meshPath) || r.meshPath.some(i => !Number.isSafeInteger(i) || i < 0)) return 'invalid surface meshPath';
   if (!Number.isSafeInteger(r.triangleIndex) || r.triangleIndex < 0) return 'invalid surface triangleIndex';
   if (!spatialVector(r.barycentric) || r.barycentric.some(v => v < 0 || v > 1) || Math.abs(r.barycentric.reduce((s,v)=>s+v,0)-1)>1e-6) return 'invalid surface barycentric weights';
   if (typeof r.sourceKey !== 'string' || !r.sourceKey || typeof r.topologyKey !== 'string' || !/^[a-f0-9]{64}$/.test(r.topologyKey)) return 'surface source/topology keys must come from a surface query';
+  if(r.geometryKey!==undefined&&(typeof r.geometryKey!=='string'||!/^[a-f0-9]{64}$/.test(r.geometryKey)))return 'invalid surface geometryKey';
+  if(r.vertexIndices!==undefined&&(!Array.isArray(r.vertexIndices)||r.vertexIndices.length!==3||new Set(r.vertexIndices).size!==3||r.vertexIndices.some(i=>!Number.isSafeInteger(i)||i<0)))return 'surface vertexIndices must contain three distinct nonnegative indices';
   return null;
+}
+
+export function sameSurfaceReference(a:SurfaceReference,b:SurfaceReference):boolean {
+  return a.sourceKey===b.sourceKey&&a.topologyKey===b.topologyKey&&a.geometryKey===b.geometryKey&&a.triangleIndex===b.triangleIndex&&
+    JSON.stringify(a.meshPath)===JSON.stringify(b.meshPath)&&JSON.stringify(a.barycentric)===JSON.stringify(b.barycentric)&&JSON.stringify(a.vertexIndices)===JSON.stringify(b.vertexIndices);
 }
 
 export const spatialVector = (v: unknown): v is SpatialVector => Array.isArray(v) && v.length === 3 && v.every(n => typeof n === 'number' && Number.isFinite(n));

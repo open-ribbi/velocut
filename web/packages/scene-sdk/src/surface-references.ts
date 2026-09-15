@@ -1,6 +1,7 @@
 import type * as THREE from 'three';
 import type {Stage} from './stage.ts';
 import type {SurfaceReference} from './anchors.ts';
+import {topologyBytes} from './geometry-fingerprint.ts';
 
 const keys = new WeakMap<THREE.BufferGeometry, string>();
 const pending = new WeakMap<THREE.BufferGeometry, Promise<void>>();
@@ -15,9 +16,7 @@ async function prepare(geometry: THREE.BufferGeometry) {
       const positions = geometry.getAttribute('position');
       if (!positions) return;
       const count = geometry.index?.count ?? positions.count;
-      const data = new ArrayBuffer((5 + (geometry.index?.count ?? 0))*4),view=new DataView(data);
-      [positions.count, geometry.index ? 1 : 0, count, geometry.drawRange.start, Math.min(count,geometry.drawRange.start+geometry.drawRange.count)].forEach((v,i)=>view.setUint32(i*4,v,true));
-      if (geometry.index) for (let i=0;i<geometry.index.count;i++) view.setUint32((5+i)*4,geometry.index.getX(i),true);
+      const data=topologyBytes(positions.count,!!geometry.index,count,geometry.drawRange.start,Math.min(count,geometry.drawRange.start+geometry.drawRange.count),i=>geometry.index!.getX(i));
       const digest = await crypto.subtle.digest('SHA-256',data);
       keys.set(geometry,Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join(''));
     })();
@@ -42,11 +41,21 @@ export function surfaceSourceKey(stage:Stage, objectId:string):string {
 
 export function surfaceReference(stage:Stage,objectId:string,mesh:THREE.Mesh,meshPath:number[],triangleIndex:number,barycentric:[number,number,number]):SurfaceReference|null {
   const topologyKey=keys.get(mesh.geometry);
-  return topologyKey ? {sourceKey:surfaceSourceKey(stage,objectId),topologyKey,meshPath:[...meshPath],triangleIndex,barycentric:[...barycentric]} : null;
+  const geometryKey=stage.surfaceGeometryKeys?.get(objectId);
+  const vertexIndices=[0,1,2].map(i=>mesh.geometry.index?.getX(triangleIndex*3+i)??triangleIndex*3+i) as [number,number,number];
+  return topologyKey ? {sourceKey:surfaceSourceKey(stage,objectId),topologyKey,meshPath:[...meshPath],triangleIndex,barycentric:[...barycentric],vertexIndices,...(geometryKey?{geometryKey}:{})} : null;
+}
+
+export function surfaceReferenceScopeError(stage:Stage,objectId:string,mesh:THREE.Mesh,reference:SurfaceReference):string|null {
+  if(reference.sourceKey!==surfaceSourceKey(stage,objectId))return 'surface source was replaced; rebind this anchor';
+  if(reference.geometryKey!==undefined&&reference.geometryKey!==stage.surfaceGeometryKeys?.get(objectId))return 'surface geometry was replaced or reindexed; rebind this anchor';
+  if(reference.topologyKey!==keys.get(mesh.geometry))return 'surface topology changed; rebind this anchor';
+  return null;
 }
 
 export function surfaceReferenceError(stage:Stage,objectId:string,mesh:THREE.Mesh,reference:SurfaceReference):string|null {
-  if(reference.sourceKey!==surfaceSourceKey(stage,objectId))return 'surface source was replaced; rebind this anchor';
-  if(reference.topologyKey!==keys.get(mesh.geometry))return 'surface topology changed; rebind this anchor';
+  const error=surfaceReferenceScopeError(stage,objectId,mesh,reference);if(error)return error;
+  if(reference.vertexIndices?.some((v,i)=>v!==(mesh.geometry.index?.getX(reference.triangleIndex*3+i)??reference.triangleIndex*3+i)))
+    return `referenced face ${reference.triangleIndex} topology changed; rebind this anchor`;
   return null;
 }

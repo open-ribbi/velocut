@@ -120,7 +120,7 @@ test('surface anchors and driven objects follow vertex deformation; topology cha
   const invalid=applySceneEdits(changed,[{type:'geometry.update',id:'roof',geometry:{vertices:[[-1,0,-1],[0,1,1],[1,0,-1]],faces:[[0,2,1]]}}]).spec;
   const bad=await buildStage(invalid);bad.poseAt(1);
   const old=(queryStageSpatial(bad,[{type:'anchors',objectId:'roof'}]) as any)[0].items[0];
-  assert.equal(old.status,'invalid');assert.equal(old.position,null);assert.match(old.message,/topology/);
+  assert.equal(old.status,'invalid');assert.equal(old.position,null);assert.match(old.message,/geometry|topology/);
   assert.ok(bad.bindingStatuses!.every(s=>s.status==='invalid'));
   assert.throws(()=>distance(bad,'roof','tile'),/invalid anchor/);assert.throws(()=>assertRenderableBindings(bad),/binding/);
   const hit=(queryStageSpatial(bad,[{type:'raycast',origin:[0,5,0],direction:[0,-1,0],objectIds:['roof']}]) as any)[0].hit;

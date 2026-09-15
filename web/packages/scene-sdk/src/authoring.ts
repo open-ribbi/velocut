@@ -7,8 +7,11 @@ import { sceneBudget, type SceneGeometry } from './geometry.ts';
 import type { SceneGeometryResource } from './geometry-resource.ts';
 import type { SceneMaterialDefinition } from './materials.ts';
 import { isCurveBinding, type SceneCurve } from './animation.ts';
-import { anchorIdValid, type SceneAnchor } from './anchors.ts';
+import { anchorIdValid, sameSurfaceReference, validateSurfaceReference, type SurfaceReference, type SceneAnchor } from './anchors.ts';
 import {activeBinding,assertBindingWrite,type SceneBinding} from './bindings.ts';
+import {advanceSurfacePatch,pinLegacyGeometryReferences} from './surface-patches.ts';
+import {nativeGeometryKey,nativeTopologyKey,propGeometryKey} from './geometry-fingerprint.ts';
+import {GEOMETRY_SOURCE} from './geometry-resource.ts';
 
 /** Pure editing requests verified bytes only when an operation actually needs them. */
 export class GeometryDataRequired extends Error {
@@ -26,6 +29,7 @@ export type SceneEdit =
   | {type:'binding.create'|'binding.update';id:string;binding:SceneBinding}
   | {type:'binding.remove';id:string}
   | { type: 'anchor.set'; id: string; anchorId: string; anchor: SceneAnchor }
+  | { type:'anchor.rebind';id:string;anchorId:string;expected:SurfaceReference;surface:SurfaceReference }
   | { type: 'anchor.remove'; id: string; anchorId: string }
   | { type: 'curve.create' | 'curve.update'; id: string; curve: SceneCurve }
   | { type: 'curve.remove'; id: string }
@@ -153,6 +157,11 @@ export function applySceneEdits(input: SceneSpec, edits: SceneEdit[], geometryDa
       if(edit.type==='binding.remove')delete registry[edit.id];
       else {registry[edit.id]=structuredClone(edit.binding);if(edit.binding?.target?.objectId)changed.add(edit.binding.target.objectId);}
       bindingIds.add(edit.id);
+    } else if (edit.type === 'anchor.rebind') {
+      const {object}=find(edit.id),anchor=object.anchors?.[edit.anchorId];
+      if(!anchor||anchor.kind!=='surface')throw new Error('anchor.rebind requires an existing surface anchor');
+      if(validateSurfaceReference(edit.expected)||!sameSurfaceReference(anchor.surface,edit.expected))fail('surface reference changed; query a new repair candidate');
+      anchor.surface=structuredClone(edit.surface);changed.add(edit.id);
     } else if (edit.type === 'anchor.set' || edit.type === 'anchor.remove') {
       const {object} = find(edit.id);
       if (!anchorIdValid(edit.anchorId)) fail('invalid anchor id');
@@ -195,11 +204,13 @@ export function applySceneEdits(input: SceneSpec, edits: SceneEdit[], geometryDa
       if (!g) fail('geometry.patch requires resolved geometry data');
       if (!['vertices','faces','uvs'].includes(edit.attribute) || !Array.isArray(edit.updates) || !edit.updates.length || edit.updates.length > 1024) fail('geometry.patch requires an attribute and 1..1024 updates');
       const data = g![edit.attribute]; if (!data) fail('geometry attribute does not exist');
+      const beforeGeometry=structuredClone(g!);
       const seen = new Set<number>();
       for (const update of edit.updates) {
         if (!Number.isInteger(update?.index) || update.index < 0 || update.index >= data!.length || seen.has(update.index)) fail('geometry patch indices must be unique and in range');
         seen.add(update.index); data![update.index] = structuredClone(update.value) as [number, number, number];
       }
+      advanceSurfacePatch(spec,edit.id,beforeGeometry,g!);
       geometryIds.add(edit.id); for (const p of spec.props ?? []) if (p.geometryId === edit.id) changed.add(p.id!);
     } else if (edit.type === 'geometry.create' || edit.type === 'geometry.update' || edit.type === 'geometry.remove') {
       if (typeof edit.id !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}$/.test(edit.id) || ['__proto__', 'constructor', 'prototype'].includes(edit.id)) fail('invalid geometry id');
@@ -211,7 +222,10 @@ export function applySceneEdits(input: SceneSpec, edits: SceneEdit[], geometryDa
       if (edit.type === 'geometry.remove') {
         if (users.length) fail(`geometry '${edit.id}' is referenced by ${users.length} instances`);
         delete registry[edit.id];
-      } else registry[edit.id] = structuredClone(edit.geometry);
+      } else {
+        if(exists){const key=registry[edit.id]?nativeGeometryKey(registry[edit.id]):GEOMETRY_SOURCE.exec(spec.geometryResources![edit.id].src)![1];pinLegacyGeometryReferences(spec,edit.id,key);}
+        registry[edit.id] = structuredClone(edit.geometry);
+      }
       if (spec.geometryResources) delete spec.geometryResources[edit.id];
       geometryIds.add(edit.id); users.forEach(p => changed.add(p.id!));
     } else if (edit.type === 'makeUnique') {
@@ -262,6 +276,10 @@ export function applySceneEdits(input: SceneSpec, edits: SceneEdit[], geometryDa
         if (!fields[kind].includes(key)) fail(`cannot edit '${key}' on ${kind}`);
       }
       assertBindingWrite(spec,edit.id,[...Object.keys(edit.patch),...(edit.clear??[])]);
+      if(kind==='prop'&&['model','geometryId','vertices','faces','uvs'].some(k=>k in edit.patch||(edit.clear??[]).includes(k))){
+        const p=object as SceneProp,key=propGeometryKey(spec,p);
+        if(key)for(const a of Object.values(p.anchors??{}))if(a.kind==='surface'&&!a.surface.geometryKey)a.surface.geometryKey=key;
+      }
       Object.assign(object, structuredClone(edit.patch));
       for (const k of edit.clear ?? []) delete (object as unknown as Record<string, unknown>)[k];
       changed.add(edit.id);
@@ -360,6 +378,31 @@ export function applySceneEdits(input: SceneSpec, edits: SceneEdit[], geometryDa
     const failure = new Error(error);
     try { Object.assign(failure, { budget: sceneBudget(spec) }); } catch { /* malformed candidate has no trustworthy counts */ }
     throw failure;
+  }
+  const repairEdits=edits.filter(edit=>edit.type==='anchor.rebind');
+  const repairObjects=new Map(repairEdits.length?sceneObjects(spec).map(e=>[e.object.id,e]):[]);
+  const repairGeometry=new Map<object,{geometry:SceneGeometry;key:string;topology:string}>();
+  for(const edit of repairEdits){
+    const entry=repairObjects.get(edit.id)??fail('rebound object was removed by the batch'),anchor=entry.object.anchors?.[edit.anchorId];
+    if(!anchor||anchor.kind!=='surface')throw new Error('rebound surface anchor was removed by the batch');
+    if(entry.kind!=='prop')continue;
+    const p=entry.object as SceneProp,source=p.geometryId?(spec.geometries?.[p.geometryId]??spec.geometryResources?.[p.geometryId]):p;
+    if(!source)continue;
+    let cached=repairGeometry.get(source);
+    if(!cached){
+      const key=propGeometryKey(spec,p);if(!key)continue;
+      let geometry=p.geometryId?spec.geometries?.[p.geometryId]:p as SceneGeometry;
+      if(!geometry&&p.geometryId){
+        const resource=spec.geometryResources![p.geometryId],data=geometryData.get(resource.src);
+        if(!data)throw new GeometryDataRequired(p.geometryId,structuredClone(resource));
+        geometry=data;
+      }
+      if(!geometry||nativeGeometryKey(geometry)!==key)fail('repair geometry does not match its immutable resource');
+      cached={geometry:geometry!,key,topology:nativeTopologyKey(geometry!)};repairGeometry.set(source,cached);
+    }
+    const r=anchor.surface,face=cached.geometry.faces[r.triangleIndex];
+    if(r.geometryKey!==cached.key||r.sourceKey!==(p.geometryId?'native-mesh':'prop/mesh')||r.meshPath.length||r.topologyKey!==cached.topology||!face||!r.vertexIndices||face.some((v,i)=>v!==r.vertexIndices![i]))
+      fail('repair candidate is stale or does not match the final native geometry');
   }
   // Report driven objects affected by a source or source-parent edit.
   const affected=new Set(changed);let progress=true;
