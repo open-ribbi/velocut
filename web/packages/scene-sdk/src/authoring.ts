@@ -8,6 +8,7 @@ import type { SceneGeometryResource } from './geometry-resource.ts';
 import type { SceneMaterialDefinition } from './materials.ts';
 import { isCurveBinding, type SceneCurve } from './animation.ts';
 import { anchorIdValid, type SceneAnchor } from './anchors.ts';
+import {activeBinding,assertBindingWrite,type SceneBinding} from './bindings.ts';
 
 /** Pure editing requests verified bytes only when an operation actually needs them. */
 export class GeometryDataRequired extends Error {
@@ -20,8 +21,10 @@ export class GeometryDataRequired extends Error {
 
 export type SceneObjectKind = 'character' | 'prop' | 'group' | 'light';
 export type SceneObject = SceneCharacter | SceneProp | SceneGroup | SceneLight;
-export interface SceneCopy { prefix: string; rootIds: string[]; idMap: Record<string, string> }
+export interface SceneCopy { prefix: string; rootIds: string[]; idMap: Record<string, string>; bindingIdMap?: Record<string,string> }
 export type SceneEdit =
+  | {type:'binding.create'|'binding.update';id:string;binding:SceneBinding}
+  | {type:'binding.remove';id:string}
   | { type: 'anchor.set'; id: string; anchorId: string; anchor: SceneAnchor }
   | { type: 'anchor.remove'; id: string; anchorId: string }
   | { type: 'curve.create' | 'curve.update'; id: string; curve: SceneCurve }
@@ -81,7 +84,7 @@ const fields: Record<SceneObjectKind, string[]> = {
 };
 const fail = (message: string): never => { throw new Error(message); };
 
-export function applySceneEdits(input: SceneSpec, edits: SceneEdit[], geometryData: ReadonlyMap<string, SceneGeometry> = new Map()): { spec: SceneSpec; changedIds: string[]; createdIds: string[]; geometryIds: string[]; materialIds: string[]; curveIds: string[]; copies: SceneCopy[] } {
+export function applySceneEdits(input: SceneSpec, edits: SceneEdit[], geometryData: ReadonlyMap<string, SceneGeometry> = new Map()): { spec: SceneSpec; changedIds: string[]; createdIds: string[]; geometryIds: string[]; materialIds: string[]; curveIds: string[]; bindingIds: string[]; copies: SceneCopy[] } {
   if (!Array.isArray(edits) || !edits.length || edits.length > 500) fail('edits must contain 1..500 operations');
   const initialError = validateSceneSpec(input);
   if (initialError) fail(initialError);
@@ -90,6 +93,7 @@ export function applySceneEdits(input: SceneSpec, edits: SceneEdit[], geometryDa
   const geometryIds = new Set<string>();
   const materialIds = new Set<string>();
   const curveIds = new Set<string>();
+  const bindingIds = new Set<string>();
   const validResourceId = (id: string) => typeof id === 'string' && /^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}$/.test(id) && !['__proto__','constructor','prototype'].includes(id);
   const hasGeometry = (id: string) => Object.hasOwn(spec.geometries ?? {}, id) || Object.hasOwn(spec.geometryResources ?? {}, id);
   const cloneGeometry = (id: string, newId: string) => {
@@ -140,7 +144,16 @@ export function applySceneEdits(input: SceneSpec, edits: SceneEdit[], geometryDa
   if (expanded.length > 500) fail('expanded batch exceeds 500 operations');
   for (const edit of expanded) {
     if (!edit || typeof edit !== 'object') fail('invalid scene edit');
-    if (edit.type === 'anchor.set' || edit.type === 'anchor.remove') {
+    if (edit.type === 'binding.create' || edit.type === 'binding.update' || edit.type === 'binding.remove') {
+      if(!validResourceId(edit.id))fail('invalid binding id');
+      const registry=spec.bindings??={},old=Object.hasOwn(registry,edit.id)?registry[edit.id]:undefined;
+      if(edit.type==='binding.create'&&old)fail('binding already exists');
+      if(edit.type!=='binding.create'&&!old)fail('unknown binding');
+      if(old?.target?.objectId)changed.add(old.target.objectId);
+      if(edit.type==='binding.remove')delete registry[edit.id];
+      else {registry[edit.id]=structuredClone(edit.binding);if(edit.binding?.target?.objectId)changed.add(edit.binding.target.objectId);}
+      bindingIds.add(edit.id);
+    } else if (edit.type === 'anchor.set' || edit.type === 'anchor.remove') {
       const {object} = find(edit.id);
       if (!anchorIdValid(edit.anchorId)) fail('invalid anchor id');
       if (edit.type === 'anchor.set') (object.anchors ??= {})[edit.anchorId] = structuredClone(edit.anchor);
@@ -223,7 +236,12 @@ export function applySceneEdits(input: SceneSpec, edits: SceneEdit[], geometryDa
         // A removed generated part stays removed while it remains in the recipe.
         if (!old && previous.has(p.id)) return [];
         if (old && old.kind !== 'prop') fail(`assembly part '${p.id}' is no longer a prop`);
-        return [old ? mergeAssemblyPart(previous.get(p.id)!, old.object as SceneProp, p) : p];
+        const merged=old ? mergeAssemblyPart(previous.get(p.id)!, old.object as SceneProp, p) : p;
+        if(old){
+          if(activeBinding(spec,p.id!,'position'))merged.position=structuredClone(old.object.position);
+          if(activeBinding(spec,p.id!,'orientation'))for(const key of ['rotationX','rotationY','rotationZ'] as const)merged[key]=structuredClone(old.object[key]);
+        }
+        return [merged];
       });
       spec.props = (spec.props ?? []).filter((p) => !oldIds.has(p.id));
       spec.props.push(...parts);
@@ -243,6 +261,7 @@ export function applySceneEdits(input: SceneSpec, edits: SceneEdit[], geometryDa
       for (const key of [...Object.keys(edit.patch), ...(edit.clear ?? [])]) {
         if (!fields[kind].includes(key)) fail(`cannot edit '${key}' on ${kind}`);
       }
+      assertBindingWrite(spec,edit.id,[...Object.keys(edit.patch),...(edit.clear??[])]);
       Object.assign(object, structuredClone(edit.patch));
       for (const k of edit.clear ?? []) delete (object as unknown as Record<string, unknown>)[k];
       changed.add(edit.id);
@@ -256,6 +275,7 @@ export function applySceneEdits(input: SceneSpec, edits: SceneEdit[], geometryDa
       }
       const transforms = edit.type === 'layout' ? layoutTransforms(edit.layout, entries.length) : entries.map(() => edit.transform);
       entries.forEach(({ kind, object }, i) => {
+        assertBindingWrite(spec,object.id!,[...(transforms[i].position?['position']:[]),...(transforms[i].rotation?['rotationX']:[])]);
         transformObject(object, kind, transforms[i], edit.type === 'transform' && (edit.relative ?? false), timeS, spec);
         changed.add(object.id!);
       });
@@ -268,11 +288,16 @@ export function applySceneEdits(input: SceneSpec, edits: SceneEdit[], geometryDa
       const ids = new Set(roots.flatMap(id => [...descendants(id)]));
       // Snapshot once: later copies must never recursively copy earlier copies.
       const entries = sceneObjects(spec).filter(e => ids.has(e.object.id!));
+      const linked=Object.entries(spec.bindings??{}).filter(([,b])=>ids.has(b.target.objectId));
       if (entries.length * requests.length > 500) fail('duplication exceeds 500 generated objects');
       for (const request of requests) {
         if (!request || typeof request.prefix !== 'string' || !request.prefix.trim()) fail('duplicate requires a nonempty prefix/newId');
         if (Object.keys(request).some(k => !['prefix', 'transform', 'relative'].includes(k))) fail('unknown copy request field');
         if ('relative' in request && request.relative != null && typeof request.relative !== 'boolean') fail('relative must be boolean');
+        for(const root of roots){
+          const transform='transform' in request?request.transform:undefined;
+          assertBindingWrite(spec,root,[...(edit.type==='duplicate'&&edit.offset||transform?.position?['position']:[]),...(transform?.rotation?['rotationX']:[])]);
+        }
         const mapped = new Map<string, string>();
         const used = new Set(sceneObjects(spec).map(e => e.object.id));
         for (const { object } of entries) {
@@ -295,14 +320,23 @@ export function applySceneEdits(input: SceneSpec, edits: SceneEdit[], geometryDa
           }
           append(kind, o); changed.add(o.id);
         }
-        copies.push({ prefix: request.prefix, rootIds: roots.map(id => mapped.get(id)!), idMap: Object.fromEntries(mapped) });
+        const bindingIdMap:Record<string,string>={};
+        for(const [id,b] of linked){
+          let newId=`${request.prefix}/${id}`;
+          if(!validResourceId(newId)||Object.hasOwn(spec.bindings??{},newId)){let n=1;while(Object.hasOwn(spec.bindings??{},`binding_${n}`))n++;newId=`binding_${n}`;}
+          const clone=structuredClone(b);clone.target.objectId=mapped.get(b.target.objectId)!;clone.source.objectId=mapped.get(b.source.objectId)??b.source.objectId;
+          (spec.bindings??={})[newId]=clone;bindingIds.add(newId);bindingIdMap[id]=newId;
+        }
+        copies.push({ prefix: request.prefix, rootIds: roots.map(id => mapped.get(id)!), idMap: Object.fromEntries(mapped),...(linked.length?{bindingIdMap}:{}) });
       }
     } else if (edit.type === 'remove') {
       find(edit.id);
       const ids = descendants(edit.id);
-      const referenced = (spec.characters ?? []).some((c) => typeof c.gaze === 'object' && ids.has(c.gaze.character)) ||
+      const linked=Object.entries(spec.bindings??{}).filter(([,b])=>ids.has(b.source.objectId)||ids.has(b.target.objectId));
+      const referenced = linked.length>0 || (spec.characters ?? []).some((c) => typeof c.gaze === 'object' && ids.has(c.gaze.character)) ||
         [spec.camera, ...(spec.shots ?? []).map((s) => s.camera)].some((c) => c?.lookAt && 'character' in c.lookAt && ids.has(c.lookAt.character));
       if (!edit.cascade && (ids.size > 1 || referenced)) fail('object has children or references; use cascade:true to remove and clear them');
+      for(const [id,b] of linked){delete spec.bindings![id];bindingIds.add(id);if(!ids.has(b.target.objectId))changed.add(b.target.objectId);}
       spec.characters = spec.characters?.filter((c) => !ids.has(c.id));
       spec.props = spec.props?.filter((p) => !ids.has(p.id!));
       spec.groups = spec.groups?.filter((g) => !ids.has(g.id));
@@ -327,5 +361,9 @@ export function applySceneEdits(input: SceneSpec, edits: SceneEdit[], geometryDa
     try { Object.assign(failure, { budget: sceneBudget(spec) }); } catch { /* malformed candidate has no trustworthy counts */ }
     throw failure;
   }
-  return { spec, changedIds: [...changed], createdIds: sceneObjects(spec).map(e => e.object.id!).filter(id => !initialIds.has(id)), geometryIds: [...geometryIds], materialIds: [...materialIds], curveIds: [...curveIds], copies };
+  // Report driven objects affected by a source or source-parent edit.
+  const affected=new Set(changed);let progress=true;
+  while(progress){progress=false;for(const {object:o} of sceneObjects(spec)){const parent=o.parentId??('attachTo' in o?o.attachTo?.character:undefined);if(parent&&affected.has(parent)&&!affected.has(o.id!)){affected.add(o.id!);progress=true;}}
+    for(const b of Object.values(spec.bindings??{}))if(b.enabled!==false&&affected.has(b.source.objectId)&&!affected.has(b.target.objectId)){affected.add(b.target.objectId);changed.add(b.target.objectId);progress=true;}}
+  return { spec, changedIds: [...changed], createdIds: sceneObjects(spec).map(e => e.object.id!).filter(id => !initialIds.has(id)), geometryIds: [...geometryIds], materialIds: [...materialIds], curveIds: [...curveIds], bindingIds: [...bindingIds], copies };
 }

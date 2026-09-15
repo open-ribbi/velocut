@@ -6,6 +6,8 @@ import { objectIsVisible, objectOpacity, visibleBounds } from './visual.ts';
 export function inspectStage(stage: Stage) {
   const { three } = stage;
   stage.scene.updateMatrixWorld(true);
+  const bindings=new Map<string,import('./bindings.ts').BindingStatus[]>();
+  for(const status of stage.bindingStatuses??[]){const list=bindings.get(status.targetId)??[];list.push(structuredClone(status));bindings.set(status.targetId,list);}
   return [
     ...stage.groups.map((e) => ({ ...e, kind: 'group' as const })),
     ...stage.characters.map((e) => ({ ...e, kind: 'character' as const })),
@@ -17,6 +19,8 @@ export function inspectStage(stage: Stage) {
       light: stage.lights.find((l) => l.spec.id === spec.id) ? { type: (spec as import('./types.ts').SceneLight).type, intensity: stage.lights.find((l) => l.spec.id === spec.id)!.light.intensity } : undefined,
       id: spec.id!, name: spec.name, kind, parentId: spec.parentId ?? ('attachTo' in spec ? spec.attachTo?.character : undefined),
       visible: objectIsVisible(root), opacity: objectOpacity(root),
+      ...(bindings.has(spec.id!)?{bindings:bindings.get(spec.id!)}:{}),
+      bindingValid:!stage.invalidBindingObjects?.has(spec.id!),
       parentMatrix: root.parent?.matrixWorld.toArray() ?? new three.Matrix4().toArray(),
       positionScale: stage.props.find((p) => p.root === root)?.attachComp ?? 1,
       position: root.getWorldPosition(new three.Vector3()).toArray(),

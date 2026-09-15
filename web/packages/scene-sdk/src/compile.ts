@@ -14,6 +14,7 @@ import type * as THREE from 'three';
 import { buildStage, sampleVec3, DEFAULT_ASSET_BASE, type Stage } from './stage.ts';
 import { constructionCamera, inspectStage, SCENE_VIEWS, type SceneViewCamera, type SceneView } from './inspection.ts';
 import { expandShots } from './shots.ts';
+import {assertRenderableBindings} from './binding-evaluator.ts';
 import type { SceneResources } from './models.ts';
 import type { SceneSpec, Vec3A } from './types.ts';
 
@@ -123,6 +124,7 @@ export function compileSceneSpec(
     const clamped = Math.max(0, Math.min(frameCount - 1, index));
     const t = (clamped * frameDurUs) / 1e6;
     stage.poseAt(t, { cameraPos: specCameraPosition(spec, t) });
+    assertRenderableBindings(stage);
     applySpecCamera(camera, spec, stage, t);
     renderer.render(stage.scene, camera);
     return new VideoFrame(canvas, { timestamp: clamped * frameDurUs, duration: frameDurUs });
@@ -142,6 +144,7 @@ export function compileSceneSpec(
   async function capture(opts: { timeS?: number; view?: SceneView; objectId?: string; camera?: SceneViewCamera }): Promise<Blob> {
     const t = opts.timeS ?? 0;
     pose(t);
+    assertRenderableBindings(stage!);
     if (!renderer || !stage || !canvas || !camera) throw new Error('Scene not loaded');
     const view = opts.view ?? 'perspective';
     if (!SCENE_VIEWS.includes(view)) throw new Error('unknown scene view');

@@ -23,6 +23,9 @@ import { resolveSceneGeometry } from './geometry-resource.ts';
 import { sceneStructureKey } from './incremental.ts';
 import { resolvePropAppearance } from './materials.ts';
 import { sampleObjectTransform } from './animation.ts';
+import {prepareSurfaceReferences} from './surface-references.ts';
+import {createBindingEvaluator} from './binding-evaluator.ts';
+import type {BindingStatus} from './bindings.ts';
 import { setVisualState, prepareVisualMeshes, objectOpacity } from './visual.ts';
 import type { SceneAssetManifest, SceneSpec, Vec3A, SceneTransform, SceneGroup, SceneLight } from './types.ts';
 
@@ -110,6 +113,9 @@ export interface Stage {
   groups: Array<{ root: THREE.Group; spec: SceneGroup }>;
   lights: Array<{ root: THREE.Group; spec: SceneLight; light: THREE.Light }>;
   instanceBatches: InstanceBatch[];
+  surfaceSources?: Map<string,string>;
+  bindingStatuses?: BindingStatus[];
+  invalidBindingObjects?: Set<string>;
   syncInstances(): void;
   canUpdateTransforms(spec: SceneSpec): boolean;
   updateTransforms(spec: SceneSpec): boolean;
@@ -126,6 +132,7 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
   if (error) throw new Error(error);
   spec = normalizeSceneSpec(spec);
   const structureKey = sceneStructureKey(spec);
+  const surfaceSources=new Map([...spec.props??[],...spec.characters??[]].map(o=>[o.id!,spec.models?.[o.model]?.src??('geometryId' in o&&o.geometryId?'native-mesh':o.model)]));
   for (const id of Object.keys(spec.geometryResources ?? {})) (spec.geometries ??= {})[id] = await resolveSceneGeometry(spec, id, resources);
   delete spec.geometryResources;
   const three = await import('three');
@@ -490,6 +497,7 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
   }
   for(const e of [...groups,...characters,...props,...lights])setVisualState(e.root,true,1);
   const updateVisualMeshes=prepareVisualMeshes(scene,new Set(instances.batches.flatMap(b=>[b.mesh,...b.objects.map(o=>o.root)])));
+  let bindingEvaluator: ReturnType<typeof createBindingEvaluator> | undefined;
   function poseObject(root:THREE.Object3D,object:SceneTransform,t:number,defaultY=0){
     const value=sampleObjectTransform(object,t,spec,defaultY);
     root.position.set(...value.position);
@@ -634,6 +642,7 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
         continue;
       }
     }
+    bindingEvaluator?.evaluate(t);
     updateVisualMeshes();
     syncInstanceBatches(scene, instances.batches);
   }
@@ -668,6 +677,12 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
     lights.forEach((l,i) => { l.spec = normalized.lights![i]; });
     return true;
   }
-  return { three, scene, characters, props, groups, lights, instanceBatches: instances.batches, canUpdateTransforms, updateTransforms,
+  const stage:Stage = { three, scene, characters, props, groups, lights, surfaceSources, instanceBatches: instances.batches, canUpdateTransforms, updateTransforms,
     syncInstances: () => syncInstanceBatches(scene, instances.batches), poseAt, characterPosition };
+  await prepareSurfaceReferences(stage);
+  if(Object.keys(spec.bindings??{}).length){
+    bindingEvaluator=createBindingEvaluator(stage,spec);
+    stage.bindingStatuses=bindingEvaluator.statuses;stage.invalidBindingObjects=bindingEvaluator.invalidObjects;
+  }
+  return stage;
 }

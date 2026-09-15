@@ -57,9 +57,12 @@ export { sceneBudget, SCENE_LIMITS, validateGeometry, type SceneGeometry } from 
 export { type InstanceBatch } from './instances.ts';
 export { ANIMATION_CHANNELS, sampleChannel, sampleObjectTransform, channelBase, isCurveBinding, type SceneCurve, type SceneAnimation, type CurveBinding, type ChannelValue, type AnimationChannel, type AnimatedVisibility } from './animation.ts';
 export { objectIsVisible, objectOpacity, visibleBounds } from './visual.ts';
-export { type SceneAnchor, type SpatialVector, validateAnchor } from './anchors.ts';
+export { type SceneAnchor, type LocalAnchor, type SurfaceAnchor, type SurfaceReference, type SpatialVector, validateAnchor } from './anchors.ts';
 export { queryStageSpatial, validateSpatialQueries, SCENE_SPATIAL_SCHEMA, type SceneSpatialQuery, type SpatialPoint } from './spatial.ts';
 export { GeometryDataRequired } from './authoring.ts';
 export { resolvePropAppearance, validateMaterial, type SceneMaterialDefinition } from './materials.ts';
 export { sceneStructureKey } from './incremental.ts';
 export { encodeGeometry, decodeGeometry, geometryHash, resolveSceneGeometry, GEOMETRY_SOURCE, type SceneGeometryResource } from './geometry-resource.ts';
+
+export {prepareSurfaceReferences} from './surface-references.ts';
+export {activeBinding,type SceneBinding,type AnchorRef,type BindingStatus} from './bindings.ts';

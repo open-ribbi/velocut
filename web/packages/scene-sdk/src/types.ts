@@ -13,6 +13,7 @@ import { validateGeometryResource, type SceneGeometryResource } from './geometry
 import { validateMaterial, type SceneMaterialDefinition } from './materials.ts';
 import { validateCurve, validateObjectAnimation, type SceneCurve, type SceneAnimation, type AnimatedVisibility } from './animation.ts';
 import { validateAnchors, type SceneAnchor } from './anchors.ts';
+import { validateBindings, type SceneBinding } from './bindings.ts';
 
 /** Per-axis animatable 3D value (world units = meters, Y up). */
 export interface Vec3A {
@@ -217,6 +218,7 @@ export interface SceneSpec {
   geometryResources?: Record<string, SceneGeometryResource>;
   materials?: Record<string, SceneMaterialDefinition>;
   curves?: Record<string, SceneCurve>;
+  bindings?: Record<string, SceneBinding>;
   durationUs: number;
   width?: number;
   height?: number;
@@ -665,6 +667,7 @@ export function validateSceneSpec(spec: unknown): string | null {
   for (const cam of [s.camera, ...(s.shots ?? []).map((shot) => shot.camera)]) {
     if (cam?.lookAt && 'character' in cam.lookAt && !characterIds.has(cam.lookAt.character)) return `unknown camera character '${cam.lookAt.character}'`;
   }
+  const bindingError = validateBindings(s); if (bindingError) return bindingError;
   const budget = sceneBudget(s);
   if (!budget.withinLimits) {
     const v = budget.violations[0];

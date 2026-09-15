@@ -7,6 +7,7 @@ import { validateGlb, type SceneResources } from './models.ts';
 import type { SceneSpec } from './types.ts';
 import { resolvePropAppearance } from './materials.ts';
 import { objectIsVisible } from './visual.ts';
+import {assertRenderableBindings} from './binding-evaluator.ts';
 
 export interface SceneGlbOptions {
   timeS?: number;
@@ -208,6 +209,7 @@ export async function exportSceneGlb(
   }
   const nodes: THREE.Object3D[] = [];
   stage.scene.traverse((o) => nodes.push(o));
+  assertRenderableBindings(stage,new Set(nodes));
   let meshCount = 0, vertexCount = 0;
   for (const o of nodes) {
     if (o.type === 'GridHelper') {

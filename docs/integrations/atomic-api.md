@@ -38,7 +38,7 @@ const page = await velocut.query({
 });
 ```
 
-Kinds: `document`, `snapshot`, `assets`, `tracks`, `clips`, `sceneObjects`, `sceneGeometries`, `sceneMaterials`, `sceneCurves`, `sceneBudget`,
+Kinds: `document`, `snapshot`, `assets`, `tracks`, `clips`, `sceneObjects`, `sceneGeometries`, `sceneMaterials`, `sceneCurves`, `sceneBindings`, `sceneBudget`,
 `selection`. Entity results have `data:{items,total,nextOffset}`; continue until
 nextOffset is null. Use the same snapshotId for every page. Live pages without a
 snapshot can change between calls. Expired IDs fail instead of reading live data.
@@ -673,7 +673,8 @@ Evaluation and rendering details:
 
 These are small data operations that an Agent can compose with existing
 `transform`, `layout`, geometry and animation edits. They do not create a
-building, solve contact, or maintain an automatic dependency graph.
+building or solve contact. Persistent surface attachments and one-way bindings
+are authored separately as described below.
 
 Every object/group may define local anchors:
 
@@ -760,6 +761,142 @@ inside the object. Resample and update the anchor when the geometry changes.
 changes. The result's revision identifies the captured document even if a
 concurrent edit happens while geometry is loading.
 
+### Live surface anchors and persistent bindings
+
+For a fixed local point, store `hit.local` as before. To follow a mesh, store
+`hit.surfaceAnchor` instead:
+
+```js
+const sampled = await velocut.sceneSpatial({assetId,timeS:3,queries:[
+  {type:'raycast',origin:[0,10,0],direction:[0,-1,0],objectIds:['roof']},
+]});
+if (!sampled.ok) throw Error(sampled.message);
+const hit = sampled.results[0].hit;
+if (!hit?.surfaceAnchor) throw Error('No attachable surface');
+const result = await velocut.sceneEdit({assetId,expectedRevision:sampled.revision,
+  includeSpec:false,edits:[
+    {type:'anchor.set',id:'roof',anchorId:'seat',
+     anchor:{...hit.surfaceAnchor,tangent:[0,0,1]}},
+    {type:'anchor.set',id:'tile',anchorId:'bottom',
+     anchor:{position:[0,0,0],normal:[0,1,0],tangent:[0,0,1]}},
+    {type:'binding.create',id:'tile_position',binding:{
+      type:'position',source:{objectId:'roof',anchorId:'seat'},
+      target:{objectId:'tile',anchorId:'bottom'},
+      offset:[0,0,.002],offsetSpace:'source',motion:{referenceTimeS:3},
+    }},
+    {type:'binding.create',id:'tile_orientation',binding:{
+      type:'orientation',source:{objectId:'roof',anchorId:'seat'},
+      target:{objectId:'tile',anchorId:'bottom'},twist:0,
+    }},
+  ]});
+if (!result.ok) throw Error(result.message);
+return result;
+```
+
+The example assumes `roof` and `tile` already exist. Use the sampled
+`hit.objectId` when the mesh owner differs from the requested group. Source-space
+offset axes are **tangent, bitangent, normal**, measured in meters; `.002` on Z
+places the target anchor 2 mm along the surface normal. Optional surface-anchor
+`tangent` is a heading in the owner's local coordinates, projected onto the
+current surface. It keeps rows consistently oriented instead of following
+different triangle edges. If omitted, the triangle's edge supplies the tangent.
+
+A live anchor has this shape:
+
+```ts
+{kind:'surface', name?, tangent?, surface:{
+  sourceKey, topologyKey, meshPath, triangleIndex, barycentric
+}}
+```
+
+Use keys returned by the query. They identify the model source and triangle
+connectivity, without pinning vertex positions. A SHA-256 connectivity digest
+is prepared once per shared stage geometry, outside the animation loop. Native
+meshes with unchanged connectivity follow vertex edits; native `makeUnique`
+can retain attachments when the connectivity matches. Skin/morph and node
+animation are sampled too. Changing connectivity, draw range or an imported
+model source invalidates the attachment. A topology-preserving replacement is
+treated as deformation; this is not semantic matching of architectural parts.
+Surface references cannot cross another authored object's root: attach to the
+logical mesh owner returned by raycast.
+
+`sceneSpatial` anchor results identify `kind` and `status`. An invalid surface
+or failed binding dependency returns `status:'invalid'`, `position:null` and a
+message. Distance/angle queries reject invalid anchor inputs, so two obsolete
+anchors cannot silently report a successful zero gap. A collapsed but
+topologically valid surface can still supply a point with `frameValid:false`;
+its orientation is unavailable. Repair an attachment with a fresh
+`hit.surfaceAnchor` and `anchor.set`; dependents recover on the next evaluation.
+Local anchors retain their original fixed-point semantics.
+
+Bindings live in `spec.bindings` and use the existing atomic edit API:
+
+```js
+{type:'binding.create',id,binding}  // must not already exist
+{type:'binding.update',id,binding} // replace the whole definition
+{type:'binding.remove',id}
+```
+
+Every definition has `type`, `source:{objectId,anchorId}`,
+`target:{objectId,anchorId}`, optional `name`, `enabled` and
+`motion:{referenceTimeS}`. Position bindings optionally add `offset:[x,y,z]`
+and `offsetSpace:'world'|'source'` (default world). Orientation bindings align
+the anchor frames and optionally add `twist` degrees around the source normal.
+Targets use local anchors on non-physics props, lights or groups without
+characters. Character surfaces may be sources. Character targets and groups
+containing characters are excluded from this rigid pass, which runs after
+skeletal animation and gaze. No binding-count ceiling is configured.
+
+There is one active writer per position/orientation channel per target. Cycles,
+including cycles through parenting, and missing references are rejected before
+commit. Orientation solves before position, making the target anchor the pivot.
+Nonuniform parent transforms and target scales are accounted for. Every pose
+starts from authored data and evaluates the dependency graph once; seeking
+backward does not accumulate previous results or rewrite document transforms.
+
+Authored animation on a controlled channel requires explicit
+`motion.referenceTimeS`, within the scene duration:
+
+- Position adds `authoredPosition(t) - authoredPosition(referenceTimeS)` in the
+  target parent's coordinates to the solved position.
+- Orientation postmultiplies the solved rotation by
+  `inverse(authoredRotation(referenceTimeS)) * authoredRotation(t)`.
+- Scale, visibility and opacity keep their existing authored behavior.
+
+Thus a falling-tile curve remains a reusable displacement from its new seat.
+Source changes do not overwrite the curve or its delay. `sceneEdit` direct
+position/rotation updates, transforms and layouts reject writes to active
+controlled fields. Use binding offset/twist, edit motion channels/curves, or
+disable/remove the binding first. Disabling restores the current authored pose;
+it does not bake the last derived pose into the document. The Director displays
+controlled fields as bindings and provides an editable **Bindings** panel.
+
+Query `sceneBindings` for paginated definitions (default
+`id/name/type/source/target/enabled`; opt into `binding` for all fields).
+`sceneSpatial` query `{type:'bindings',ids?}` returns evaluated
+`valid/disabled/invalid/suspended` states at `timeS`. `sceneInspect` includes
+target binding states and `bindingValid`. Edit receipts include `bindingIds`
+and affected driven objects in `changedIds`.
+
+Failures restore that object's deterministic authored pose in the Director,
+invalidate downstream dependencies and show diagnostics. Zero-scale orientation
+frames suspend the binding until the frame is usable again. Shot rendering,
+capture and GLB export reject visible failed bindings in their export scope;
+hidden collapsed objects can be omitted. The Director remains available for
+repair and highlights invalid dependencies. No last-good matrix is reused.
+
+Copies clone bindings targeting the copied subtree and remap internal sources;
+external sources remain explicit links. `copies.bindingIdMap` gives the new
+binding IDs. Copying a controlled root with a position/rotation transform is
+rejected; copy first, then edit or detach its cloned binding. Cascading object
+removal clears bindings referencing removed objects. Removing a referenced
+anchor requires removing its bindings too.
+
+These relationships maintain points and frames. They do not certify solid
+contact, penetration depth, tenon fit, wall thickness or tile overlap, and they
+do not implement a general nonlinear constraint solver or arbitrary parameter
+expression graph.
+
 ### Assembly regeneration and development consistency
 
 Updating an `assembly` now merges the old recipe, current edited parts and new
@@ -771,8 +908,9 @@ Custom children remain, and manually deleted generated parts stay deleted while
 they occur in the old recipe. Parts removed by a new recipe are removed.
 
 This is a value-based merge, not persistent override provenance: if an edited
-value equals the old generated default, it follows the recipe again. General
-parameter bindings and explicit ownership of fields remain separate work.
+value equals the old generated default, it follows the recipe again. General parameter expressions and explicit override provenance remain separate
+work. Active pose bindings keep their controlled base fields unchanged during
+recipe regeneration; scale and other unbound recipe fields still update.
 
 The repository editor now resolves the scene SDK package root directly to its
 source entry, alongside the other live workspace SDKs. Its UI and runtime no

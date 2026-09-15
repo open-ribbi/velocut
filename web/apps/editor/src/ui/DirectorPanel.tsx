@@ -1,5 +1,6 @@
 import { PreviewRateSelect } from './PreviewRateSelect';
 import { SceneExportDialog } from './SceneExportDialog';
+import {SceneBindingFields} from './SceneBindingFields';
 import { SceneAnimationFields } from './SceneAnimationFields';
 import { Icon, type IconName } from './primitives/Icon';
 // DirectorPanel — the stage view: orbit the compiled 3D scene, select any
@@ -32,7 +33,7 @@ import {
   sceneStructureKey,
   resolveSceneGeometry,
   resolvePropAppearance,
-  objectIsVisible,
+  objectIsVisible, activeBinding, queryStageSpatial, type BindingStatus,
   transformObject,
   type AnimationChannel,
   type SceneGeometry,
@@ -109,6 +110,8 @@ export function DirectorPanel({
   onInspect?: () => void;
 }) {
   const [objectSearch, setObjectSearch] = useState('');
+  const [spatialStatus,setSpatialStatus]=useState<{selectedId:string|null;anchors:Array<{id:string;kind:string;status:string;message?:string}>;bindings:BindingStatus[];invalidCount:number}>({selectedId:null,anchors:[],bindings:[],invalidCount:0});
+  const showInspectorRef=useRef(showInspector);showInspectorRef.current=showInspector;
   const [guides, setGuides] = useState(false);
   const guidesRef = useRef(guides);
   guidesRef.current = guides;
@@ -404,6 +407,8 @@ export function DirectorPanel({
           (e) => e.spec.id === s.id,
         );
         if (!entry) return null;
+        const current=currentSpecRef.current;
+        if(current&&modeRef.current!=='scale'&&activeBinding(current,s.id,modeRef.current==='translate'?'position':'orientation'))return null;
         if (!objectIsVisible(entry.root)) return null;
         if (s.kind === 'prop' && (entry as (typeof stage.props)[number]).attachComp != null)
           return null;
@@ -584,6 +589,7 @@ export function DirectorPanel({
 
       let viewRevision = appliedViewRevisionRef.current;
       let lastTime = performance.now();
+      let diagnosticAt=0,diagnosticSignature='';
       const loop = () => {
         if (disposed || !stage || !renderer) return;
         const currentSession = controller.getSnapshot();
@@ -606,6 +612,19 @@ export function DirectorPanel({
         stage.poseAt(tRef.current, {
           cameraPos: specCameraPosition(parsed, tRef.current),
         });
+        if(now>=diagnosticAt){
+          diagnosticAt=now+200;
+          const selectedId=selRef.current?.id??null;
+          let anchors:Array<{id:string;kind:string;status:string;message?:string}>=[];
+          if(selectedId&&showInspectorRef.current){
+            try {const result=queryStageSpatial(stage,[{type:'anchors',objectId:selectedId}])[0];if(result.type==='anchors')anchors=result.items.map(a=>({id:a.anchorId,kind:a.kind,status:a.status,message:a.message}));}catch{/* Selection may have just been deleted. */}
+          }
+          const states=stage.bindingStatuses??[];
+          const value={selectedId,anchors,bindings:states.filter(s=>s.targetId===selectedId).map(s=>({...s})),invalidCount:states.filter(s=>s.status==='invalid').length};
+          const signature=JSON.stringify(value);
+          if(signature!==diagnosticSignature){diagnosticSignature=signature;setSpatialStatus(value);}
+        }
+
         if (currentSession.viewRevision !== viewRevision) {
           viewRevision = currentSession.viewRevision;
           appliedViewRevisionRef.current = viewRevision;
@@ -924,6 +943,7 @@ export function DirectorPanel({
         </details>
       </div>
       {error && <div className="scene-error">{error}</div>}
+      {spatialStatus.invalidCount>0&&<div className="scene-error" role="status">{spatialStatus.invalidCount} invalid bindings. Inspect Anchors / Bindings before export.</div>}
       <div className="director-body">
         <div className="director-viewport">
           <canvas ref={canvasRef} className="director-canvas" />
@@ -1264,15 +1284,15 @@ export function DirectorPanel({
                       ))}
                   </select>
                 </div>
-                <Vec3Row
+                {spec&&activeBinding(spec,sel.id,'position') ? <div className="prop-row"><span className="prop-label">Position</span><span className="kf-chip">↪ {activeBinding(spec,sel.id,'position')![0]}</span></div> : <Vec3Row
                   label="Position"
                   value={{...selObj.position,...Object.fromEntries(['x','y','z'].filter(axis=>selObj.animation?.channels?.[`position.${axis}` as AnimationChannel]!==undefined).map(axis=>[axis,selObj.animation!.channels![`position.${axis}` as AnimationChannel]]))}}
                   onAxis={(axis, v) => mutateSel((o) => { const key=`position.${axis}` as AnimationChannel; if(o.animation?.channels?.[key]!==undefined)o.animation.channels[key]=v;else (o.position ??= {})[axis]=v; })}
-                />
+                />}
                 {(['rotationX', 'rotationY', 'rotationZ'] as const).map((axis) => (
                   <div className="prop-row" key={axis}>
                     <span className="prop-label">Rotate {axis.slice(-1)}</span>
-                    <AnimatableField
+                    {spec&&activeBinding(spec,sel.id,'orientation') ? <span className="kf-chip">↪ {activeBinding(spec,sel.id,'orientation')![0]}</span> : <AnimatableField
                       value={selObj.animation?.channels?.[axis] ?? selObj[axis]}
                       fallback={0}
                       step={15}
@@ -1281,7 +1301,7 @@ export function DirectorPanel({
                           if(o.animation?.channels?.[axis]!==undefined)o.animation.channels[axis]=v;else o[axis] = v;
                         })
                       }
-                    />
+                    />}
                   </div>
                 ))}
                 {(['x','y','z'] as const).map(axis=><div className="prop-row" key={axis}>
@@ -1292,13 +1312,15 @@ export function DirectorPanel({
                 {spec && <SceneAnimationFields object={selObj} spec={spec} kind={sel.kind} timeS={t} onChange={animation=>mutateSel(o=>{o.animation=animation;})} onEdit={runEdits}/>}
                 <details className="scene-actions">
                   <summary>Anchors</summary>
+                  {spatialStatus.selectedId===sel.id&&spatialStatus.anchors.map(a=><p key={a.id} className={a.status==='invalid'?'scene-error':'empty-hint'}>{a.id} · {a.kind} · {a.status}{a.message?`: ${a.message}`:''}</p>)}
                   <JsonField label="Object-local anchors" value={selObj.anchors??{}} onChange={value=>mutateSel(o=>{o.anchors=value as typeof o.anchors;})}/>
                   <button className="fx-add" onClick={()=>mutateSel(o=>{
                     let n=1;while(Object.hasOwn(o.anchors??{},`anchor_${n}`))n++;
                     (o.anchors??={})[`anchor_${n}`]={position:[0,0,0]};
                   })}>Add anchor</button>
-                  <div className="empty-hint">Position, normal and tangent are object-local, before animated transforms. Spatial queries return their world values.</div>
+                  <div className="empty-hint">Local anchors follow object transforms. Surface anchors follow mesh deformation; topology changes require rebinding.</div>
                 </details>
+                {spec&&<SceneBindingFields spec={spec} objectId={sel.id} statuses={spatialStatus.selectedId===sel.id?spatialStatus.bindings:[]} onEdit={runEdits}/>}
                 {!selLight && (
                   <button
                     className="fx-add"

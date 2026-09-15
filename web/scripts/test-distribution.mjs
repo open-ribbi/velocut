@@ -98,6 +98,8 @@ try {
     assert.equal(api.capabilities().data.sceneLimits.curves,null);
     assert.deepEqual(made.spec.props[1].anchors.seat.position,[0,0,0]);
     assert.ok(api.capabilities({name:'sceneSpatial'}).data.inputSchema.properties.queries);
+    const linked=applySceneEdits(made.spec,[{type:'binding.create',id:'follow',binding:{type:'position',source:{objectId:'a',anchorId:'seat'},target:{objectId:'b',anchorId:'seat'}}}]);
+    assert.deepEqual(linked.bindingIds,['follow']);assert.equal(sceneBudget(linked.spec).limits.bindings,null);
     const packed=store.getHistory().serializeCompact();const restored=HistoryTree.deserialize(JSON.parse(JSON.stringify(packed)));
     assert.equal(restored.all().length,store.getHistory().all().length);assert.equal(packed.historyEncoding,'spec-table-v1');
     console.log('shared geometry sdk ok');
@@ -238,6 +240,11 @@ try {
   const moved = await call('velocut_scene_edit',{sessionId,assetId:created.assetId,includeSpec:false,expectedRevision:vertex.revision,
     edits:[{type:'transform',ids:['tile'],transform:{position:{x:3}}}]});
   assert.ok(moved.ok);assert.equal(moved.updateMode,'transforms');
+  const anchored=await call('velocut_scene_edit',{sessionId,assetId:created.assetId,expectedRevision:moved.revision,includeSpec:false,edits:[{type:'anchor.set',id:'tile',anchorId:'seat',anchor:{position:[0,0,0]}},{type:'binding.create',id:'follow',binding:{type:'position',source:{objectId:'cube',anchorId:'top'},target:{objectId:'tile',anchorId:'seat'}}}]});
+  assert.ok(anchored.ok);assert.deepEqual(anchored.bindingIds,['follow']);
+  const bound=await call('velocut_scene_spatial',{sessionId,assetId:created.assetId,queries:[{type:'bindings'},{type:'distance',from:{objectId:'cube',anchorId:'top'},to:{objectId:'tile',anchorId:'seat'}}]});
+  assert.ok(bound.ok);assert.equal(bound.results[0].items[0].status,'valid');assert.equal(bound.results[1].distance,0);
+  const bindingList=await call('velocut_query',{sessionId,kind:'sceneBindings',assetId:created.assetId});assert.equal(bindingList.data.total,1);
   const observed = await client.callTool({
     name: 'velocut_observe',
     arguments: { sessionId, mode: 'scene', source: { assetId: created.assetId }, view: 'front' },
