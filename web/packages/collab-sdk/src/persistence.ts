@@ -30,6 +30,16 @@ export async function loadMedia(src: string, dirName = 'media'): Promise<File | 
   }
 }
 
+/** Remove only a caller-owned OPFS media entry; used to clean cancelled imports. */
+export async function removeMedia(src: string, dirName = 'media'): Promise<void> {
+  if (!/^opfs:\/\/[^/\\]+$/.test(src)) throw new Error('invalid media resource');
+  const root = await navigator.storage.getDirectory();
+  try {
+    const dir = await root.getDirectoryHandle(dirName);
+    await dir.removeEntry(src.slice('opfs://'.length));
+  } catch (error) { if (!(error instanceof DOMException) || error.name !== 'NotFoundError') throw error; }
+}
+
 /** Remove a top-level OPFS directory (project cleanup). Missing dir is fine. */
 export async function removeOpfsDir(dirName: string): Promise<void> {
   try {

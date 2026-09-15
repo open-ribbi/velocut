@@ -75,6 +75,7 @@ export class RemoteVideoSource {
   readonly width: number;
   readonly height: number;
   readonly hasAudio: boolean;
+  readonly tracks: ProbeResult['tracks'];
 
   constructor(
     readonly workerId: number,
@@ -85,6 +86,7 @@ export class RemoteVideoSource {
     this.width = probe.width;
     this.height = probe.height;
     this.hasAudio = probe.hasAudio;
+    this.tracks = probe.tracks;
   }
 
   probe(): ProbedMedia {
@@ -93,6 +95,7 @@ export class RemoteVideoSource {
       width: this.width,
       height: this.height,
       hasAudio: this.hasAudio,
+      tracks: structuredClone(this.tracks),
     };
   }
 
@@ -239,6 +242,7 @@ export class MediaLibrary {
   private onMessage(msg: WorkerToMain) {
     switch (msg.type) {
       case 'ready': {
+        if (!this.pending.has(msg.id)) { this.post({ type: 'dispose', id: msg.id }); break; }
         const source = new RemoteVideoSource(msg.id, msg.probe, this.post);
         this.byWorkerId.set(msg.id, source);
         this.pending.get(msg.id)?.resolve(source);
@@ -480,6 +484,14 @@ export class MediaLibrary {
     );
     this.post({ type: 'open', id, file });
     return p;
+  }
+
+  /** Release a temporary probe source. Never release media already attached to an asset. */
+  releaseVideoProbe(source: RemoteVideoSource): void {
+    if ([...this.videoSources.values(), ...this.fromSources.values()].includes(source)) throw new Error('cannot release an attached video source');
+    source.disposeFrames();
+    this.byWorkerId.delete(source.workerId);
+    this.post({ type: 'dispose', id: source.workerId });
   }
 
   async probeImage(file: File): Promise<VideoFrame> {

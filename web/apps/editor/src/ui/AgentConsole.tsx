@@ -391,6 +391,8 @@ export function AgentConsole({
                 seek: (t) => playback.seek(t),
                 capabilities: (o) => atomicRuntime(store).capabilities(o, { preview: true, transport: 'builtin-agent' }),
                 query: (o) => atomicRuntime(store).query(o),
+                resources: (o) => atomicRuntime(store).resources(o),
+                jobs: (o) => atomicRuntime(store).jobs(o),
                 transaction: (o) => atomicRuntime(store).transaction(o, { dispatch: cmd => store.dispatch(cmd, { kind: 'ai', peerId: store.getLocalUser().peerId, name: 'AI', model: cfg.model }, text) }),
                 previewSession: (o) => playback.session(o as PreviewSessionOptions),
                 motionClip: (o) => createMotionClip(store, media, o as MotionClipOptions),

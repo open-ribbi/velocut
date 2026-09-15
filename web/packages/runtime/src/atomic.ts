@@ -1,4 +1,5 @@
-import { COMMAND_SCHEMAS, COMMAND_CATALOG, TRANSACTION_SCHEMA, RESULT_FIELDS, commandDefinition, type NonBatch, type Command, type Envelope, type VDocument, type TransactionRequest, type ResultField } from '@velocut/protocol';
+import { createResourceJobs, RESOURCES_SCHEMA, JOBS_SCHEMA } from './resource-jobs';
+import { ATOMIC_COMMAND_SCHEMAS, COMMAND_CATALOG, TRANSACTION_SCHEMA, RESULT_FIELDS, commandDefinition, type NonBatch, type AtomicCommand, type Command, type Envelope, type VDocument, type TransactionRequest, type ResultField } from '@velocut/protocol';
 import { TsEngine } from '@velocut/core-ts';
 import { EFFECT_REGISTRY } from '@velocut/render-sdk';
 import type { Store } from './store';
@@ -43,6 +44,7 @@ function entityChanges(before: VDocument, after: VDocument) {
 /** Shared by transports and the UI. Records live only as long as this Store. */
 export function createAtomicRuntime(store: Store) {
   const runtimeId = crypto.randomUUID();
+  const mediaJobs = createResourceJobs(store, runtimeId);
   const snapshots = new Map<string, { doc: VDocument; revision: number }>();
   const requests = new Map<string, { payload: string; state: 'pending' | 'completed'; result?: Result; promise: Promise<Result> }>();
   const ok = (data: unknown, revision = store.getState().revision): Result => {
@@ -78,9 +80,9 @@ export function createAtomicRuntime(store: Store) {
   const capabilities = (input: unknown = {}, context: { preview?: boolean; transport?: string } = {}): Result => {
     try {
       const q = normalize(input); object(q, ['name', 'namespace', 'offset', 'limit'], 'capabilities');
-      const names = Object.keys(COMMAND_SCHEMAS) as NonBatch['type'][];
+      const names = Object.keys(ATOMIC_COMMAND_SCHEMAS) as AtomicCommand['type'][];
       const entries = [
-        ...names.map(name => ({ name, namespace: 'commands', category: 'command', available: true, transactional: true, summary: COMMAND_CATALOG.find(c => c.type === name)!.summary })),
+        ...names.map(name => ({ name, namespace: 'commands', category: 'command', available: name === 'registerAsset' ? mediaJobs.available() : true, transactional: true, summary: name === 'registerAsset' ? 'Register a probed project resource without inserting a clip' : COMMAND_CATALOG.find(c => c.type === name)!.summary })),
         { name: 'query', namespace: 'runtime', category: 'query', available: true, transactional: false, summary: 'Snapshot/entity queries, projection and pagination. Selection is live only.' },
         { name: 'transaction', namespace: 'runtime', category: 'command', available: true, transactional: false, summary: 'Validate/commit/status; requires runtimeId, expectedRevision and a requestId for commit.' },
         ...['sceneEdit', 'sceneArrange', 'sceneInspect', 'sceneAssets', 'sceneClip', 'directorSession', 'observe'].map(name => ({ name, namespace: 'legacy', category: name.includes('Inspect') || name === 'sceneAssets' ? 'query' : name === 'observe' ? 'observe' : name === 'directorSession' ? 'session' : 'command', available: !!context.transport, transactional: false, summary: 'Existing separate API; not an operation within the new transaction.' })),
@@ -89,12 +91,15 @@ export function createAtomicRuntime(store: Store) {
           available: !!context.transport && context.transport !== 'mcp', transactional: false,
           summary: name === 'videoGen' ? 'Legacy editor/builtin-agent entry; requires a configured channel (configuration is not inspected here). Disabled in MCP.' : 'Legacy editor/builtin-agent entry, outside document transactions. Disabled in MCP.',
         })),
-        ...['transcribe', 'renderVideo', 'importMedia', 'jobs'].map(name => ({ name, namespace: 'pending', category: 'job', available: false, transactional: false, summary: 'No unified callable entry by this name. Existing app/discrete tools may have separate entry points.' })),
+        { name: 'resource.import', namespace: 'runtime', category: 'job', available: mediaJobs.available(), transactional: false, summary: 'resources action:import (SDK File/base64), or MCP velocut_import_media with an explicit path. Returns an import job only.' },
+        { name: 'media.probe', namespace: 'runtime', category: 'job', available: mediaJobs.available(), transactional: false, summary: 'jobs action:submit, task:media.probe, resourceId and requestId. Returns a metadata-probe job only.' },
+        ...['resources', 'jobs'].map(name => ({ name, namespace: 'runtime', category: 'job', available: mediaJobs.available(), transactional: false, summary: 'Runtime-scoped resource import/probe jobs. Explicit registration and insertion are separate operations.' })),
+        ...['transcribe', 'renderVideo'].map(name => ({ name, namespace: 'pending', category: 'job', available: false, transactional: false, summary: 'No unified callable entry by this name. Existing app/discrete tools may have separate entry points.' })),
       ];
       if (q.name !== undefined) {
         if (typeof q.name !== 'string') fault('invalidArg', 'name must be a string');
         const entry = entries.find(e => e.name === q.name); if (!entry) fault('notFound', 'unknown capability');
-        return ok({ ...entry, ...(names.includes(q.name as NonBatch['type']) ? commandDefinition(q.name as NonBatch['type']) : q.name === 'query' ? { inputSchema: QUERY_SCHEMA, fieldCatalog: QUERY_FIELDS } : q.name === 'transaction' ? { inputSchema: TRANSACTION_SCHEMA } : {}),
+        return ok({ ...entry, ...(names.includes(q.name as AtomicCommand['type']) ? commandDefinition(q.name as AtomicCommand['type']) : q.name === 'query' ? { inputSchema: QUERY_SCHEMA, fieldCatalog: QUERY_FIELDS } : q.name === 'transaction' ? { inputSchema: TRANSACTION_SCHEMA } : q.name === 'resources' || q.name === 'resource.import' ? { inputSchema: RESOURCES_SCHEMA, limits: mediaJobs.limits } : q.name === 'jobs' || q.name === 'media.probe' ? { inputSchema: JOBS_SCHEMA, limits: mediaJobs.limits } : {}),
           ...(q.name === 'observe' ? { modes: ['frame', 'contact', 'scan', 'audio', 'shots', 'scene'], scriptImages: false } : {}) });
       }
       if (q.namespace !== undefined && !['commands', 'runtime', 'legacy', 'pending', 'effects'].includes(q.namespace as string)) fault('invalidArg', 'unknown namespace');
@@ -120,8 +125,8 @@ export function createAtomicRuntime(store: Store) {
         object(operation, ['id', 'command'], 'operation'); identifier(operation.id, 'id'); operationId = operation.id;
         if (results.has(operation.id)) fault('invalidArg', 'duplicate operation id', 'id');
         const command = structuredClone(operation.command) as unknown as Record<string, unknown>;
-        if (!command || typeof command !== 'object' || typeof command.type !== 'string' || !Object.hasOwn(COMMAND_SCHEMAS, command.type)) fault('unsupported', 'unknown command or nested batch; use an operation sequence', 'command.type');
-        const schema = COMMAND_SCHEMAS[command.type as NonBatch['type']];
+        if (!command || typeof command !== 'object' || typeof command.type !== 'string' || !Object.hasOwn(ATOMIC_COMMAND_SCHEMAS, command.type)) fault('unsupported', 'unknown command or nested batch; use an operation sequence', 'command.type');
+        const schema = ATOMIC_COMMAND_SCHEMAS[command.type as AtomicCommand['type']];
         for (const field of ['assetId', 'trackId', 'clipId', 'effectId']) {
           const value = command[field];
           if (!value || typeof value !== 'object') continue;
@@ -134,7 +139,8 @@ export function createAtomicRuntime(store: Store) {
         }
         const parsed = schema.strict().safeParse(command);
         if (!parsed.success) { const issue = parsed.error.issues[0]; fault('invalidArg', issue.message, issue.path.join('.')); }
-        const c = parsed.data as NonBatch;
+        const parsedCommand = parsed.data as AtomicCommand;
+        const c: NonBatch = parsedCommand.type === 'registerAsset' ? await mediaJobs.registration(parsedCommand.resourceId, parsedCommand.probeId, parsedCommand.name) : parsedCommand;
         const blocked = localRestriction(c, engine.document()) ?? options.check?.(c);
         if (blocked) fault('unsupported', blocked);
         const oldEffects = c.type === 'addEffect' ? new Set(engine.document().tracks.flatMap(t => t.clips).find(c0 => c0.id === c.clipId)?.effects.map(e => e.id)) : new Set();
@@ -196,7 +202,9 @@ export function createAtomicRuntime(store: Store) {
       return structuredClone(result);
     } catch (e) { return error(e); }
   };
-  return { runtimeId, capabilities, query, transaction };
+  const resources = async (input: unknown, signal?: AbortSignal): Promise<Result> => { try { return ok(await mediaJobs.resource(input, signal)); } catch (e) { return error(e); } };
+  const jobs = (input: unknown): Result => { try { return ok(mediaJobs.job(input)); } catch (e) { return error(e); } };
+  return { runtimeId, capabilities, query, transaction, resources, jobs };
 }
 const runtimes = new WeakMap<Store, ReturnType<typeof createAtomicRuntime>>();
 export function atomicRuntime(store: Store) {

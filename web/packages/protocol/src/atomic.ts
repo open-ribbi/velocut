@@ -1,5 +1,10 @@
+import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { COMMAND_SCHEMAS, COMMAND_CATALOG, type NonBatch } from './schema.ts';
+
+export const RegisterAssetSchema = z.object({ type: z.literal('registerAsset'), resourceId: z.string().min(1), probeId: z.string().min(1), name: z.string().min(1).max(256).optional() });
+export type AtomicCommand = NonBatch | z.infer<typeof RegisterAssetSchema>;
+export const ATOMIC_COMMAND_SCHEMAS = { ...COMMAND_SCHEMAS, registerAsset: RegisterAssetSchema };
 
 export const RESULT_FIELDS = ['assetId', 'trackId', 'clipId', 'leftClipId', 'rightClipId', 'effectId'] as const;
 export type ResultField = typeof RESULT_FIELDS[number];
@@ -8,10 +13,10 @@ export function ref(operationId: string, field: ResultField): OperationRef {
   return { $ref: { operationId, field } };
 }
 type Args<C> = { [K in keyof C as K extends 'type' ? never : K]: K extends 'assetId' | 'trackId' | 'clipId' | 'effectId' ? C[K] | OperationRef : C[K] };
-export type PlanCommand = { [T in NonBatch['type']]: { type: T } & Args<Extract<NonBatch, { type: T }>> }[NonBatch['type']];
-export type OperationBuilders = { [T in NonBatch['type']]: (args: Args<Extract<NonBatch, { type: T }>>) => { type: T } & Args<Extract<NonBatch, { type: T }>> };
+export type PlanCommand = { [T in AtomicCommand['type']]: { type: T } & Args<Extract<AtomicCommand, { type: T }>> }[AtomicCommand['type']];
+export type OperationBuilders = { [T in AtomicCommand['type']]: (args: Args<Extract<AtomicCommand, { type: T }>>) => { type: T } & Args<Extract<AtomicCommand, { type: T }>> };
 /** Pure data construction: this never dispatches or allocates document IDs. */
-export const ops = Object.freeze(Object.fromEntries(Object.keys(COMMAND_SCHEMAS).map(type => [
+export const ops = Object.freeze(Object.fromEntries(Object.keys(ATOMIC_COMMAND_SCHEMAS).map(type => [
   type, (args: object) => ({ ...structuredClone(args), type }),
 ]))) as OperationBuilders;
 export interface AtomicOperation { id: string; command: PlanCommand }
@@ -37,9 +42,9 @@ export const TRANSACTION_SCHEMA = {
   ],
 };
 
-export function commandDefinition(type: NonBatch['type']) {
-  const inputSchema = zodToJsonSchema(COMMAND_SCHEMAS[type], { $refStrategy: 'none' });
-  const referenceFields = Object.keys(COMMAND_SCHEMAS[type].shape).filter(k => ['assetId', 'trackId', 'clipId', 'effectId'].includes(k));
+export function commandDefinition(type: AtomicCommand['type']) {
+  const inputSchema = zodToJsonSchema(ATOMIC_COMMAND_SCHEMAS[type], { $refStrategy: 'none' });
+  const referenceFields = Object.keys(ATOMIC_COMMAND_SCHEMAS[type].shape).filter(k => ['assetId', 'trackId', 'clipId', 'effectId'].includes(k));
   const properties = (inputSchema as { properties: Record<string, unknown> }).properties;
   for (const key of referenceFields) properties[key] = { anyOf: [properties[key], {
     type: 'object', additionalProperties: false, required: ['$ref'], properties: { $ref: {
@@ -48,9 +53,9 @@ export function commandDefinition(type: NonBatch['type']) {
     } },
   }] };
   const fields = type === 'splitClip' ? ['leftClipId', 'rightClipId']
-    : type === 'addAsset' ? ['assetId'] : type === 'addTrack' ? ['trackId']
-      : type === 'addClip' || type === 'addTextClip' ? ['clipId'] : type === 'addEffect' ? ['effectId'] : [];
-  return { name: type, summary: COMMAND_CATALOG.find(c => c.type === type)!.summary,
+    : type === 'addAsset' || type === 'registerAsset' ? ['assetId'] : type === 'addTrack' ? ['trackId']
+      : type === 'addClip' || type === 'addTextClip' || type === 'duplicateClip' ? ['clipId'] : type === 'addEffect' ? ['effectId'] : [];
+  return { name: type, summary: type === 'registerAsset' ? 'resourceId, probeId, name? — register a successfully probed resource; no clip insertion or file import' : COMMAND_CATALOG.find(c => c.type === type)!.summary,
     category: 'command', schemaVersion: 1, inputSchema,
     resultSchema: { type: 'object', properties: Object.fromEntries(fields.map(f => [f, { type: 'string' }])), required: fields, additionalProperties: false },
     referenceFields,

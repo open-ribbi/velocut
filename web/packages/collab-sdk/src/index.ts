@@ -9,6 +9,7 @@ export { CollabSession, type CollabHost } from './collab.ts';
 export {
   saveMedia,
   loadMedia,
+  removeMedia,
   removeOpfsDir,
   kvGet,
   kvPut,

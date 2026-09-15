@@ -47,6 +47,30 @@ try {
     `import {TsEngine} from '@velocut/core-ts';import {validateCommand, BRIDGE_PROTOCOL_VERSION} from '@velocut/protocol';import {normalizeSceneSpec,applySceneEdits} from '@velocut/scene-sdk';import {Store,TsEngineAdapter,atomicRuntime} from '@velocut/runtime';import {ops,ref} from '@velocut/protocol';const e=new TsEngine('packed',320,180,30,1);if(!e.apply({type:'addTrack',kind:'video'}).ok)throw Error('apply');const s=new Store(new TsEngineAdapter('runtime',320,180,30,1));s.dispatch({type:'addTrack',kind:'video'});s.undo();if(s.getState().doc.tracks.length)throw Error('undo');if(BRIDGE_PROTOCOL_VERSION!==2)throw Error('protocol');const a=atomicRuntime(s);const snap=a.query({kind:'snapshot'});if(!snap.ok)throw Error('snapshot');const result=await a.transaction({action:'commit',requestId:'packed-atomic',runtimeId:snap.runtimeId,expectedRevision:snap.revision,operations:[{id:'track',command:ops.addTrack({kind:'text'})},{id:'title',command:ops.addTextClip({trackId:ref('track','trackId'),startUs:0,durationUs:1000000,text:{content:'Packed'}})}]});if(!result.ok||!result.data.results.title.clipId)throw Error('atomic composition');if(!a.capabilities({name:'splitClip'}).data.inputSchema)throw Error('atomic schema');console.log('node sdk ok');`,
   );
   assert.match(output, /node sdk ok/);
+  const resourceOutput = run(`
+    import { Store, TsEngineAdapter, atomicRuntime, configureMediaResources } from '@velocut/runtime';
+    import { ops, ref } from '@velocut/protocol';
+    const store = new Store(new TsEngineAdapter('resource-consumer',320,180,30,1)), files = new Map();
+    configureMediaResources(store,{storage:{write:async(n,b)=>{files.set(n,b)},read:async n=>files.get(n)??null,remove:async n=>{files.delete(n)}},
+      probe:async()=>({kind:'image',format:'png',width:1,height:1,durationUs:0,hasAudio:false,tracks:[]})});
+    const api=atomicRuntime(store), runtimeId=api.runtimeId;
+    async function done(id){for(let i=0;i<1000;i++){const j=api.jobs({action:'get',runtimeId,jobId:id}).data;if(j.state==='succeeded')return j.result;if(j.state==='failed')throw Error(j.error.message);await new Promise(r=>setTimeout(r,1));}throw Error('job timeout')}
+    const imported=await api.resources({action:'import',runtimeId,requestId:'resource',file:new File(['fixture'],'fixture.bin')});
+    if(!imported.ok)throw Error(imported.error.message);
+    const resource=(await done(imported.data.id)).resource;
+    const probe=api.jobs({action:'submit',runtimeId,requestId:'probe',task:'media.probe',resourceId:resource.id});await done(probe.data.id);
+    if(store.getState().doc.assets.length)throw Error('implicit registration');
+    const result=await api.transaction({action:'commit',runtimeId,expectedRevision:store.getState().revision,requestId:'register',operations:[
+      {id:'asset',command:ops.registerAsset({resourceId:resource.id,probeId:probe.data.id})},
+      {id:'track',command:ops.addTrack({kind:'video'})},
+      {id:'clip',command:ops.addClip({assetId:ref('asset','assetId'),trackId:ref('track','trackId'),startUs:0,durationUs:1000000})},
+      {id:'copy',command:ops.duplicateClip({clipId:ref('clip','clipId')})}
+    ]});
+    if(!result.ok||store.getState().doc.tracks[0].clips.length!==2)throw Error(JSON.stringify(result));
+    console.log('resource jobs and duplication ok');
+  `);
+  assert.match(resourceOutput, /resource jobs and duplication ok/);
+
   await writeFile(
     resolve(workspace, 'types.ts'),
     `import {TsEngine} from '@velocut/core-ts';import {RendererClient,MediaLibrary} from '@velocut/render-sdk';import {SceneSpec} from '@velocut/scene-sdk';import {Store,TsEngineAdapter,configureSceneStorage,type AtomicQuery} from '@velocut/runtime';import {ops,ref,type AtomicPlan} from '@velocut/protocol';const q:AtomicQuery={kind:'clips',fields:['id']};const plan:AtomicPlan={runtimeId:'runtime',expectedRevision:0,operations:[{id:'clip',command:ops.addClip({trackId:ref('track','trackId'),assetId:'asset',startUs:0})}]};void [q,plan];const e=new TsEngine('typecheck',320,180,30,1);const s:SceneSpec={version:1,durationUs:1000000};const m:MediaLibrary=new MediaLibrary();const r:RendererClient=new RendererClient();const store=new Store(new TsEngineAdapter('runtime',320,180,30,1));void [e,s,m,r,store,configureSceneStorage];`,
@@ -275,6 +299,7 @@ window.probe=(async()=>{
         checks: [
           'node-import',
       'atomic-query-transaction',
+      'resource-probe-register-duplicate',
           'types',
           'cli-doctor',
           'http-headers-ranges',

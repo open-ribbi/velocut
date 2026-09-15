@@ -28,6 +28,7 @@ export interface ProbeResult {
   width: number;
   height: number;
   hasAudio: boolean;
+  tracks?: Array<{ kind: 'video' | 'audio'; codec: string | null; sampleRate?: number | null; channels?: number | null }>;
 }
 
 export type MainToWorker =
@@ -201,6 +202,11 @@ class Source {
           width: videoTrack.video?.width ?? videoTrack.track_width,
           height: videoTrack.video?.height ?? videoTrack.track_height,
           hasAudio: !!audioTrack,
+          tracks: [
+            { kind: 'video', codec: videoTrack.codec ?? null },
+            ...(audioTrack ? [{ kind: 'audio' as const, codec: audioTrack.codec ?? null,
+              sampleRate: audioTrack.audio?.sample_rate ?? null, channels: audioTrack.audio?.channel_count ?? null }] : []),
+          ],
         };
         this.config = {
           codec: videoTrack.codec,

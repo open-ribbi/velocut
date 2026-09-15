@@ -271,6 +271,8 @@ export function describeCommand(cmd: Command): string {
       return `Place asset on track @${us(cmd.startUs)}`;
     case 'addTextClip':
       return `Add text "${(cmd.text?.content ?? '').slice(0, 8)}"`;
+    case 'duplicateClip':
+      return 'Duplicate clip';
     case 'removeClip':
       return 'Remove clip';
     case 'moveClip':

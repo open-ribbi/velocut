@@ -72,6 +72,15 @@ pub enum EditCommand {
     },
     #[serde(rename_all = "camelCase")]
     RemoveClip { clip_id: String },
+    /// Copy all clip properties; effects receive fresh IDs. Only the destination is edited.
+    #[serde(rename_all = "camelCase")]
+    DuplicateClip {
+        clip_id: String,
+        #[serde(default)]
+        track_id: Option<String>,
+        #[serde(default)]
+        start_us: Option<TimeUs>,
+    },
     /// Move within or across tracks. Rejected with `overlap` if it collides.
     #[serde(rename_all = "camelCase")]
     MoveClip {
@@ -445,6 +454,64 @@ pub fn apply(doc: &mut Document, cmd: &EditCommand) -> CmdResult {
             Ok(vec![Event::ClipAdded {
                 clip_id,
                 track_id: track_id.clone(),
+            }])
+        }
+
+        DuplicateClip {
+            clip_id,
+            track_id,
+            start_us,
+        } => {
+            let (ti, ci) = doc
+                .locate_clip(clip_id)
+                .ok_or_else(|| CmdError::not_found("clip", clip_id))?;
+            let mut copied = doc.tracks[ti].clips[ci].clone();
+            let destination = match track_id {
+                Some(id) => doc
+                    .tracks
+                    .iter()
+                    .position(|t| t.id == *id)
+                    .ok_or_else(|| CmdError::not_found("track", id))?,
+                None => ti,
+            };
+            if doc.tracks[destination].kind != doc.tracks[ti].kind {
+                return Err(CmdError::invalid(
+                    "cannot duplicate a clip across track kinds",
+                ));
+            }
+            if doc.tracks[destination].locked {
+                return Err(CmdError::locked(&doc.tracks[destination].id));
+            }
+            let at = match start_us {
+                Some(at) => *at,
+                None => copied
+                    .start_us
+                    .checked_add(copied.duration_us)
+                    .ok_or_else(|| CmdError::invalid("invalid duplicate destination time"))?,
+            };
+            let end = at
+                .checked_add(copied.duration_us)
+                .ok_or_else(|| CmdError::invalid("invalid duplicate destination time"))?;
+            if !(0..=9_007_199_254_740_991).contains(&at) || end > 9_007_199_254_740_991 {
+                return Err(CmdError::invalid("invalid duplicate destination time"));
+            }
+            if doc.tracks[destination].overlaps(at, copied.duration_us, None) {
+                return Err(CmdError::overlap(
+                    "duplicate would overlap an existing clip",
+                ));
+            }
+            copied.id = doc.mint_id("clip");
+            copied.start_us = at;
+            for effect in &mut copied.effects {
+                effect.id = doc.mint_id("fx");
+            }
+            let new_id = copied.id.clone();
+            let track = &mut doc.tracks[destination];
+            track.clips.push(copied);
+            track.sort_clips();
+            Ok(vec![Event::ClipAdded {
+                clip_id: new_id,
+                track_id: track.id.clone(),
             }])
         }
 

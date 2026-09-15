@@ -163,6 +163,7 @@ const cAddTextClip = z.object({
   text: TextPayload,
 });
 const cRemoveClip = z.object({ type: z.literal('removeClip'), clipId: z.string() });
+const cDuplicateClip = z.object({ type: z.literal('duplicateClip'), clipId: z.string(), trackId: z.string().nullish(), startUs: TimeUsField.nullish() });
 const cMoveClip = z.object({
   type: z.literal('moveClip'),
   clipId: z.string(),
@@ -227,6 +228,7 @@ const NonBatchSchema = z.discriminatedUnion('type', [
   cAddClip,
   cAddTextClip,
   cRemoveClip,
+  cDuplicateClip,
   cMoveClip,
   cTrimClip,
   cSplitClip,
@@ -259,6 +261,7 @@ const SUMMARIES: Record<string, string> = {
   addClip: 'trackId, assetId, startUs, durationUs?, sourceInUs? — place an asset on a track',
   addTextClip: 'trackId, startUs, durationUs, text:TextPayload (see below) — text clip',
   removeClip: 'clipId — remove a clip',
+  duplicateClip: 'clipId, trackId?, startUs? — deep-copy a clip with fresh clip/effect IDs; defaults to same track after source end; destination must be unlocked and non-overlapping',
   moveClip: 'clipId, startUs, trackId? — move (may cross tracks of the same kind)',
   trimClip: 'clipId, edge:in|out, toUs — trim; the in edge advances sourceIn in step',
   splitClip: 'clipId, atUs (timeline coordinates) — split into two',

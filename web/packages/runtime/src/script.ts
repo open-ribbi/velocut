@@ -1,4 +1,4 @@
-import { COMMAND_CATALOG } from '@velocut/protocol';
+import { ATOMIC_COMMAND_SCHEMAS } from '@velocut/protocol';
 // services/script.ts — host-side execution of velocut_script programs.
 //
 // This is the velocut analog of "write a shell script, run it once": the agent
@@ -29,6 +29,8 @@ import type { ScriptResult } from './results';
  *  forget (`velocut.apply(cmd)` without await) still executes in order because
  *  the channel preserves message order and the host processes RPCs serially. */
 export interface ScriptApi {
+  resources(opts: unknown): unknown;
+  jobs(opts: unknown): unknown;
   capabilities(opts?: unknown): unknown;
   query(opts: unknown): unknown;
   transaction(opts: unknown): unknown;
@@ -108,6 +110,8 @@ const RPC_METHODS = [
   'capabilities',
   'query',
   'transaction',
+  'resources',
+  'jobs',
   'videoGen',
   'videoGenChannels',
   'uploadFrame',
@@ -169,7 +173,7 @@ const SANDBOX_RUNTIME = `
   var velocut = {};
   RPC.forEach(function (m) { velocut[m] = function () { return rpc(m, Array.prototype.slice.call(arguments)); }; });
   velocut.ops = {};
-  ${JSON.stringify(COMMAND_CATALOG.filter(c => c.type !== 'batch').map(c => c.type))}.forEach(function(type) {
+  ${JSON.stringify(Object.keys(ATOMIC_COMMAND_SCHEMAS))}.forEach(function(type) {
     velocut.ops[type] = function(args) { return Object.assign({}, structuredClone(args), {type:type}); };
   });
   Object.freeze(velocut.ops);

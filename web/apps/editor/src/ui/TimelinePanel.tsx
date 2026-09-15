@@ -1181,6 +1181,22 @@ export function TimelinePanel({
                   </button>
                   <button
                     onClick={() => {
+                      const track = store.getState().doc.tracks.find(t => t.clips.some(c => c.id === menu.clipId));
+                      const startUs = track ? Math.max(...track.clips.map(c => c.startUs + c.durationUs)) : undefined;
+                      const result = store.dispatch({ type: 'duplicateClip', clipId: menu.clipId, startUs });
+                      if (result.ok) {
+                        const added = result.events.find(e => e.kind === 'clipAdded');
+                        if (added?.kind === 'clipAdded') store.select(added.clipId);
+                      }
+                      setMenu(null);
+                    }}
+                    title="Append a copy of the clicked clip to its track"
+                  >
+                    <Icon name="layers" size={15} />
+                    {menuIds.length > 1 ? 'Duplicate clicked clip at end' : 'Duplicate at track end'}
+                  </button>
+                  <button
+                    onClick={() => {
                       for (const id of menuIds) referenceToAgent({ id });
                       setMenu(null);
                     }}

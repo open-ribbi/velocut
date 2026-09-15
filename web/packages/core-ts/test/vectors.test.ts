@@ -33,6 +33,7 @@ interface Vector {
       durationUs?: number;
       sourceInUs?: number;
       speed?: number;
+      data?: Record<string, unknown>;
     }>;
     clipCounts?: Record<string, number>;
     eval?: Array<{
@@ -112,6 +113,7 @@ for (const file of files) {
         assert.equal(clip.durationUs, want.durationUs, `${want.id} durationUs`);
       if (want.sourceInUs !== undefined)
         assert.equal(clip.sourceInUs, want.sourceInUs, `${want.id} sourceInUs`);
+      for (const [key, expected] of Object.entries(want.data ?? {})) assert.deepEqual((clip as unknown as Record<string, unknown>)[key], expected, `${want.id} ${key}`);
       if (want.speed !== undefined) assert.ok(approx(clip.speed, want.speed), `${want.id} speed`);
     }
 

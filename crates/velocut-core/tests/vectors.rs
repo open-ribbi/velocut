@@ -15,6 +15,26 @@ fn approx(a: f64, b: f64) -> bool {
     (a - b).abs() < 1e-3
 }
 
+fn assert_data(actual: &Value, expected: &Value) {
+    match (actual, expected) {
+        (Value::Number(a), Value::Number(b)) => {
+            assert!(approx(a.as_f64().unwrap(), b.as_f64().unwrap()))
+        }
+        (Value::Object(a), Value::Object(b)) => {
+            for (key, value) in b {
+                assert_data(&a[key], value);
+            }
+        }
+        (Value::Array(a), Value::Array(b)) => {
+            assert_eq!(a.len(), b.len());
+            for (a, b) in a.iter().zip(b) {
+                assert_data(a, b);
+            }
+        }
+        _ => assert_eq!(actual, expected),
+    }
+}
+
 fn run_vector(path: &PathBuf) {
     let raw = fs::read_to_string(path).unwrap();
     let v: Value = serde_json::from_str(&raw).unwrap();
@@ -116,6 +136,11 @@ fn run_vector(path: &PathBuf) {
             for field in ["startUs", "durationUs", "sourceInUs"] {
                 if let Some(w) = want.get(field) {
                     assert_eq!(&clip[field], w, "[{}] {} {}", name, id, field);
+                }
+            }
+            if let Some(data) = want.get("data").and_then(Value::as_object) {
+                for (key, value) in data {
+                    assert_data(&clip[key], value);
                 }
             }
             if let Some(w) = want.get("speed") {

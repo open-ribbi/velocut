@@ -147,8 +147,8 @@ commit leaves the document unchanged; it cannot undo a committed transaction.
 
 Scope of this implementation: schema discovery, bounded snapshot/entity reads,
 and reliable in-runtime composition of existing timeline protocol commands.
-New editing semantics such as full clip duplication, transcript models,
-durable jobs and cross-call scene/timeline transactions remain follow-up work.
+Complete clip duplication and resource/probe jobs are added below. Transcript
+models, durable jobs and cross-call scene/timeline transactions remain follow-up work.
 
 ## Validation record (2026-09-15)
 
@@ -162,3 +162,125 @@ durable jobs and cross-call scene/timeline transactions remain follow-up work.
   SDK type consumption, schema discovery and a dependent atomic transaction in
   the installed SDK, plus existing browser rendering, worker and MCP checks.
 - This is unreleased work. Published 0.0.1 packages and release tags are unchanged.
+
+## Resource import, probing and complete clip duplication (unreleased)
+
+These primitives are now available independently:
+
+| Primitive | Invocation | Output / side effect |
+|---|---|---|
+| resource.import | `resources({action:'import',runtimeId,requestId,file})` in the browser SDK; `velocut_import_media` with an absolute path in MCP | A job. Stores uniquely named immutable project bytes; no asset/track/clip creation |
+| resource.get/list | `resources({action:'get',runtimeId,resourceId})` or action:list with offset/limit | Runtime resource descriptors (ID, name, MIME hint, byte count, SHA-256, OPFS locator) |
+| media.probe | `jobs({action:'submit',runtimeId,requestId,task:'media.probe',resourceId})` | A job whose result contains probeId, resourceId, hash and metadata; no document edit |
+| asset.register | `ops.registerAsset({resourceId,probeId,name?})` within a transaction | Rechecks bytes and successful probe, expands to addAsset; returns assetId, no insertion |
+| clip.duplicate | `ops.duplicateClip({clipId,trackId?,startUs?})` within a transaction; also the protocol duplicateClip command | Deep-copy a clip and return clipId; source media asset is shared, clip/effect IDs are fresh |
+| jobs.get/list/cancel | `jobs({action,...})` or `velocut_jobs` | Query/stop work without inserting or registering anything |
+
+`capabilities` now reports `resources`, `jobs`, `resource.import`, `media.probe`
+and `registerAsset`, with availability determined by the project's adapter.
+MCP adds only two transport tools: `velocut_import_media` for privileged local
+file input, and `velocut_jobs` for probe submission and task management. The
+existing `velocut_script` exposes resources/jobs; no separate workflow tool is
+required for assembling a video.
+
+A typical sequence is:
+
+1. Read runtimeId from query or capabilities.
+2. Call `velocut_import_media({sessionId,runtimeId,requestId,path})`.
+3. Poll `velocut_jobs({sessionId,runtimeId,action:'get',jobId})`. On succeeded,
+   read `data.result.resource.id`. A top-level ok only means the request was
+   handled; always inspect the job state.
+4. Submit `media.probe` using a different requestId; poll for succeeded, then
+   read `data.result.probeId` and metadata.
+5. Build a document transaction with registration, insertion and duplication.
+
+```js
+// resourceId and probeId come from completed jobs in this same runtime.
+const snap = await velocut.query({kind:'snapshot'});
+if (!snap.ok) throw new Error(snap.error.message);
+const operations = [
+  {id:'asset',command:velocut.ops.registerAsset({resourceId,probeId})},
+  {id:'track',command:velocut.ops.addTrack({kind:'video'})},
+  {id:'clip',command:velocut.ops.addClip({
+    assetId:velocut.ref('asset','assetId'), trackId:velocut.ref('track','trackId'),
+    startUs:0, durationUs:1000000
+  })},
+  {id:'copy',command:velocut.ops.duplicateClip({
+    clipId:velocut.ref('clip','clipId'), startUs:2000000
+  })},
+  {id:'trim',command:velocut.ops.trimClip({
+    clipId:velocut.ref('copy','clipId'), edge:'out', toUs:2750000
+  })}
+];
+return await velocut.transaction({
+  action:'commit',runtimeId:snap.runtimeId,expectedRevision:snap.revision,
+  requestId:'register-insert-copy-001',operations
+});
+```
+
+This transaction creates one undo entry. Import/probe jobs do not enter document
+history. Registration is metadata/document work: the editor's existing media
+restore service attaches registered OPFS assets asynchronously. Custom SDK hosts
+still own their media attachment/restore loop. The old UI convenience importer
+remains compatible; this new resource directory only contains atomic imports.
+
+Duplicate preserves assetId, sourceInUs, speed/duration, transform, volume,
+text/style, keyframes, effects/parameters/enabled states and transition data.
+The default destination is the source end on its existing track; an occupied
+range is rejected rather than moving other clips. Destination track kinds must
+match and the destination must be unlocked. Reading a locked source into an
+unlocked destination is allowed. Clip and effect IDs are reminted, so later edits
+to copied effects cannot accidentally target source effects. Query the copied
+clip's effects to obtain their new IDs when needed. This command is implemented
+in both Rust and TypeScript and covered by shared golden vectors.
+The timeline context menu also exposes **Duplicate at track end**, which passes
+the track's current end explicitly and selects the new clip after success.
+
+### Job and storage contract
+
+- States: queued, running, cancel_requested, succeeded, failed, cancelled.
+  Cancellation is cooperative. A video/image probe can remain cancel_requested
+  until its decoder returns; no success result is published afterward. Completed
+  jobs are not undone or deleted by cancel.
+- Import/probe request IDs share a runtime-scoped namespace. Identical retries
+  return the original job; different content/parameters under one ID are rejected.
+  Use jobs.list to recover an accepted job if its initial reply was lost.
+- Accepted jobs continue independently of a transient MCP disconnect while the
+  page remains alive. Reload/project switch invalidates job and resource handles.
+  Registered OPFS assets survive reload; undo does not remove their source bytes.
+- Successful unregistered imports retain their files in project storage. The
+  runtime-only resource catalogue is not restored after reload; reimport if the
+  handles were lost. A persistent catalogue/garbage collector is future work.
+- Partial writes from failed/cancelled imports are removed. If storage cleanup
+  fails, the terminal job exposes cleanupWarning; it does not claim disk cleanup
+  succeeded. Unique internal filenames prevent same-name imports overwriting
+  previous media. No RAM-only fallback is used for this atomic import path.
+- Limits for this initial path: 1 byte..64 MiB/file, 256 MiB imported/pending bytes
+  per runtime, 128 retained jobs, 2 executing and 16 queued. Standalone audio is
+  limited to 5 minutes and 16 MiB because the editor still attaches whole PCM.
+  Existing legacy UI imports keep their own behavior.
+- Probe formats: PNG/JPEG/WebP/GIF (image/first-frame behavior), MP4/MOV supported
+  by the existing decoder, and browser-supported audio. Audio metadata probing
+  does not decode whole PCM. Unknown standalone-audio codec/sample-rate/channel
+  values are null. Video metadata lists the selected video/audio playback tracks,
+  not a promise that every track or codec in the container is supported.
+- SDK setup: call `configureMediaResources(store,{storage,probe})` once per Store.
+  Storage implements project-scoped write(name,Blob), read(name), remove(name).
+  The browser can use `probeMediaFile(media,file,signal)` from render-sdk. Do not
+  reuse a Store/storage binding for a different project. No new runtime packages
+  are required for this extension.
+
+### Verification of this increment
+
+- 104 TypeScript/Node tests and 8 MCP tests pass.
+- The complete 44-test browser suite passes. After adding the timeline menu
+  entry, all 10 resource, multi-selection/reference and compact-layout tests
+  pass again, including a real MP4 import/probe/register/copy/trim workflow.
+- Rust tests, shared clip-duplication golden vectors and strict Clippy pass;
+  the Rust WASM bundle builds successfully. Rebuild local WASM artifacts when
+  updating an existing checkout so its command set includes `duplicateClip`.
+- Production editor/SDK/CLI/plugin builds and plugin manifest validation pass.
+  Independently installed npm tarballs pass distribution checks, including
+  resource import/probe/registration/duplication through the installed SDK.
+- This is an unreleased source change; it does not replace published 0.0.1
+  packages or provide persistent job recovery.

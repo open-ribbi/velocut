@@ -217,6 +217,27 @@ function applyCommand(doc: VDocument, cmd: Command): EngineEvent[] {
       return [{ kind: 'clipAdded', clipId, trackId: cmd.trackId }];
     }
 
+    case 'duplicateClip': {
+      const loc = locateClip(doc, cmd.clipId);
+      if (!loc) fail(notFound('clip', cmd.clipId));
+      const [ti, ci] = loc!;
+      const original = doc.tracks[ti].clips[ci];
+      const destination = cmd.trackId == null ? ti : doc.tracks.findIndex(t => t.id === cmd.trackId);
+      if (destination < 0) fail(notFound('track', cmd.trackId!));
+      const track = doc.tracks[destination];
+      if (track.kind !== doc.tracks[ti].kind) fail(err('invalidArg', 'cannot duplicate a clip across track kinds'));
+      if (track.locked) fail(err('locked', `track '${track.id}' is locked`));
+      const startUs = cmd.startUs ?? clipEnd(original);
+      if (!Number.isSafeInteger(startUs) || startUs < 0 || !Number.isSafeInteger(startUs + original.durationUs)) fail(err('invalidArg', 'invalid duplicate destination time'));
+      if (overlaps(track, startUs, original.durationUs, null)) fail(err('overlap', 'duplicate would overlap an existing clip'));
+      const copied = clone(original);
+      copied.id = mintId(doc, 'clip');
+      copied.startUs = startUs;
+      copied.effects = copied.effects.map(effect => ({ ...effect, id: mintId(doc, 'fx') }));
+      track.clips.push(copied); sortClips(track);
+      return [{ kind: 'clipAdded', clipId: copied.id, trackId: track.id }];
+    }
+
     case 'removeClip': {
       const loc = locateClip(doc, cmd.clipId);
       if (!loc) fail(notFound('clip', cmd.clipId));

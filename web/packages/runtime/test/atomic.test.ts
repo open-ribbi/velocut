@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ops, ref, COMMAND_SCHEMAS } from '@velocut/protocol';
+import { ops, ref, ATOMIC_COMMAND_SCHEMAS } from '@velocut/protocol';
 import { Store, TsEngineAdapter, atomicRuntime, createAtomicRuntime, dispatchSceneAware } from '../dist/index.js';
 
 function setup() {
@@ -19,7 +19,7 @@ test('catalog schemas come from protocol and do not expose functions; builders o
   const { runtime, store } = setup();
   const revision = store.getState().revision;
   const list = value(runtime.capabilities({ namespace: 'commands' }));
-  assert.deepEqual(list.items.map((c: any) => c.name).sort(), Object.keys(COMMAND_SCHEMAS).sort());
+  assert.deepEqual(list.items.map((c: any) => c.name).sort(), Object.keys(ATOMIC_COMMAND_SCHEMAS).sort());
   const split = value(runtime.capabilities({ name: 'splitClip' }));
   assert.equal(split.inputSchema.properties.type.const, 'splitClip');
   assert.ok(split.inputSchema.required.includes('atUs'));

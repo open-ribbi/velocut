@@ -1,0 +1,538 @@
+{
+  "name": "duplicate preserves complete clips with unique effect IDs, locked-source reads and atomic rollback",
+  "steps": [
+    {
+      "apply": {
+        "type": "addAsset",
+        "id": "a1",
+        "kind": "video",
+        "src": "mem://a1",
+        "name": "Source",
+        "durationUs": 10000000
+      }
+    },
+    {
+      "apply": {
+        "type": "addTrack",
+        "kind": "video"
+      }
+    },
+    {
+      "apply": {
+        "type": "addTrack",
+        "kind": "video"
+      }
+    },
+    {
+      "apply": {
+        "type": "addTrack",
+        "kind": "audio"
+      }
+    },
+    {
+      "apply": {
+        "type": "addTrack",
+        "kind": "text"
+      }
+    },
+    {
+      "apply": {
+        "type": "addClip",
+        "trackId": "track_1",
+        "assetId": "a1",
+        "startUs": 1000000,
+        "durationUs": 4000000,
+        "sourceInUs": 2000000
+      }
+    },
+    {
+      "apply": {
+        "type": "setClipSpeed",
+        "clipId": "clip_5",
+        "speed": 2
+      }
+    },
+    {
+      "apply": {
+        "type": "setClipVolume",
+        "clipId": "clip_5",
+        "volume": 0.4
+      }
+    },
+    {
+      "apply": {
+        "type": "setTransform",
+        "clipId": "clip_5",
+        "transform": {
+          "x": 4,
+          "y": 5,
+          "scaleX": 0.8,
+          "scaleY": 0.7,
+          "rotation": 12,
+          "opacity": 0.9
+        }
+      }
+    },
+    {
+      "apply": {
+        "type": "addEffect",
+        "clipId": "clip_5",
+        "effect": "blur",
+        "params": {
+          "radius": 3
+        }
+      }
+    },
+    {
+      "apply": {
+        "type": "setKeyframe",
+        "clipId": "clip_5",
+        "property": "x",
+        "keyframe": {
+          "timeUs": 500000,
+          "value": 9,
+          "easing": {
+            "kind": "linear"
+          }
+        }
+      }
+    },
+    {
+      "apply": {
+        "type": "setTransition",
+        "clipId": "clip_5",
+        "transition": {
+          "kind": "dissolve",
+          "durationUs": 200000
+        }
+      }
+    },
+    {
+      "apply": {
+        "type": "duplicateClip",
+        "clipId": "clip_5"
+      }
+    },
+    {
+      "apply": {
+        "type": "duplicateClip",
+        "clipId": "clip_5",
+        "trackId": "track_2",
+        "startUs": 0
+      }
+    },
+    {
+      "apply": {
+        "type": "setTrackLocked",
+        "trackId": "track_1",
+        "locked": true
+      }
+    },
+    {
+      "apply": {
+        "type": "duplicateClip",
+        "clipId": "clip_5",
+        "trackId": "track_2",
+        "startUs": 2000000
+      }
+    },
+    {
+      "applyErr": {
+        "cmd": {
+          "type": "duplicateClip",
+          "clipId": "clip_5"
+        },
+        "code": "locked"
+      }
+    },
+    {
+      "applyErr": {
+        "cmd": {
+          "type": "duplicateClip",
+          "clipId": "clip_5",
+          "trackId": "track_3"
+        },
+        "code": "invalidArg"
+      }
+    },
+    {
+      "applyErr": {
+        "cmd": {
+          "type": "duplicateClip",
+          "clipId": "clip_5",
+          "trackId": "track_2",
+          "startUs": 1000000
+        },
+        "code": "overlap"
+      }
+    },
+    {
+      "applyErr": {
+        "cmd": {
+          "type": "duplicateClip",
+          "clipId": "missing"
+        },
+        "code": "notFound"
+      }
+    },
+    {
+      "applyErr": {
+        "cmd": {
+          "type": "duplicateClip",
+          "clipId": "clip_5",
+          "trackId": "track_2",
+          "startUs": -1
+        },
+        "code": "invalidArg"
+      }
+    },
+    {
+      "applyErr": {
+        "cmd": {
+          "type": "batch",
+          "commands": [
+            {
+              "type": "duplicateClip",
+              "clipId": "clip_5",
+              "trackId": "track_2",
+              "startUs": 4000000
+            },
+            {
+              "type": "duplicateClip",
+              "clipId": "clip_5",
+              "trackId": "track_2",
+              "startUs": 5000000
+            }
+          ]
+        },
+        "code": "overlap"
+      }
+    },
+    {
+      "apply": {
+        "type": "duplicateClip",
+        "clipId": "clip_5",
+        "trackId": "track_2",
+        "startUs": 4000000
+      }
+    },
+    {
+      "apply": {
+        "type": "setEffectParams",
+        "clipId": "clip_5",
+        "effectId": "fx_6",
+        "params": {
+          "radius": 9
+        }
+      }
+    },
+    {
+      "apply": {
+        "type": "addTextClip",
+        "trackId": "track_4",
+        "startUs": 0,
+        "durationUs": 1000000,
+        "text": {
+          "content": "Original title",
+          "fontSize": 32,
+          "color": "#abcdef",
+          "bold": true
+        }
+      }
+    },
+    {
+      "apply": {
+        "type": "duplicateClip",
+        "clipId": "clip_15"
+      }
+    },
+    {
+      "undo": true
+    },
+    {
+      "redo": true
+    }
+  ],
+  "expect": {
+    "clips": [
+      {
+        "id": "clip_5",
+        "trackId": "track_1",
+        "startUs": 1000000,
+        "durationUs": 2000000,
+        "sourceInUs": 2000000,
+        "speed": 2,
+        "data": {
+          "assetId": "a1",
+          "transform": {
+            "x": 4,
+            "y": 5,
+            "scaleX": 0.8,
+            "scaleY": 0.7,
+            "rotation": 12,
+            "opacity": 0.9
+          },
+          "keyframes": {
+            "x": [
+              {
+                "timeUs": 500000,
+                "value": 9,
+                "easing": {
+                  "kind": "linear"
+                }
+              }
+            ]
+          },
+          "transition": {
+            "kind": "dissolve",
+            "durationUs": 200000
+          },
+          "volume": 0.4,
+          "effects": [
+            {
+              "id": "fx_6",
+              "effect": "blur",
+              "params": {
+                "radius": 9
+              },
+              "enabled": true
+            }
+          ]
+        }
+      },
+      {
+        "id": "clip_7",
+        "trackId": "track_1",
+        "startUs": 3000000,
+        "durationUs": 2000000,
+        "sourceInUs": 2000000,
+        "speed": 2,
+        "data": {
+          "assetId": "a1",
+          "transform": {
+            "x": 4,
+            "y": 5,
+            "scaleX": 0.8,
+            "scaleY": 0.7,
+            "rotation": 12,
+            "opacity": 0.9
+          },
+          "keyframes": {
+            "x": [
+              {
+                "timeUs": 500000,
+                "value": 9,
+                "easing": {
+                  "kind": "linear"
+                }
+              }
+            ]
+          },
+          "transition": {
+            "kind": "dissolve",
+            "durationUs": 200000
+          },
+          "volume": 0.4,
+          "effects": [
+            {
+              "id": "fx_8",
+              "effect": "blur",
+              "params": {
+                "radius": 3
+              },
+              "enabled": true
+            }
+          ]
+        }
+      },
+      {
+        "id": "clip_9",
+        "trackId": "track_2",
+        "startUs": 0,
+        "durationUs": 2000000,
+        "sourceInUs": 2000000,
+        "speed": 2,
+        "data": {
+          "assetId": "a1",
+          "transform": {
+            "x": 4,
+            "y": 5,
+            "scaleX": 0.8,
+            "scaleY": 0.7,
+            "rotation": 12,
+            "opacity": 0.9
+          },
+          "keyframes": {
+            "x": [
+              {
+                "timeUs": 500000,
+                "value": 9,
+                "easing": {
+                  "kind": "linear"
+                }
+              }
+            ]
+          },
+          "transition": {
+            "kind": "dissolve",
+            "durationUs": 200000
+          },
+          "volume": 0.4,
+          "effects": [
+            {
+              "id": "fx_10",
+              "effect": "blur",
+              "params": {
+                "radius": 3
+              },
+              "enabled": true
+            }
+          ]
+        }
+      },
+      {
+        "id": "clip_11",
+        "trackId": "track_2",
+        "startUs": 2000000,
+        "durationUs": 2000000,
+        "sourceInUs": 2000000,
+        "speed": 2,
+        "data": {
+          "assetId": "a1",
+          "transform": {
+            "x": 4,
+            "y": 5,
+            "scaleX": 0.8,
+            "scaleY": 0.7,
+            "rotation": 12,
+            "opacity": 0.9
+          },
+          "keyframes": {
+            "x": [
+              {
+                "timeUs": 500000,
+                "value": 9,
+                "easing": {
+                  "kind": "linear"
+                }
+              }
+            ]
+          },
+          "transition": {
+            "kind": "dissolve",
+            "durationUs": 200000
+          },
+          "volume": 0.4,
+          "effects": [
+            {
+              "id": "fx_12",
+              "effect": "blur",
+              "params": {
+                "radius": 3
+              },
+              "enabled": true
+            }
+          ]
+        }
+      },
+      {
+        "id": "clip_13",
+        "trackId": "track_2",
+        "startUs": 4000000,
+        "durationUs": 2000000,
+        "sourceInUs": 2000000,
+        "speed": 2,
+        "data": {
+          "assetId": "a1",
+          "transform": {
+            "x": 4,
+            "y": 5,
+            "scaleX": 0.8,
+            "scaleY": 0.7,
+            "rotation": 12,
+            "opacity": 0.9
+          },
+          "keyframes": {
+            "x": [
+              {
+                "timeUs": 500000,
+                "value": 9,
+                "easing": {
+                  "kind": "linear"
+                }
+              }
+            ]
+          },
+          "transition": {
+            "kind": "dissolve",
+            "durationUs": 200000
+          },
+          "volume": 0.4,
+          "effects": [
+            {
+              "id": "fx_14",
+              "effect": "blur",
+              "params": {
+                "radius": 3
+              },
+              "enabled": true
+            }
+          ]
+        }
+      },
+      {
+        "id": "clip_15",
+        "trackId": "track_4",
+        "data": {
+          "text": {
+            "content": "Original title",
+            "fontSize": 32,
+            "color": "#abcdef",
+            "bold": true
+          }
+        }
+      },
+      {
+        "id": "clip_16",
+        "trackId": "track_4",
+        "startUs": 1000000,
+        "durationUs": 1000000,
+        "data": {
+          "text": {
+            "content": "Original title",
+            "fontSize": 32,
+            "color": "#abcdef",
+            "bold": true
+          }
+        }
+      }
+    ],
+    "clipCounts": {
+      "track_1": 2,
+      "track_2": 3,
+      "track_4": 2
+    },
+    "eval": [
+      {
+        "timeUs": 500000,
+        "layers": [
+          {
+            "clipId": "clip_9",
+            "sourceTimeUs": 3000000,
+            "x": 9
+          },
+          {
+            "clipId": "clip_15"
+          }
+        ],
+        "audio": [
+          {
+            "clipId": "clip_9",
+            "gain": 0.4,
+            "sourceTimeUs": 3000000
+          }
+        ]
+      }
+    ]
+  }
+}

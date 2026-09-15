@@ -103,6 +103,10 @@ export function createProjectHost(
         return { ...info(), ...atomic.capabilities(args ?? {}, { preview: !!playback, transport: 'mcp' }) };
       case 'query':
         return { ...info(), ...atomic.query(args) };
+      case 'resources':
+        return { ...info(), ...await atomic.resources(args, signal) };
+      case 'jobs':
+        return { ...info(), ...atomic.jobs(args) };
       case 'transaction':
         return { ...info(), ...await atomic.transaction(args, { dispatch, check: commandRestriction, signal }) };
       case 'references':
@@ -185,6 +189,8 @@ export function createProjectHost(
           capabilities: local('capabilities'),
           query: local('query'),
           transaction: local('transaction'),
+          resources: local('resources'),
+          jobs: local('jobs'),
           apply: (cmd) => guarded(cmd as Command),
           sceneAssets: local('sceneAssets'),
           sceneClip: local('sceneClip'),
