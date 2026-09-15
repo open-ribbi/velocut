@@ -4,6 +4,17 @@ import { layoutTransforms, transformObject, placementTime, type ObjectTransform,
 import { assemblyParts, type AssemblyRecipe } from './assemblies.ts';
 import { validateSceneSpec, type SceneSpec, type SceneCharacter, type SceneProp, type SceneGroup, type SceneLight } from './types.ts';
 import { sceneBudget, type SceneGeometry } from './geometry.ts';
+import type { SceneGeometryResource } from './geometry-resource.ts';
+import type { SceneMaterialDefinition } from './materials.ts';
+
+/** Pure editing requests verified bytes only when an operation actually needs them. */
+export class GeometryDataRequired extends Error {
+  id: string;
+  resource: SceneGeometryResource;
+  constructor(id: string, resource: SceneGeometryResource) {
+    super(`geometry '${id}' needs resolved source data`); this.id = id; this.resource = resource;
+  }
+}
 
 export type SceneObjectKind = 'character' | 'prop' | 'group' | 'light';
 export type SceneObject = SceneCharacter | SceneProp | SceneGroup | SceneLight;
@@ -11,9 +22,12 @@ export interface SceneCopy { prefix: string; rootIds: string[]; idMap: Record<st
 export type SceneEdit =
   | { type: 'geometry.create'; id: string; geometry: SceneGeometry }
   | { type: 'geometry.update'; id: string; geometry: SceneGeometry }
+  | { type: 'geometry.clone'; id: string; newId: string }
   | { type: 'geometry.remove'; id: string }
   | { type: 'geometry.patch'; id: string; attribute: 'vertices' | 'faces' | 'uvs'; updates: Array<{index: number; value: number[]}> }
-  | { type: 'makeUnique'; id: string }
+  | { type: 'makeUnique'; id: string; geometryId?: string }
+  | { type: 'material.create' | 'material.update'; id: string; material: SceneMaterialDefinition }
+  | { type: 'material.remove'; id: string }
   | { type: 'duplicateMany'; ids: string[]; copies: Array<{ prefix: string; transform?: ObjectTransform; relative?: boolean }>; timeS?: number }
   | { type: 'transform'; ids: string[]; transform: ObjectTransform; relative?: boolean; timeS?: number }
   | { type: 'layout'; ids: string[]; layout: SceneLayout; timeS?: number }
@@ -57,17 +71,27 @@ const fields: Record<SceneObjectKind, string[]> = {
   group: common,
   light: [...common, 'type', 'color', 'intensity', 'distance', 'decay', 'angle', 'penumbra', 'shadow'],
   character: [...common, 'model', 'actions', 'gaze', 'morphs', 'pose', 'color'],
-  prop: [...common, 'model', 'geometryId', 'color', 'material', 'attachTo', 'vertices', 'faces', 'uvs', 'points', 'depth', 'holes', 'bevel', 'path', 'radius', 'closed', 'physics'],
+  prop: [...common, 'model', 'geometryId', 'materialId', 'color', 'material', 'attachTo', 'vertices', 'faces', 'uvs', 'points', 'depth', 'holes', 'bevel', 'path', 'radius', 'closed', 'physics'],
 };
 const fail = (message: string): never => { throw new Error(message); };
 
-export function applySceneEdits(input: SceneSpec, edits: SceneEdit[]): { spec: SceneSpec; changedIds: string[]; createdIds: string[]; geometryIds: string[]; copies: SceneCopy[] } {
+export function applySceneEdits(input: SceneSpec, edits: SceneEdit[], geometryData: ReadonlyMap<string, SceneGeometry> = new Map()): { spec: SceneSpec; changedIds: string[]; createdIds: string[]; geometryIds: string[]; materialIds: string[]; copies: SceneCopy[] } {
   if (!Array.isArray(edits) || !edits.length || edits.length > 500) fail('edits must contain 1..500 operations');
   const initialError = validateSceneSpec(input);
   if (initialError) fail(initialError);
   const spec = normalizeSceneSpec(input);
   const changed = new Set<string>();
   const geometryIds = new Set<string>();
+  const materialIds = new Set<string>();
+  const validResourceId = (id: string) => typeof id === 'string' && /^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}$/.test(id) && !['__proto__','constructor','prototype'].includes(id);
+  const hasGeometry = (id: string) => Object.hasOwn(spec.geometries ?? {}, id) || Object.hasOwn(spec.geometryResources ?? {}, id);
+  const cloneGeometry = (id: string, newId: string) => {
+    if (!validResourceId(id) || !hasGeometry(id)) fail('unknown source geometry');
+    if (!validResourceId(newId) || hasGeometry(newId)) fail('new geometry id is invalid or already exists');
+    if (Object.hasOwn(spec.geometries ?? {}, id)) (spec.geometries ??= {})[newId] = structuredClone(spec.geometries![id]);
+    else (spec.geometryResources ??= {})[newId] = structuredClone(spec.geometryResources![id]);
+    geometryIds.add(newId);
+  };
   const initialIds = new Set(sceneObjects(spec).map(e => e.object.id));
   const copies: SceneCopy[] = [];
   const find = (id: string) => sceneObjects(spec).find((e) => e.object.id === id) ?? fail(`unknown object '${id}'`);
@@ -109,8 +133,27 @@ export function applySceneEdits(input: SceneSpec, edits: SceneEdit[]): { spec: S
   if (expanded.length > 500) fail('expanded batch exceeds 500 operations');
   for (const edit of expanded) {
     if (!edit || typeof edit !== 'object') fail('invalid scene edit');
-    if (edit.type === 'geometry.patch') {
-      const g = spec.geometries?.[edit.id];
+    if (edit.type === 'geometry.clone') {
+      cloneGeometry(edit.id, edit.newId);
+    } else if (edit.type === 'material.create' || edit.type === 'material.update' || edit.type === 'material.remove') {
+      if (!validResourceId(edit.id)) fail('invalid material id');
+      const registry = spec.materials ??= {}, exists = Object.hasOwn(registry, edit.id);
+      if (edit.type === 'material.create' && exists) fail('material already exists');
+      if (edit.type !== 'material.create' && !exists) fail('unknown material');
+      const users = (spec.props ?? []).filter(p => p.materialId === edit.id);
+      if (edit.type === 'material.remove') {
+        if (users.length) fail('material is referenced by objects');
+        delete registry[edit.id];
+      } else registry[edit.id] = structuredClone(edit.material);
+      materialIds.add(edit.id); users.forEach(p => changed.add(p.id!));
+    } else if (edit.type === 'geometry.patch') {
+      let g = spec.geometries?.[edit.id];
+      if (!g && Object.hasOwn(spec.geometryResources ?? {}, edit.id)) {
+        const resource = spec.geometryResources![edit.id], data = geometryData.get(resource.src);
+        if (!data) throw new GeometryDataRequired(edit.id, structuredClone(resource));
+        g = { ...structuredClone(data), name: resource.name };
+        (spec.geometries ??= {})[edit.id] = g; delete spec.geometryResources![edit.id];
+      }
       if (!g) fail('geometry.patch requires resolved geometry data');
       if (!['vertices','faces','uvs'].includes(edit.attribute) || !Array.isArray(edit.updates) || !edit.updates.length || edit.updates.length > 1024) fail('geometry.patch requires an attribute and 1..1024 updates');
       const data = g![edit.attribute]; if (!data) fail('geometry attribute does not exist');
@@ -136,11 +179,11 @@ export function applySceneEdits(input: SceneSpec, edits: SceneEdit[]): { spec: S
     } else if (edit.type === 'makeUnique') {
       const { kind, object } = find(edit.id);
       if (kind !== 'prop' || (object as SceneProp).model !== 'prop/instance') fail('makeUnique requires an instance');
-      const p = object as SceneProp, geometry = spec.geometries?.[p.geometryId!];
-      if (!geometry) throw new Error('instance geometry not found');
-      p.model = 'prop/mesh'; p.vertices = structuredClone(geometry.vertices); p.faces = structuredClone(geometry.faces);
-      if (geometry.uvs) p.uvs = structuredClone(geometry.uvs);
-      delete p.geometryId; changed.add(edit.id);
+      const p = object as SceneProp;
+      let newId = edit.geometryId;
+      if (newId == null) { let n = 1; while (hasGeometry(`unique_${n}`)) n++; newId = `unique_${n}`; }
+      cloneGeometry(p.geometryId!, newId);
+      p.model = 'prop/mesh'; p.geometryId = newId; changed.add(edit.id);
     } else if (edit.type === 'assembly') {
       if (typeof edit.id !== 'string' || !edit.id.trim()) fail('assembly requires an id');
       const parts = assemblyParts(edit.id, edit.recipe);
@@ -255,5 +298,5 @@ export function applySceneEdits(input: SceneSpec, edits: SceneEdit[]): { spec: S
     try { Object.assign(failure, { budget: sceneBudget(spec) }); } catch { /* malformed candidate has no trustworthy counts */ }
     throw failure;
   }
-  return { spec, changedIds: [...changed], createdIds: sceneObjects(spec).map(e => e.object.id!).filter(id => !initialIds.has(id)), geometryIds: [...geometryIds], copies };
+  return { spec, changedIds: [...changed], createdIds: sceneObjects(spec).map(e => e.object.id!).filter(id => !initialIds.has(id)), geometryIds: [...geometryIds], materialIds: [...materialIds], copies };
 }

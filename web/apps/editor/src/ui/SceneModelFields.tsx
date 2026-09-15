@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { SceneLight, SceneProp } from '@velocut/scene-sdk';
+import type { SceneLight, SceneProp, SceneMaterialDefinition } from '@velocut/scene-sdk';
 import { AnimatableField, NumberField } from './SceneFields';
 
 function JsonField({ label, value, onChange }: { label: string; value: unknown; onChange: (v: unknown) => void }) {
@@ -22,6 +22,16 @@ export function MeshFields({ value, onChange }: { value: SceneProp; onChange: (p
     <JsonField label="UV coordinates" value={value.uvs ?? []} onChange={(uvs) => onChange({ uvs: Array.isArray(uvs) && !uvs.length ? undefined : uvs as SceneProp['uvs'] })} />
     <div className="empty-hint">Triangle indices start at 0; front faces wind counter-clockwise. Duplicate vertices for hard edges.</div>
   </div>;
+}
+
+export function MaterialFields({ value, onChange }: { value: SceneMaterialDefinition; onChange: (patch: Partial<SceneMaterialDefinition>) => void }) {
+  return <>
+    <label className="prop-row"><span className="prop-label">Shared color</span><input type="color" aria-label="Shared material color" value={value.color ?? '#8fa3bf'} onChange={e => onChange({color:e.target.value})}/></label>
+    {(['roughness','metalness','opacity'] as const).map(k => <div className="prop-row" key={k}><span className="prop-label">Shared {k}</span>
+      <NumberField min={0} max={1} step={0.05} value={value[k] ?? (k === 'roughness' ? 0.6 : k === 'opacity' ? 1 : 0)} onCommit={v => onChange({[k]:v})}/>
+    </div>)}
+    <label className="prop-row"><span className="prop-label">Shared faces</span><select aria-label="Shared material faces" value={value.side ?? 'front'} onChange={e => onChange({side:e.target.value as 'front'|'double'})}><option value="front">Front</option><option value="double">Double</option></select></label>
+  </>;
 }
 
 export function LightFields({ value, onChange }: { value: SceneLight; onChange: (patch: Partial<SceneLight>) => void }) {

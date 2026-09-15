@@ -18,7 +18,8 @@ try{
   const get=key=>new Promise((resolve,reject)=>{const r=db.transaction('kv','readonly').objectStore('kv').get(key);r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)});
   const decode=b=>JSON.parse(new TextDecoder().decode(b));
   const projects=decode(await get('projects')),project=projects.find(p=>p.name===name);if(!project)throw Error('project not in copied registry: '+projects.map(p=>p.name).join(', '));
-  const history=await get(project.id==='default'?'history':'history:'+project.id),ydoc=await get(project.id==='default'?'ydoc':'ydoc:'+project.id);
+  const historyKey=project.id==='default'?'history':'history:'+project.id;
+  const history=await get(historyKey+':compact-v1')??await get(historyKey),ydoc=await get(project.id==='default'?'ydoc':'ydoc:'+project.id);
   if(!history||!ydoc)throw Error('project history or document missing');
   const h=decode(history);db.close();
   for(const [name,data] of [['history.bin',history],['ydoc.bin',ydoc]]){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([data]));a.download=name;a.click();}

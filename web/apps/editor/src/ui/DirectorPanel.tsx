@@ -30,6 +30,7 @@ import {
   sceneObjects,
   sceneStructureKey,
   resolveSceneGeometry,
+  resolvePropAppearance,
   type SceneGeometry,
   nextSceneId,
   type SceneEdit,
@@ -50,7 +51,7 @@ import type { Store } from '../state/store';
 import { directorController, type DirectorSession } from '../services/director-session';
 import { sceneResources } from '../services/scene-resources';
 import { importSceneModel, arrangeScene, editScene, replaceSceneSpec } from '../services/scene';
-import { LightFields, MeshFields } from './SceneModelFields';
+import { LightFields, MeshFields, MaterialFields } from './SceneModelFields';
 import { NumberField, AnimatableField, Vec3Row } from './SceneFields';
 
 export type Sel = {
@@ -217,9 +218,14 @@ export function DirectorPanel({
   };
 
   const runEdits = async (edits: SceneEdit[]) => {
+    const current = store.getState();
+    if (current.doc.assets.find(a => a.id === asset.id)?.spec !== specText) {
+      const message = 'Scene changed; try the edit again.';
+      setError(message); return {ok:false as const,message};
+    }
     const r = await editScene(store, {
       assetId: asset.id,
-      expectedRevision: store.getState().revision,
+      expectedRevision: current.revision,
       edits,
     });
     setError(r.ok ? null : r.message);
@@ -735,6 +741,9 @@ export function DirectorPanel({
     !!selChar && !!manifest?.characters[selChar.model]?.file.startsWith('builtin:');
   const characterModels = Object.keys(manifest?.characters ?? {});
   const selectedGeometryId = selProp?.geometryId;
+  const appearance = spec && selProp ? resolvePropAppearance(spec, selProp) : undefined;
+  const selectedMaterial = spec?.materials?.[selProp?.materialId ?? ''];
+  const materialUsers = spec?.props?.filter(p => p.materialId === selProp?.materialId).length ?? 0;
   const selectedGeometryResource = spec?.geometryResources?.[selectedGeometryId!];
   const geometryKey = `${asset.id}:${selectedGeometryId}:${selectedGeometryResource?.src}:${selectedGeometryResource?.name}`;
   const [loadedGeometry, setLoadedGeometry] = useState<{key:string;data:SceneGeometry} | null>(null);
@@ -1335,18 +1344,18 @@ export function DirectorPanel({
                     onChange={(patch) => mutateSel((o) => Object.assign(o, patch))}
                   />
                 )}
-                {selProp?.model === 'prop/instance' && selectedGeometry && (
+                {selProp?.geometryId && selectedGeometry && (
                   <>
-                    <div className="group-title">Shared geometry · {selProp.geometryId}</div>
-                    <p className="empty-hint">Geometry edits affect all {spec?.props?.filter(p => p.geometryId === selProp.geometryId).length} instances. Transform and color affect this object only.</p>
-                    <button className="fx-add" onClick={() => runEdits([{ type: 'makeUnique', id: sel.id }])}>Make geometry unique</button>
+                    <div className="group-title">Geometry · {selProp.geometryId}</div>
+                    <p className="empty-hint">Geometry edits affect {spec?.props?.filter(p => p.geometryId === selProp.geometryId).length} linked objects. Transform and color affect this object only.</p>
+                    {selProp.model === 'prop/instance' && <button className="fx-add" onClick={() => runEdits([{ type: 'makeUnique', id: sel.id }])}>Make geometry unique</button>}
                     <MeshFields
                       value={{ model: 'prop/mesh', ...selectedGeometry }}
                       onChange={(patch) => runEdits([{ type: 'geometry.update', id: selProp.geometryId!, geometry: { ...selectedGeometry, ...patch } }])}
                     />
                   </>
                 )}
-                {selProp?.model === 'prop/mesh' && (
+                {selProp?.model === 'prop/mesh' && !selProp.geometryId && (
                   <MeshFields
                     value={selProp}
                     onChange={(patch) => mutateSel((o) => Object.assign(o, patch))}
@@ -1405,11 +1414,27 @@ export function DirectorPanel({
                 >
                   Duplicate
                 </button>
+                {selProp && spec && <>
+                  <label className="prop-row"><span className="prop-label">Material</span><select aria-label="Shared material" value={selProp.materialId ?? ''} onChange={e => mutateSel(o => { (o as typeof selProp).materialId = e.target.value || undefined; })}>
+                    <option value="">Object / source material</option>{Object.entries(spec.materials ?? {}).map(([id,m]) => <option key={id} value={id}>{m.name ?? id}</option>)}
+                  </select></label>
+                  {!selProp.materialId && selProp.model.startsWith('prop/') && <button className="fx-add" onClick={() => {
+                    let n=1;while(Object.hasOwn(spec.materials ?? {},`material_${n}`))n++;
+                    const id=`material_${n}`;
+                    return runEdits([{type:'material.create',id,material:{...appearance!.material,color:appearance!.color ?? '#8fa3bf'}},
+                      {type:'update',id:sel.id,patch:{materialId:id},clear:['material','color']}]);
+                  }}>Share this material</button>}
+                  {selectedMaterial && <>
+                    <p className="empty-hint">Shared by {materialUsers} {materialUsers === 1 ? 'object' : 'objects'}. Object settings below override shared values.</p>
+                    <button className="fx-add" onClick={() => runEdits([{type:'update',id:sel.id,patch:{},clear:['material','color']}])}>Clear material overrides</button>
+                    <details><summary>Edit shared material</summary><MaterialFields value={selectedMaterial} onChange={patch => runEdits([{type:'material.update',id:selProp.materialId!,material:{...selectedMaterial,...patch}}])}/></details>
+                  </>}
+                </>}
                 {selProp &&
                   (['roughness', 'metalness', 'opacity'] as const).map((field) => (
                     <div className="prop-row" key={field}>
                       <span className="prop-label">{field}</span>
-                      {selProp.model.startsWith('model/') && selProp.material?.[field] == null ? (
+                      {selProp.model.startsWith('model/') && !selProp.materialId && selProp.material?.[field] == null ? (
                         <button
                           className="kf-btn"
                           onClick={() =>
@@ -1428,7 +1453,7 @@ export function DirectorPanel({
                           max={1}
                           step={0.1}
                           value={
-                            selProp.material?.[field] ??
+                            appearance?.material[field] ??
                             (field === 'roughness' ? 0.6 : field === 'opacity' ? 1 : 0)
                           }
                           onCommit={(v) =>
@@ -1462,7 +1487,7 @@ export function DirectorPanel({
                             type: 'update',
                             id: sel.id,
                             patch: {},
-                            clear: ['color', 'material'],
+                            clear: ['color', 'material', 'materialId'],
                           },
                         ])
                       }
@@ -1633,7 +1658,7 @@ export function DirectorPanel({
                     <input
                       type="color"
                       value={
-                        (selObj as { color?: string }).color ??
+                        (selObj as { color?: string }).color ?? appearance?.color ??
                         (selChar
                           ? MANNEQUIN_DEFAULT_COLOR
                           : selLight || selProp?.model.startsWith('model/')

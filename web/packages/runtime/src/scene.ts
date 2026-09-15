@@ -11,6 +11,8 @@ import {
   MAX_MODEL_BYTES,
   sceneBudget,
   resolveSceneGeometry,
+  GeometryDataRequired,
+  type SceneGeometry,
   type SceneResources,
   validateGlb,
   loadImportedModel,
@@ -378,22 +380,22 @@ export async function editScene(store: Store, opts: SceneEditOptions, dispatch?:
     if (opts.expectedRevision != null && opts.expectedRevision !== before.revision) throw new Error('conflict: document changed; read the scene again');
     if (opts.preflight != null && typeof opts.preflight !== 'boolean' || opts.includeSpec != null && typeof opts.includeSpec !== 'boolean') throw new Error('preflight/includeSpec must be boolean');
     if (opts.preflight && opts.dryRun) throw new Error('choose preflight or dryRun, not both');
-    const input = structuredClone(before.spec);
-    // Only operations that need vertex data hydrate it. Transforms and full
-    // geometry replacement never load unrelated geometry into the document.
-    for (const edit of opts.edits ?? []) {
-      const id = edit.type === 'geometry.patch' ? edit.id : edit.type === 'makeUnique'
-        ? input.props?.find(p => p.id === edit.id)?.geometryId : undefined;
-      if (id && Object.hasOwn(input.geometryResources ?? {}, id)) {
-        (input.geometries ??= {})[id] = await resolveSceneGeometry(input, id, sceneResources(store));
-        delete input.geometryResources![id];
+    const geometryData = new Map<string, SceneGeometry>();
+    let result: ReturnType<typeof applySceneEdits>;
+    while (true) {
+      try { result = applySceneEdits(before.spec, opts.edits, geometryData); break; }
+      catch (error) {
+        if (!(error instanceof GeometryDataRequired) || geometryData.has(error.resource.src)) throw error;
+        // Replay is pure. This also supports clone/makeUnique followed by a
+        // patch of the newly named resource in the same atomic edit batch.
+        const data = await resolveSceneGeometry({version:1,durationUs:1,geometryResources:{[error.id]:error.resource}}, error.id, sceneResources(store));
+        geometryData.set(error.resource.src, data);
       }
     }
-    const result = applySceneEdits(input, opts.edits);
     const budget = sceneBudget(result.spec);
     if (opts.preflight) return { ok: true as const, assetId: opts.assetId, revision: before.revision, preview: true,
       ready: false, compiled: false, budget, changedIds: result.changedIds, createdIds: result.createdIds,
-      geometryIds: result.geometryIds, ...(opts.includeSpec ? { spec: result.spec } : {}) };
+      geometryIds: result.geometryIds, materialIds: result.materialIds, ...(opts.includeSpec ? { spec: result.spec } : {}) };
     const committed = await replaceSceneSpec(
       store,
       opts.assetId,
@@ -405,7 +407,7 @@ export async function editScene(store: Store, opts: SceneEditOptions, dispatch?:
     if (!committed.ok) return committed;
     const { spec, ...summary } = committed;
     return { ...summary, ...(opts.includeSpec === false ? {} : { spec }), budget,
-      changedIds: result.changedIds, createdIds: result.createdIds, geometryIds: result.geometryIds, copies: result.copies };
+      changedIds: result.changedIds, createdIds: result.createdIds, geometryIds: result.geometryIds, materialIds: result.materialIds, copies: result.copies };
   } catch (e) {
     return { ok: false as const, message: e instanceof Error ? e.message : String(e),
       ...(e instanceof Error && 'budget' in e ? { budget: e.budget } : {}) };

@@ -23,7 +23,7 @@ test('geometry queries are projected and snapshot-scoped; budget preflight needs
   const assetId = store.getState().doc.assets.at(-1)!.id;
   const snapshot = value(runtime.query({ kind: 'snapshot' }));
   const list = value(runtime.query({ kind: 'sceneGeometries', assetId }));
-  assert.deepEqual(list.items, [{ id: 'tile', vertexCount: 3, triangleCount: 1, instanceCount: 1, storage: 'inline' }]);
+  assert.deepEqual(list.items, [{ id: 'tile', vertexCount: 3, triangleCount: 1, instanceCount: 1, objectCount: 1, storage: 'inline' }]);
   const read = value(runtime.query({ kind: 'sceneGeometries', assetId, fields: ['id', 'geometry'] }));
   assert.deepEqual(read.items[0].geometry, geometry);
   read.items[0].geometry.vertices[0][0] = 42;

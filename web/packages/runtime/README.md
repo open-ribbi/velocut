@@ -55,3 +55,17 @@ Use `createEngine({ ..., wasmBase: '/wasm' })` to try the separately built Rust
 engine, with TS fallback. The scene's Three.js/physics runtime and document
 engine WASM are independent. Persistence, account/provider settings, UI and
 browser lifecycle belong to the host. Call disposal methods when it closes.
+
+## Compact history
+
+`HistoryTree` shares immutable spec strings in memory. `serialize()` still returns
+ordinary documents for existing consumers; `serializeCompact()` emits the
+`spec-table-v1` storage encoding. `HistoryTree.deserialize()` reads both formats.
+The compact encoding preserves node IDs, branches, commands and snapshots.
+
+Studio stores compact history under `<history key>:compact-v1`, keeping an existing
+legacy history value as a downgrade/recovery copy. New writes do not update that
+legacy copy; older Studio versions see the last legacy state. Deleting a project
+removes both keys. This reduces the active save payload, not necessarily total
+disk use immediately. No history nodes are dropped by deduplication; the existing
+400-node retention policy is unchanged.

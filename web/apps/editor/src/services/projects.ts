@@ -143,6 +143,7 @@ export async function deleteProject(id: string): Promise<void> {
   const keys = storageKeys(id);
   await kvDelete(keys.ydoc);
   await kvDelete(keys.history);
+  await kvDelete(keys.history + ':compact-v1');
   for (const k of await kvKeys(keys.motionPrefix)) {
     // The legacy prefix "motion:" also matches scoped keys "motion:<pid>:…" —
     // a default-project wipe must only take the two-segment legacy keys.

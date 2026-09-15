@@ -1,5 +1,6 @@
 import type { SceneMaterial, SceneProp, SceneSpec } from './types.ts';
 import { geometryByteLength } from './geometry-resource.ts';
+import { resolvePropAppearance } from './materials.ts';
 
 /** Scene-local editable geometry. Instances reference its registry key. */
 export interface SceneGeometry {
@@ -14,6 +15,7 @@ export const SCENE_LIMITS = Object.freeze({
   groups: 100, geometryVertices: 4096, geometryTriangles: 8192,
   instanceBatches: 128, instanceTriangles: 2_000_000,
   geometryBytes: 16 * 1024 * 1024,
+  materials: 128,
 });
 
 export function validateGeometry(value: unknown): string | null {
@@ -36,8 +38,8 @@ export function validateGeometry(value: unknown): string | null {
 
 /** Explicit default normalization keeps equivalent materials in one batch.
  * Color is per instance, so changing it does not add a draw batch. */
-export function instanceBatchKey(p: SceneProp): string {
-  const m: SceneMaterial = p.material ?? {};
+export function instanceBatchKey(p: SceneProp, spec?: SceneSpec): string {
+  const m: SceneMaterial = spec ? resolvePropAppearance(spec, p).material : p.material ?? {};
   return JSON.stringify([p.geometryId, m.roughness ?? 0.6, m.metalness ?? 0,
     m.opacity ?? 1, m.emissive ?? '#000000', m.emissiveIntensity ?? 1, m.side ?? 'front']);
 }
@@ -62,8 +64,9 @@ export function sceneBudget(spec: SceneSpec) {
     specBytes: new TextEncoder().encode(JSON.stringify(manifest)).length,
     props: props.length - instances.length, instances: instances.length,
     geometries: geometries.length + resources.length, groups: spec.groups?.length ?? 0,
+    materials: Object.keys(spec.materials ?? {}).length,
     geometryBytes: geometries.reduce((n,g) => n + geometryByteLength(g.vertices?.length ?? 0,g.faces?.length ?? 0,!!g.uvs),0) + resources.reduce((n,r) => n+r.byteLength,0),
-    instanceBatches: new Set(instances.map(instanceBatchKey)).size,
+    instanceBatches: new Set(instances.map(p => instanceBatchKey(p, spec))).size,
     instanceTriangles: instances.reduce((n, p) => n + (spec.geometries?.[p.geometryId!]?.faces?.length ?? spec.geometryResources?.[p.geometryId!]?.triangleCount ?? 0), 0),
   };
   const violations = (Object.keys(used) as Array<keyof typeof used>).filter(k => used[k] > SCENE_LIMITS[k])

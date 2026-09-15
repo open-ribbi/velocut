@@ -49,6 +49,25 @@ export interface HistorySerialized {
   seq: number;
 }
 
+/** Storage-only encoding; public snapshots and serialize() remain ordinary documents. */
+export interface CompactHistorySerialized extends Omit<HistorySerialized, 'nodes'> {
+  historyEncoding: 'spec-table-v1';
+  specs: string[];
+  nodes: unknown[];
+}
+
+function mapCommandSpecs(value: unknown, map: (value: unknown) => unknown, depth = 0): unknown {
+  if (depth > 32) throw new Error('history command nesting exceeds limit');
+  if (!value || typeof value !== 'object') return value;
+  const c = value as Record<string, unknown>;
+  if (c.type === 'batch' && Array.isArray(c.commands)) return { ...c, commands: c.commands.map(x => mapCommandSpecs(x, map, depth + 1)) };
+  if ((c.type === 'addAsset' || c.type === 'setAssetSpec') && c.spec != null) return { ...c, spec: map(c.spec) };
+  return { ...c };
+}
+function mapSnapshotSpecs(value: VDocument, map: (value: unknown) => unknown) {
+  return { ...value, assets: value.assets.map(a => a.spec == null ? { ...a } : { ...a, spec: map(a.spec) }) };
+}
+
 let MONO = 0;
 
 export class HistoryTree {
@@ -58,6 +77,25 @@ export class HistoryTree {
   private rootId: string;
   private headId: string;
   private seq = 0;
+  private specPool = new Map<string, string>();
+
+  private internSpec = (value: unknown): string => {
+    if (typeof value !== 'string') throw new Error('history spec must be a string');
+    const existing = this.specPool.get(value);
+    if (existing !== undefined) return existing;
+    this.specPool.set(value, value); return value;
+  };
+  private copySnapshot(doc: VDocument): VDocument {
+    return mapSnapshotSpecs(structuredClone(doc), this.internSpec) as VDocument;
+  }
+  /** Pruning/rebasing must also release strings no longer used by any branch. */
+  private rebuildSpecPool() {
+    this.specPool.clear();
+    for (const node of this.nodes.values()) {
+      for (const asset of node.snapshot.assets) if (asset.spec != null) asset.spec = this.internSpec(asset.spec);
+      node.command = mapCommandSpecs(node.command, this.internSpec) as Command | null;
+    }
+  }
 
   constructor(rootDoc: VDocument, rootActor: Actor) {
     const id = this.mintId();
@@ -68,7 +106,7 @@ export class HistoryTree {
       actor: rootActor,
       command: null,
       label: 'Initial',
-      snapshot: structuredClone(rootDoc),
+      snapshot: this.copySnapshot(rootDoc),
     };
     this.nodes.set(id, root);
     this.rootId = id;
@@ -122,14 +160,16 @@ export class HistoryTree {
    *  the persisted/restored document (only meaningful while the tree is just
    *  the root). */
   rebaseRoot(doc: VDocument): void {
-    this.nodes.get(this.rootId)!.snapshot = structuredClone(doc);
+    this.nodes.get(this.rootId)!.snapshot = this.copySnapshot(doc);
+    this.rebuildSpecPool();
   }
 
   /** Align the head node's snapshot to an externally-loaded document — used to
    *  absorb the collab restore "echo" on startup (the Yjs rebuild can differ
    *  from the persisted snapshot by nextId/ordering) without adding a node. */
   rebaseHead(doc: VDocument): void {
-    this.head.snapshot = structuredClone(doc);
+    this.head.snapshot = this.copySnapshot(doc);
+    this.rebuildSpecPool();
   }
 
   /** True while nothing has been recorded yet (fresh tree). */
@@ -152,10 +192,10 @@ export class HistoryTree {
       parentId: this.headId,
       ts: Date.now(),
       actor,
-      command,
+      command: mapCommandSpecs(structuredClone(command), this.internSpec) as Command | null,
       label,
       prompt,
-      snapshot: structuredClone(snapshot),
+      snapshot: this.copySnapshot(snapshot),
     };
     this.nodes.set(node.id, node);
     this.headId = node.id;
@@ -200,6 +240,7 @@ export class HistoryTree {
       if (!leaf) break;
       this.nodes.delete(leaf.id);
     }
+    this.rebuildSpecPool();
   }
 
   /** Move head to parent; returns the snapshot to load (or null at root). */
@@ -237,16 +278,49 @@ export class HistoryTree {
     };
   }
 
+  serializeCompact(): CompactHistorySerialized {
+    const specs: string[] = [], indices = new Map<string, number>();
+    const encode = (value: unknown) => {
+      if (typeof value !== 'string') throw new Error('history spec must be a string');
+      let index = indices.get(value);
+      if (index === undefined) { index = specs.length; specs.push(value); indices.set(value, index); }
+      return { specRef: index };
+    };
+    return { ...this.serialize(), historyEncoding: 'spec-table-v1', specs,
+      nodes: this.all().map(n => ({ ...n, snapshot: mapSnapshotSpecs(n.snapshot, encode), command: mapCommandSpecs(n.command, encode) })),
+    };
+  }
+
   /** Rebuild from persisted data, migrating each node's snapshot to the current
    *  format. Throws DocumentFormatError on a future/invalid version — the caller
    *  (loadHistory) catches it and starts with a fresh tree. */
-  static deserialize(data: HistorySerialized): HistoryTree {
-    const t = Object.create(HistoryTree.prototype) as HistoryTree;
-    for (const n of data.nodes) n.snapshot = migrateDocumentOrThrow(n.snapshot, data.formatVersion);
-    t.nodes = new Map(data.nodes.map((n) => [n.id, n]));
+  static deserialize(data: HistorySerialized | CompactHistorySerialized): HistoryTree {
+    if (!data || !Array.isArray(data.nodes) || !data.nodes.length) throw new Error('invalid history nodes');
+    const encoding = 'historyEncoding' in data ? data.historyEncoding : undefined;
+    if (encoding !== undefined && encoding !== 'spec-table-v1') throw new Error('unsupported history encoding');
+    const table = encoding === 'spec-table-v1' ? (data as CompactHistorySerialized).specs : [];
+    if (!Array.isArray(table) || table.some(s => typeof s !== 'string')) throw new Error('invalid history spec table');
+    const decode = (value: unknown): string => {
+      if (typeof value === 'string') return value;
+      const ref = value as {specRef?: number} | null;
+      if (!encoding || !ref || typeof ref !== 'object' || Object.keys(ref).length !== 1 || !Object.hasOwn(ref, 'specRef') || !Number.isSafeInteger(ref.specRef) || ref.specRef! < 0 || ref.specRef! >= table.length) throw new Error('invalid history spec reference');
+      return table[ref.specRef!];
+    };
+    const nodes = data.nodes.map(raw => {
+      const n = raw as HistoryNode;
+      const snapshot = mapSnapshotSpecs(n.snapshot, decode);
+      return { ...n, actor: structuredClone(n.actor), snapshot: migrateDocumentOrThrow(snapshot, data.formatVersion), command: mapCommandSpecs(structuredClone(n.command), decode) as Command | null };
+    });
+    const root = nodes.find(n => n.id === data.rootId);
+    if (!root) throw new Error('history root is missing');
+    // Construct normally so private fields and bound functions are initialized.
+    const t = new HistoryTree(root.snapshot, root.actor);
+    t.nodes = new Map(nodes.map(n => [n.id, n]));
+    if (t.nodes.size !== nodes.length) throw new Error('duplicate history node id');
     t.rootId = data.rootId;
-    t.headId = data.nodes.some((n) => n.id === data.headId) ? data.headId : data.rootId;
-    t.seq = data.seq ?? data.nodes.length;
+    t.headId = nodes.some(n => n.id === data.headId) ? data.headId : data.rootId;
+    t.seq = data.seq ?? nodes.length;
+    t.rebuildSpecPool();
     return t;
   }
 }

@@ -38,7 +38,7 @@ const page = await velocut.query({
 });
 ```
 
-Kinds: `document`, `snapshot`, `assets`, `tracks`, `clips`, `sceneObjects`, `sceneGeometries`, `sceneBudget`,
+Kinds: `document`, `snapshot`, `assets`, `tracks`, `clips`, `sceneObjects`, `sceneGeometries`, `sceneMaterials`, `sceneBudget`,
 `selection`. Entity results have `data:{items,total,nextOffset}`; continue until
 nextOffset is null. Use the same snapshotId for every page. Live pages without a
 snapshot can change between calls. Expired IDs fail instead of reading live data.
@@ -302,17 +302,19 @@ Existing `sceneEdit` exposes the new atomic operations:
 | Edit | Effect |
 | --- | --- |
 | `geometry.create {id,geometry}` | Create a definition; duplicate registry IDs fail |
+| `geometry.clone {id,newId}` | Clone a definition; immutable file bytes remain shared until changed |
 | `geometry.update {id,geometry}` | Replace its full definition; all referring instances update |
 | `geometry.patch {id,attribute,updates}` | Replace selected vertex/face/UV indices; preserve all other data |
 | `geometry.remove {id}` | Remove an unreferenced definition; live references reject deletion |
 | `add {kind:'prop',object:{id,model:'prop/instance',geometryId,...}}` | Create one independently editable instance |
 | `update/transform/layout/duplicate/duplicateMany/remove` | Existing object edits work on instances; duplication preserves the shared reference |
-| `makeUnique {id}` | Copy geometry into that object's own `prop/mesh`; preserve ID, parent, transform and appearance |
+| `makeUnique {id,geometryId?}` | Clone the definition and bind a resource-backed `prop/mesh`; preserve object ID, parent, transform and appearance |
 
 Every geometry definition accepts `name?`, `vertices`, `faces`, and `uvs?` with
 the existing explicit-mesh topology rules. Deleting an instance does not delete
-its geometry. `makeUnique` leaves other instances linked and does not garbage
-collect the old geometry; call `geometry.remove` explicitly when no users remain.
+its geometry. `makeUnique` creates a separate geometry ID (explicit `geometryId` or generated
+`unique_N`), initially sharing immutable file bytes. It leaves other instances
+linked and does not garbage collect the old geometry; call `geometry.remove` explicitly when no users remain.
 
 ```js
 // assetId is an existing scene asset. All sandbox RPC calls need await.
@@ -356,7 +358,7 @@ Read compact data through the existing query API (MCP: `velocut_query`):
   Includes `storage:'inline'|'resource'`. Opt into `fields:['id','geometry']` for
   legacy inline data or `fields:['id','resource']` for immutable file metadata.
   Use `sceneGeometry` below to read arrays regardless of storage type.
-- `kind:'sceneObjects',assetId`: includes `geometryId` by default. It returns
+- `kind:'sceneObjects',assetId`: includes `model`, `geometryId` and `materialId` by default. It returns
   authored objects without repeating their referenced geometry.
 - `kind:'sceneBudget',assetId`: counts, limits and violations, without GPU work.
   Supports `snapshotId`, but not pagination or field projection.
@@ -475,10 +477,10 @@ Storage/history boundaries:
   per-scene budget is not a disk-retention quota.
 - Project backups/transfer must include the referenced `.vmesh` files. Document
   synchronization alone does not transfer these binary assets to another peer.
-- This resource path covers shared geometry definitions. Ordinary `prop/mesh`
-  data, including meshes produced by `makeUnique`, remains inline and counts
-  against the manifest budget. Geometry topology edits still rebuild the stage;
-  only compatible instance/group transforms take the incremental path.
+- Both `prop/instance` and `prop/mesh` can reference a geometry ID. `makeUnique`
+  keeps geometry out of the manifest; old inline meshes remain supported. Geometry
+  topology edits still rebuild the stage; only compatible instance/group transforms
+  take the incremental path.
 
 ### Resource increment verification
 
@@ -496,3 +498,98 @@ new file versions; undo and reload restore the correct vertices. Independently
 installed CLI/MCP/SDK packages pass geometry reads and incremental-transform
 checks, alongside the existing development/production render probes. Production
 builds and plugin validation pass. This remains an unreleased source increment.
+
+## Shared materials and independent geometry resources
+
+Props can bind `materialId` to `spec.materials[id]`, whose fields are `name?`,
+`color?`, `roughness?`, `metalness?`, `opacity?`, `emissive?`,
+`emissiveIntensity?`, and `side?`. Registry colors use #RRGGBB. Local `prop.color`
+and defined `prop.material` fields override the shared values; omitted/null fields
+inherit. The Director shows resolved numeric/color values, offers **Share this
+material**, and distinguishes shared edits from local overrides.
+
+```js
+const snap = await velocut.query({kind:'snapshot'});
+if (!snap.ok) throw new Error(snap.error.message);
+return await velocut.sceneEdit({
+  assetId, expectedRevision:snap.revision, includeSpec:false,
+  edits:[
+    {type:'material.create',id:'glazed',material:{
+      color:'#c08b39',roughness:0.38,metalness:0.12,side:'double'
+    }},
+    {type:'update',id:'tile_0',patch:{materialId:'glazed'},clear:['material','color']},
+    {type:'geometry.clone',id:'tile',newId:'special'},
+    {type:'update',id:'tile_0',patch:{geometryId:'special'}},
+    {type:'geometry.patch',id:'special',attribute:'vertices',
+      updates:[{index:0,value:[0,0.02,0]}]}
+  ]
+});
+```
+
+`material.update` replaces a definition; object overrides remain. `material.remove`
+rejects a definition still referenced by any prop. `query({kind:'sceneMaterials',
+assetId})` returns id/name/objectCount; request `fields:['id','material']` for the
+full definition. Scene edit results include `materialIds` and `geometryIds`.
+Instance batches are derived from resolved parameters rather than material IDs,
+so equivalent definitions can still batch together; per-instance colors stay in
+instance attributes. Resolved transparency remains unsupported on instances.
+
+`makeUnique({id,geometryId?})` is the convenience edit for converting an instance
+to an ordinary mesh with its own geometry definition. It retains transform,
+color, material binding, parent and object ID. It does not detach a shared material.
+Unlike the earlier implementation, it no longer copies vertices into the prop.
+A geometry clone initially references the same immutable `.vmesh`; a subsequent
+patch writes a new version for that definition only. Other definitions and undo
+history retain their original references. `sceneGeometries` distinguishes
+`instanceCount` from `objectCount`, because ordinary meshes can now reference it.
+
+Limits remain 1000 instances, 200 ordinary props, 64 geometry definitions, 128
+shared material definitions, 128 instance draw batches and 256 KiB manifest.
+Cloned definitions count toward the logical geometry count/byte budgets even
+when their immutable files initially deduplicate. Reusable animation definitions,
+visibility/scale animation and increasing instance limits remain separate work.
+
+## Compact history storage
+
+History snapshots remain full ordinary documents in the runtime. The tree interns
+identical immutable asset/command spec strings, and releases unused pool entries
+when nodes are pruned or rebased. Commands are copied before retention so caller
+mutation cannot rewrite history.
+
+`HistoryTree.serializeCompact()` stores each distinct spec once in a table and
+references it from snapshot assets and asset/spec commands. Its independent
+`historyEncoding:'spec-table-v1'` marker does not change document format versions.
+The decoder accepts legacy history, validates table references and rejects unknown
+encodings. The public `serialize()` method remains compatible with full-document
+consumers. All branches, IDs, commands and snapshot values survive round trips.
+
+Studio reads the compact IndexedDB key first and writes new history there. An
+existing legacy key is kept as a recovery/downgrade copy and is not updated with
+new edits. Thus the new active payload shrinks, while old disk bytes may remain
+until explicitly cleaned up or the project is deleted. This is not yet general
+checkpoint/delta history or resource garbage collection.
+
+### Sharing increment verification
+
+122 Node/TypeScript tests and 8 MCP tests pass. The 50-test browser suite passes;
+after adding the compact material-panel test and stale-edit protection, all 18
+related browser tests pass again (51 distinct browser cases total). The checks
+include reference cloning, clone/makeUnique followed by index patches in one
+transaction, shared material overrides, exact rendered appearance and GLB material
+parity, persistence, compact-history restoration and branch-preserving codec
+round trips. Installed npm packages pass shared-material and compact-history
+checks in addition to existing standalone SDK/CLI/plugin validation.
+
+The detailed tile fixture uses the real evaluation's 594-vertex/1184-triangle
+shell and 1000 independently timed placements. The projected manifest falls from
+272,708 to 211,799 bytes without changing the material parameters. Making one
+geometry independent brings it to 212,018 bytes: an increase of 219 bytes instead
+of putting the 28 KiB mesh back inline.
+
+The original Yellow Crane project's 119-node history round-trips unchanged:
+34,996,027 legacy bytes become 3,418,973 compact bytes with 7 unique specs. In the
+same isolated-browser memory protocol, loaded/after-reload JS heap is about
+14.5 MiB versus the earlier 72.3 MiB. This reduction is in the page's JS heap,
+not an equivalent percentage reduction of GPU or total browser memory. Existing
+legacy disk data remains a recovery copy. No package has been published by this
+increment.

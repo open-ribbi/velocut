@@ -5,6 +5,7 @@ import { expandShots } from './shots.ts';
 import { applySpecCamera, specCameraPosition } from './compile.ts';
 import { validateGlb, type SceneResources } from './models.ts';
 import type { SceneSpec } from './types.ts';
+import { resolvePropAppearance } from './materials.ts';
 
 export interface SceneGlbOptions {
   timeS?: number;
@@ -148,7 +149,7 @@ export async function exportSceneGlb(
     batch.mesh.removeFromParent();
     for (const object of batch.objects) {
       object.root.visible = true;
-      const base = object.root.material as THREE.MeshStandardMaterial, color = object.spec.color ?? '#8fa3bf';
+      const base = object.root.material as THREE.MeshStandardMaterial, color = resolvePropAppearance(spec, object.spec).color ?? '#8fa3bf';
       const key = `${base.uuid}:${color}`;
       let material = instanceMaterials.get(key);
       if (!material) { material = base.clone(); material.color.set(color); instanceMaterials.set(key, material); }

@@ -47,3 +47,29 @@ test('storage failure cannot publish a geometry manifest',async()=>{
   await assert.rejects(externalizeSceneGeometry(f.store,{version:1,durationUs:1_000_000,geometries:{tile:g}},true),/disk full/);
   assert.equal(f.store.getState().doc.assets.length,0);
 });
+
+test('resource cloning stays compact and clone/makeUnique/patch compose before any writes',async()=>{
+  const f=fixture(),stored=await externalizeSceneGeometry(f.store,{version:1,durationUs:1_000_000,geometries:{tile:g},props:[{id:'a',model:'prop/instance',geometryId:'tile'}]},true);
+  f.store.dispatch({type:'addAsset',kind:'image',name:'Clone',src:'scene://clone',width:320,height:180,durationUs:1_000_000,spec:JSON.stringify(stored.spec)});
+  const assetId=f.store.getState().doc.assets[0].id,revision=f.store.getState().revision;
+  const cloned:any=await editScene(f.store,{assetId,preflight:true,includeSpec:true,edits:[
+    {type:'geometry.clone',id:'tile',newId:'copy'},
+    {type:'add',kind:'prop',object:{id:'b',model:'prop/instance',geometryId:'copy'}},
+    {type:'makeUnique',id:'b',geometryId:'independent'},
+  ]});
+  assert.equal(cloned.ok,true);assert.equal(cloned.spec.geometries,undefined);
+  assert.equal(cloned.spec.geometryResources.independent.src,stored.spec.geometryResources!.tile.src);
+  assert.equal(cloned.spec.props[1].model,'prop/mesh');assert.equal(f.files.size,1);
+  const patched:any=await editScene(f.store,{assetId,preflight:true,includeSpec:true,edits:[
+    {type:'makeUnique',id:'a',geometryId:'independent'},
+    {type:'geometry.clone',id:'independent',newId:'another'},
+    {type:'geometry.patch',id:'another',attribute:'vertices',updates:[{index:1,value:[2,0,0]}]},
+    {type:'geometry.patch',id:'independent',attribute:'vertices',updates:[{index:1,value:[3,0,0]}]},
+  ]});
+  assert.equal(patched.ok,true,JSON.stringify(patched));
+  assert.equal(patched.spec.geometries.another.vertices[1][0],2);
+  assert.equal(patched.spec.geometries.independent.vertices[1][0],3);
+  assert.equal(patched.spec.geometryResources.tile.src,stored.spec.geometryResources!.tile.src);
+  assert.equal(f.files.size,1);assert.equal(f.store.getState().revision,revision);
+  assert.equal((await editScene(f.store,{assetId,preflight:true,edits:[{type:'geometry.clone',id:'tile',newId:'tile'}]})).ok,false);
+});

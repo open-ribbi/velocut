@@ -21,6 +21,7 @@ import { validateSceneSpec } from './types.ts';
 import { buildInstances, syncInstanceBatches, type InstanceBatch } from './instances.ts';
 import { resolveSceneGeometry } from './geometry-resource.ts';
 import { sceneStructureKey } from './incremental.ts';
+import { resolvePropAppearance } from './materials.ts';
 import type { SceneAssetManifest, SceneSpec, Scale3, Vec3A, SceneTransform, SceneGroup, SceneLight } from './types.ts';
 
 /** Apply a uniform or per-axis scale (missing axes stay 1). */
@@ -363,6 +364,7 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
       scene.add(object.root); props.push(object); continue;
     }
     let mesh: THREE.Object3D;
+    const appearance = resolvePropAppearance(spec, p);
     const imported = spec.models?.[p.model];
     if (imported) {
       const gltf = await loadImportedModel(imported.src, resources);
@@ -374,10 +376,10 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
         if (!part.isMesh) return;
         part.castShadow = true; part.receiveShadow = true;
         const remap = (original: THREE.Material) => {
-          if (!p.color && !p.material) return original;
+          if (!appearance.color && !Object.keys(appearance.material).length) return original;
           const material = original.clone() as THREE.MeshStandardMaterial;
-          if (p.color && material.color) material.color.set(p.color);
-          const m = p.material;
+          if (appearance.color && material.color) material.color.set(appearance.color);
+          const m = appearance.material;
           if (m?.roughness != null) material.roughness = m.roughness;
           if (m?.metalness != null) material.metalness = m.metalness;
           if (m?.opacity != null) { material.opacity = m.opacity; material.transparent = m.opacity < 1; }
@@ -389,18 +391,19 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
         part.material = Array.isArray(part.material) ? part.material.map(remap) : remap(part.material);
       });
     } else {
-    const color = new three.Color(p.color ?? '#8fa3bf');
-    const m = p.material;
+    const color = new three.Color(appearance.color ?? '#8fa3bf');
+    const m = appearance.material;
     const mat = new three.MeshStandardMaterial({ color, roughness: m?.roughness ?? 0.6,
       metalness: m?.metalness ?? 0, opacity: m?.opacity ?? 1, transparent: (m?.opacity ?? 1) < 1,
       emissive: m?.emissive ?? '#000000', emissiveIntensity: m?.emissiveIntensity ?? 1,
       side: m?.side === 'double' ? three.DoubleSide : three.FrontSide });
     let geo: THREE.BufferGeometry;
-    if (p.model === 'prop/mesh' && p.vertices && p.faces) {
+    const geometry = p.geometryId ? spec.geometries![p.geometryId] : p;
+    if (p.model === 'prop/mesh' && geometry.vertices && geometry.faces) {
       geo = new three.BufferGeometry();
-      geo.setAttribute('position', new three.Float32BufferAttribute(p.vertices.flat(), 3));
-      geo.setIndex(p.faces.flat());
-      if (p.uvs) geo.setAttribute('uv', new three.Float32BufferAttribute(p.uvs.flat(), 2));
+      geo.setAttribute('position', new three.Float32BufferAttribute(geometry.vertices.flat(), 3));
+      geo.setIndex(geometry.faces.flat());
+      if (geometry.uvs) geo.setAttribute('uv', new three.Float32BufferAttribute(geometry.uvs.flat(), 2));
       geo.computeVertexNormals();
     } else if (p.model === 'prop/tube' && p.path) {
       const curve = new three.CatmullRomCurve3(p.path.map((pt) => new three.Vector3(...pt)), p.closed ?? false, 'centripetal');

@@ -45,7 +45,8 @@ See the [model export guide](../../../docs/integrations/model-export.md).
 `model:'prop/instance', geometryId` share that definition while keeping their
 own ID, transform, parent, color and material. Compatible opaque instances
 render in one batch. `applySceneEdits` supports `geometry.create`,
-`geometry.update`, `geometry.remove` and `makeUnique`; ordinary object edits
+`geometry.clone`, `geometry.update`, `geometry.patch`, `geometry.remove` and
+resource-backed `makeUnique`; ordinary object edits
 also work on instances. `sceneBudget(spec)` exposes counts and limits.
 
 The initial budget allows 1000 instances, 64 geometries and 128 instance draw
@@ -55,3 +56,18 @@ compiling these specs directly; `resolveSceneGeometry` verifies bytes and metada
 `Stage.updateTransforms` and `CompiledScene.updateTransforms` retain renderers
 for compatible instance/group transform changes; other edits rebuild the stage. See the [atomic API guide](../../../docs/integrations/atomic-api.md#shared-native-geometry-and-instances)
 for preflight, query, persistence and material/physics restrictions.
+
+## Shared materials
+
+`SceneSpec.materials` defines reusable material parameters and color; props bind
+`materialId`. Per-object `color` and `material` fields override shared defaults.
+Use `material.create`, `material.update` and `material.remove` through scene edits;
+removal rejects live references. Material IDs and geometry IDs have separate
+registries. The runtime query kind `sceneMaterials` returns compact summaries.
+
+`geometry.clone` creates an independently editable definition without duplicating
+immutable bytes. `makeUnique` binds such a clone to a regular `prop/mesh`, retaining
+resource storage and allowing ordinary-mesh transparency/physics. Clone and patch
+can compose in one runtime scene edit. The pure `applySceneEdits` function accepts
+an optional verified geometry-data map for resource-backed index patches; runtime
+hosts resolve only the files required by the edit plan automatically.

@@ -101,7 +101,9 @@ test('MCP CodeAct creates 1000 linked tiles, preflights costs and preserves edit
     }, assetId);
     expect(restored.budget.data.used.instances).toBe(999);
     expect(restored.objects.data.items[0].object.model).toBe('prop/mesh');
-    expect(restored.objects.data.items[0].object.vertices[4][1]).toBeCloseTo(0.065);
+    expect(restored.objects.data.items[0].object.vertices).toBeUndefined();
+    const privateVertex=await page.evaluate(({assetId,geometryId})=>(window as any).velocut.sceneGeometry({assetId,geometryId,attribute:'vertices',offset:4,limit:1}),{assetId,geometryId:restored.objects.data.items[0].object.geometryId});
+    expect(privateVertex.items[0][1]).toBeCloseTo(0.065);
     expect(restored.objects.data.items[1].object.geometryId).toBe('tile');
   } finally { await client.close(); }
 });

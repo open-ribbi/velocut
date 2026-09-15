@@ -15,17 +15,17 @@ test('geometry CRUD, linked duplication and makeUnique preserve object identity 
   assert.equal(duplicate.spec.props![1].geometryId, 'tile');
   assert.equal(duplicate.spec.props![1].vertices, undefined);
   const changed = applySceneEdits(duplicate.spec, [
-    { type: 'makeUnique', id: 'b' },
+    { type: 'makeUnique', id: 'b', geometryId: 'private' },
     { type: 'geometry.update', id: 'tile', geometry: { ...geometry, vertices: [[0,0,0],[3,0,0],[0,1,0]] } },
   ]);
-  assert.deepEqual(changed.geometryIds, ['tile']);
+  assert.deepEqual(changed.geometryIds, ['private', 'tile']);
   assert.ok(changed.changedIds.includes('a'));
   const b = changed.spec.props![1];
-  assert.equal(b.id, 'b'); assert.equal(b.model, 'prop/mesh'); assert.equal(b.geometryId, undefined);
-  assert.equal(b.vertices![1][0], 1); assert.equal(b.color, '#ff0000'); assert.equal(b.position!.x, 2);
+  assert.equal(b.id, 'b'); assert.equal(b.model, 'prop/mesh'); assert.equal(b.geometryId, 'private');
+  assert.equal(b.vertices, undefined); assert.equal(changed.spec.geometries!.private.vertices[1][0], 1); assert.equal(b.color, '#ff0000'); assert.equal(b.position!.x, 2);
   assert.throws(() => applySceneEdits(changed.spec, [{ type: 'geometry.remove', id: 'tile' }]), /referenced/);
   const removed = applySceneEdits(changed.spec, [{ type: 'remove', id: 'a' }, { type: 'geometry.remove', id: 'tile' }]);
-  assert.deepEqual(removed.spec.geometries, {}); assert.equal(removed.spec.props!.length, 1);
+  assert.deepEqual(Object.keys(removed.spec.geometries!), ['private']); assert.equal(removed.spec.props!.length, 1);
   assert.throws(() => applySceneEdits(base, [{ type: 'geometry.create', id: 'tile', geometry }]), /already exists/);
   assert.throws(() => applySceneEdits(base, [{ type: 'update', id: 'a', patch: { geometryId: 'missing' } }]), /unknown geometry/);
   assert.deepEqual(base.geometries!.tile, geometry); assert.equal(base.props!.length, 1);

@@ -10,6 +10,7 @@ import type { Animatable } from '@velocut/render-sdk';
 import { MANNEQUIN_JOINTS, POSE_PRESETS, type MannequinJoint } from './mannequin.ts';
 import { validateGeometry, sceneBudget, SCENE_LIMITS, type SceneGeometry } from './geometry.ts';
 import { validateGeometryResource, type SceneGeometryResource } from './geometry-resource.ts';
+import { validateMaterial, resolvePropAppearance, type SceneMaterialDefinition } from './materials.ts';
 
 /** Per-axis animatable 3D value (world units = meters, Y up). */
 export interface Vec3A {
@@ -128,8 +129,9 @@ export interface PropPhysics {
 }
 
 export interface SceneProp extends SceneTransform {
-  /** prop/instance only: key in this scene's geometries registry. */
+  /** prop/instance or resource-backed prop/mesh: a scene geometry registry key. */
   geometryId?: string;
+  materialId?: string;
   material?: SceneMaterial;
   /** Explicit editable triangle mesh (local meters, counter-clockwise faces). */
   vertices?: [number, number, number][];
@@ -206,6 +208,7 @@ export interface SceneSpec {
   geometries?: Record<string, SceneGeometry>;
   /** Immutable project-owned geometry files; keys share the geometries namespace. */
   geometryResources?: Record<string, SceneGeometryResource>;
+  materials?: Record<string, SceneMaterialDefinition>;
   durationUs: number;
   width?: number;
   height?: number;
@@ -363,6 +366,13 @@ export function validateSceneSpec(spec: unknown): string | null {
       const error = validateGeometryResource(resource); if (error) return `geometry '${id}': ${error}`;
     }
   }
+  if (s.materials != null) {
+    if (typeof s.materials !== 'object' || Array.isArray(s.materials) || Object.keys(s.materials).length > SCENE_LIMITS.materials) return 'materials must be a registry with at most 128 entries';
+    for (const [id, material] of Object.entries(s.materials)) {
+      if (!/^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}$/.test(id) || ['__proto__','constructor','prototype'].includes(id)) return 'invalid material id';
+      const error = validateMaterial(material, true); if (error) return `material '${id}': ${error}`;
+    }
+  }
   if (s.models != null) {
     if (typeof s.models !== 'object' || Array.isArray(s.models) || Object.keys(s.models).length > 64) return 'models must be a registry with at most 64 entries';
     for (const [id, m] of Object.entries(s.models)) {
@@ -446,13 +456,18 @@ export function validateSceneSpec(spec: unknown): string | null {
     if (s.props.filter(p => p?.model !== 'prop/instance').length > SCENE_LIMITS.props) return 'spec.props must contain at most 200 ordinary props';
     for (const p of s.props) {
       if (!p || typeof p.model !== 'string') return 'every prop needs a model id';
+      if (p.materialId != null && (typeof p.materialId !== 'string' || !Object.hasOwn(s.materials ?? {}, p.materialId))) return 'unknown materialId';
+      if (p.model === 'prop/instance' || p.model === 'prop/mesh' && p.geometryId != null) {
+        if (typeof p.geometryId !== 'string' || !(Object.hasOwn(s.geometries ?? {}, p.geometryId) || Object.hasOwn(s.geometryResources ?? {}, p.geometryId))) return 'unknown geometryId';
+        if (['vertices','faces','uvs'].some(k => k in p)) return 'geometryId cannot combine with inline geometry';
+      }
       if (p.model === 'prop/instance') {
         if (typeof p.geometryId !== 'string' || !(Object.hasOwn(s.geometries ?? {}, p.geometryId) || Object.hasOwn(s.geometryResources ?? {}, p.geometryId))) return `instance '${p.id ?? ''}' references unknown geometry`;
         if (p.physics != null || p.attachTo != null) return 'instances do not support physics or bone attachment; makeUnique first';
         if (['vertices', 'faces', 'uvs', 'points', 'depth', 'holes', 'bevel', 'path', 'radius', 'closed'].some(k => k in p)) return 'instances store geometryId only; edit the shared geometry or makeUnique';
-        if (p.material?.opacity != null && p.material.opacity !== 1) return 'instances require opaque materials; makeUnique for transparency';
+        if ((resolvePropAppearance(s, p).material.opacity ?? 1) !== 1) return 'instances require opaque materials; makeUnique for transparency';
         if (p.color != null && !/^#[a-f0-9]{6}$/i.test(p.color)) return 'instance color must be #RRGGBB';
-      } else if (p.geometryId != null) return 'geometryId only applies to prop/instance';
+      } else if (p.geometryId != null && p.model !== 'prop/mesh') return 'geometryId only applies to prop/instance or prop/mesh';
       if (p.position != null && !isVec3A(p.position)) return 'prop: invalid position';
       if (p.scale != null && !isScale3(p.scale)) return 'prop: scale must be a number or {x?,y?,z?}';
       if (p.attachTo != null) {
@@ -479,7 +494,7 @@ export function validateSceneSpec(spec: unknown): string | null {
           return 'prop/extrude: depth must be a positive number (meters)';
         }
       }
-      if (p.model === 'prop/mesh') {
+      if (p.model === 'prop/mesh' && p.geometryId == null) {
         if (!Array.isArray(p.vertices) || p.vertices.length < 3 || p.vertices.length > 4096 || !p.vertices.every(isVel3)) return 'mesh vertices must contain 3..4096 finite triples';
         if (!Array.isArray(p.faces) || !p.faces.length || p.faces.length > 8192) return 'mesh faces must contain 1..8192 index triples';
         for (const f of p.faces) {
@@ -621,17 +636,7 @@ export function validateSceneSpec(spec: unknown): string | null {
   }
   for (const p of s.props ?? []) {
     if (p.parentId && p.attachTo) return 'prop: parentId and attachTo cannot combine';
-    const m = p.material;
-    if (m != null) {
-      if (typeof m !== 'object' || Array.isArray(m)) return 'material must be an object';
-      if (!Object.keys(m).every((k) => ['roughness', 'metalness', 'opacity', 'emissive', 'emissiveIntensity', 'side'].includes(k))) return 'unknown material field';
-      for (const k of ['roughness', 'metalness', 'opacity'] as const) {
-        if (m[k] != null && !(fin(m[k]) && m[k] >= 0 && m[k] <= 1)) return `material.${k} must be 0..1`;
-      }
-      if (m.emissive != null && (typeof m.emissive !== 'string' || !/^#[0-9a-f]{6}$/i.test(m.emissive))) return 'material.emissive must be #RRGGBB';
-      if (m.emissiveIntensity != null && !(fin(m.emissiveIntensity) && m.emissiveIntensity >= 0 && m.emissiveIntensity <= 100)) return 'material.emissiveIntensity must be 0..100';
-      if (m.side != null && !['front', 'double'].includes(m.side)) return 'material.side must be front or double';
-    }
+    if (p.material != null) { const error = validateMaterial(p.material); if (error) return error; }
   }
   const characterIds = new Set((s.characters ?? []).map((c) => c.id));
   for (const c of s.characters ?? []) {

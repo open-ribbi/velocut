@@ -68,3 +68,16 @@ node scripts/profile-project-memory.mjs <fixture目录> <共享实验输出目�
 原始 fixture、逐次 footprint JSON 和三组测量位于本地 `artifacts/performance/yellow-crane/`，不随源码提交。
 
 最终项目 SHA-256：`f8b6675b6bf846b03e82673678cbfc94ad6c20f445e0add286e519cb15105e06`。
+
+## 后续实现验证
+
+已将历史字符串共享与紧凑保存接入产品，使用同一份原始 119 条历史重新加载测试：
+
+| 指标 | 原实现 | 新实现 |
+| --- | ---: | ---: |
+| 活动历史保存数据 | 34,996,027 字节 | 3,418,973 字节 |
+| 暂停时主页面 JS 堆 | 72.3 MiB | 14.5 MiB |
+| 重开后主页面 JS 堆 | 72.3 MiB | 14.5 MiB |
+| 历史节点 | 119 | 119 |
+
+完整快照、命令、分支和节点 ID 的往返比较一致。新数据保存在独立的 compact-v1 键下，旧格式值保留作恢复副本，因此“活动保存数据缩小”不代表现有磁盘空间立即释放。GPU／总进程内存也不能套用 JS 堆的下降百分比。复测产物在 `artifacts/performance/yellow-crane/implemented-sharing/`。

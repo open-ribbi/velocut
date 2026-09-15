@@ -46,7 +46,7 @@ function localActor(): { kind: 'user'; peerId: string; name: string } {
 /** Load the persisted branching history (survives reloads). */
 async function loadHistory(key: string): Promise<HistoryTree | undefined> {
   try {
-    const raw = await kvGet(key);
+    const raw = await kvGet(key + ':compact-v1') ?? await kvGet(key);
     if (!raw) return undefined;
     return HistoryTree.deserialize(JSON.parse(new TextDecoder().decode(raw)));
   } catch (e) {
@@ -63,7 +63,9 @@ function makeHistorySaver(key: string): { save: (tree: HistoryTree) => void; flu
   let latest: HistoryTree | null = null;
   const write = async () => {
     if (!latest) return;
-    await kvPut(key, new TextEncoder().encode(JSON.stringify(latest.serialize()))).catch(() => {});
+    // Keep the legacy value intact as a downgrade/recovery copy. New writes use
+    // a separate key so an older editor cannot overwrite the compact history.
+    await kvPut(key + ':compact-v1', new TextEncoder().encode(JSON.stringify(latest.serializeCompact()))).catch(() => {});
   };
   const flush = async () => {
     if (!timer) return;

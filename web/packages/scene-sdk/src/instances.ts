@@ -1,6 +1,7 @@
 import type * as THREE from 'three';
 import type { SceneProp, SceneSpec } from './types.ts';
 import { instanceBatchKey } from './geometry.ts';
+import { resolvePropAppearance } from './materials.ts';
 
 export interface InstanceBatch {
   mesh: THREE.InstancedMesh;
@@ -25,9 +26,9 @@ export function buildInstances(three: typeof THREE, spec: SceneSpec) {
       geometry.computeVertexNormals(); geometry.computeBoundingBox(); geometry.computeBoundingSphere();
       geometryCache.set(p.geometryId!, geometry);
     }
-    const key = instanceBatchKey(p), group = groups.get(key) ?? [];
+    const key = instanceBatchKey(p, spec), group = groups.get(key) ?? [];
     if (!groups.has(key)) groups.set(key, group);
-    const m = p.material;
+    const m = resolvePropAppearance(spec, p).material;
     const material = group[0]?.root.material ?? new three.MeshStandardMaterial({
       color: '#ffffff', roughness: m?.roughness ?? 0.6, metalness: m?.metalness ?? 0,
       emissive: m?.emissive ?? '#000000', emissiveIntensity: m?.emissiveIntensity ?? 1,
@@ -43,7 +44,7 @@ export function buildInstances(three: typeof THREE, spec: SceneSpec) {
     // inspection/picking; disabling batch culling prevents stale animated bounds.
     mesh.frustumCulled = false;
     const color = new three.Color();
-    objects.forEach((o, i) => mesh.setColorAt(i, color.set(o.spec.color ?? '#8fa3bf')));
+    objects.forEach((o, i) => mesh.setColorAt(i, color.set(resolvePropAppearance(spec, o.spec).color ?? '#8fa3bf')));
     return { mesh, objects };
   });
   return { objects, batches };

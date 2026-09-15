@@ -73,11 +73,12 @@ try {
   const instanceOutput = run(`
     import assert from 'node:assert/strict';
     import {applySceneEdits,sceneBudget} from '@velocut/scene-sdk';
-    import {Store,TsEngineAdapter,atomicRuntime,editScene} from '@velocut/runtime';
+    import {Store,TsEngineAdapter,atomicRuntime,editScene,HistoryTree} from '@velocut/runtime';
     const geometry={vertices:[[0,0,0],[1,0,0],[0,1,0]],faces:[[0,1,2]]};
     const made=applySceneEdits({version:1,durationUs:1000000},[
       {type:'geometry.create',id:'tile',geometry},
-      {type:'add',kind:'prop',object:{id:'a',model:'prop/instance',geometryId:'tile'}},
+      {type:'material.create',id:'red',material:{color:'#ff0000',roughness:.38}},
+      {type:'add',kind:'prop',object:{id:'a',model:'prop/instance',geometryId:'tile',materialId:'red'}},
       {type:'duplicate',id:'a',newId:'b',offset:{x:2}}
     ]);
     assert.equal(sceneBudget(made.spec).used.instanceBatches,1);
@@ -87,6 +88,10 @@ try {
     const geometries=api.query({kind:'sceneGeometries',assetId});assert.ok(geometries.ok);assert.equal(geometries.data.items[0].instanceCount,2);
     const preview=await editScene(store,{assetId,preflight:true,edits:[{type:'makeUnique',id:'b'}]});
     assert.ok(preview.ok);assert.equal(preview.compiled,false);assert.equal(preview.budget.used.instances,1);
+    assert.ok(preview.spec===undefined);assert.ok(preview.geometryIds.length);
+    assert.equal(api.query({kind:'sceneMaterials',assetId}).data.items[0].objectCount,2);
+    const packed=store.getHistory().serializeCompact();const restored=HistoryTree.deserialize(JSON.parse(JSON.stringify(packed)));
+    assert.equal(restored.all().length,store.getHistory().all().length);assert.equal(packed.historyEncoding,'spec-table-v1');
     console.log('shared geometry sdk ok');
   `);
   assert.match(instanceOutput, /shared geometry sdk ok/);
@@ -332,6 +337,7 @@ window.probe=(async()=>{
       'resource-probe-register-duplicate',
       'shared-geometry-instances',
       'geometry-resource-and-incremental-transform',
+      'shared-material-and-compact-history',
           'types',
           'cli-doctor',
           'http-headers-ranges',

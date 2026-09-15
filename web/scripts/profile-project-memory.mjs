@@ -24,7 +24,7 @@ const server=createServer(async(req,res)=>{
 });
 await new Promise(r=>server.listen(0,'127.0.0.1',r));const url=`http://127.0.0.1:${server.address().port}`;
 const browser=await chromium.launch({channel:'chrome',headless:true,args:['--enable-unsafe-webgpu']});
-const results={sourceCommit:execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),browser:browser.version(),withHistory,project:meta.project,originalHistory:meta.historyNodes,originalHistoryBytes:meta.historyBytes,samples:[],warnings:[]};
+const results={sourceCommit:execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),browser:browser.version(),workingTreeDirty:!!execFileSync('git',['status','--porcelain','--untracked-files=no'],{encoding:'utf8'}).trim(),withHistory,project:meta.project,originalHistory:meta.historyNodes,originalHistoryBytes:meta.historyBytes,samples:[],warnings:[]};
 try{
  const context=await browser.newContext({viewport:{width:1280,height:800}}),page=await context.newPage();
  page.on('console',m=>{if(['warning','error'].includes(m.type())&&results.warnings.length<80)results.warnings.push(m.text());});
