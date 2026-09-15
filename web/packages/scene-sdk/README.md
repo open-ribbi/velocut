@@ -49,8 +49,8 @@ render in one batch. `applySceneEdits` supports `geometry.create`,
 resource-backed `makeUnique`; ordinary object edits
 also work on instances. `sceneBudget(spec)` exposes counts and limits.
 
-The initial budget allows 1000 instances, 64 geometries and 128 instance draw
-batches within the existing 256 KiB scene. Runtime scene edits move geometry to immutable `.vmesh` files and store
+There is no fixed instance-count limit (`SCENE_LIMITS.instances === null`).
+The existing 64-geometry, 128-instance-batch and 256 KiB manifest budgets remain. Runtime scene edits move geometry to immutable `.vmesh` files and store
 references in `geometryResources`. Supply `SceneResources.geometryBytes` when
 compiling these specs directly; `resolveSceneGeometry` verifies bytes and metadata.
 `Stage.updateTransforms` and `CompiledScene.updateTransforms` retain renderers

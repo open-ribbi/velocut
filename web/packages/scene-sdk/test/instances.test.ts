@@ -31,16 +31,17 @@ test('geometry CRUD, linked duplication and makeUnique preserve object identity 
   assert.deepEqual(base.geometries!.tile, geometry); assert.equal(base.props!.length, 1);
 });
 
-test('1000 instances fit the native budget and one extra fails with structured counts', () => {
-  const props = Array.from({ length: 1000 }, (_, i) => ({ id: `t${i}`, model: 'prop/instance', geometryId: 'tile', position: { x: i % 40, z: Math.floor(i / 40) } }));
+test('instance counts above 1000 are accepted; other resource budgets remain reported', () => {
+  const props = Array.from({ length: 2000 }, (_, i) => ({ id: `t${i}`, model: 'prop/instance', geometryId: 'tile', position: { x: i % 40, z: Math.floor(i / 40) } }));
   const scene = { ...base, props };
   assert.equal(validateSceneSpec(scene), null);
   const budget = sceneBudget(scene);
   assert.equal(budget.withinLimits, true); assert.equal(budget.used.instanceBatches, 1);
-  assert.equal(budget.sharedVertices, 3); assert.equal(budget.used.instanceTriangles, 1000);
-  assert.throws(() => applySceneEdits(scene, [{ type: 'duplicate', id: 't0', newId: 'excess' }]), (e: any) => {
-    assert.deepEqual(e.budget.violations, [{ field: 'instances', used: 1001, limit: 1000 }]); return true;
-  });
+  assert.equal(budget.sharedVertices, 3); assert.equal(budget.used.instanceTriangles, 2000);
+  assert.equal(budget.limits.instances, null);
+  const copied = applySceneEdits(scene, [{ type: 'duplicate', id: 't0', newId: 'extra' }]);
+  assert.equal(copied.spec.props!.length, 2001);
+  assert.equal(sceneBudget(copied.spec).withinLimits, true);
   const oversized = { ...scene, props: props.map(p => ({ ...p, name: 'x'.repeat(300) })) };
   assert.equal(sceneBudget(oversized).violations[0].field, 'specBytes');
   assert.match(validateSceneSpec(oversized)!, /specBytes/);

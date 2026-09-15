@@ -452,7 +452,7 @@ export function validateSceneSpec(spec: unknown): string | null {
   if (s.props != null) {
     // Generous cap: blockout sets (a greybox city block is easily 100 cubes)
     // are a first-class workflow; the cap only bounds compile cost.
-    if (!Array.isArray(s.props) || s.props.length > SCENE_LIMITS.props + SCENE_LIMITS.instances) return 'spec.props allows at most 200 ordinary props and 1000 instances';
+    if (!Array.isArray(s.props)) return 'spec.props must be an array';
     if (s.props.filter(p => p?.model !== 'prop/instance').length > SCENE_LIMITS.props) return 'spec.props must contain at most 200 ordinary props';
     for (const p of s.props) {
       if (!p || typeof p.model !== 'string') return 'every prop needs a model id';

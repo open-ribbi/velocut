@@ -11,7 +11,8 @@ export interface SceneGeometry {
 }
 
 export const SCENE_LIMITS = Object.freeze({
-  specBytes: 262_144, props: 200, instances: 1000, geometries: 64,
+  // null is an explicit, JSON-safe "no configured count limit".
+  specBytes: 262_144, props: 200, instances: null, geometries: 64,
   groups: 100, geometryVertices: 4096, geometryTriangles: 8192,
   instanceBatches: 128, instanceTriangles: 2_000_000,
   geometryBytes: 16 * 1024 * 1024,
@@ -69,8 +70,10 @@ export function sceneBudget(spec: SceneSpec) {
     instanceBatches: new Set(instances.map(p => instanceBatchKey(p, spec))).size,
     instanceTriangles: instances.reduce((n, p) => n + (spec.geometries?.[p.geometryId!]?.faces?.length ?? spec.geometryResources?.[p.geometryId!]?.triangleCount ?? 0), 0),
   };
-  const violations = (Object.keys(used) as Array<keyof typeof used>).filter(k => used[k] > SCENE_LIMITS[k])
-    .map(field => ({ field, used: used[field], limit: SCENE_LIMITS[field] }));
+  const violations = (Object.keys(used) as Array<keyof typeof used>).flatMap(field => {
+    const limit = SCENE_LIMITS[field];
+    return limit !== null && used[field] > limit ? [{ field, used: used[field], limit }] : [];
+  });
   return { withinLimits: !violations.length, used, limits: SCENE_LIMITS, violations,
     documentBytes: new TextEncoder().encode(JSON.stringify(spec)).length,
     sharedVertices: geometries.reduce((n, g) => n + (g?.vertices?.length ?? 0), 0) + resources.reduce((n,r) => n+r.vertexCount,0),

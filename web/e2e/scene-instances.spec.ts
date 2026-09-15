@@ -71,9 +71,15 @@ test('MCP CodeAct creates 1000 linked tiles, preflights costs and preserves edit
     expect(geometries.data.items[0].geometry).toBeUndefined();
     const last = await tool('velocut_query', { sessionId, kind: 'sceneObjects', assetId, offset: 901, limit: 100 });
     expect(last.data.nextOffset).toBeNull(); expect(last.data.items).toHaveLength(100);
-    const overflow = await tool('velocut_scene_edit', { sessionId, assetId, preflight: true, edits: [{ type: 'duplicate', id: 'tile_0', newId: 'overflow' }] });
-    expect(overflow.ok).toBe(false); expect(overflow.budget.violations[0].field).toBe('instances');
-    const unique = await tool('velocut_scene_edit', { sessionId, assetId, expectedRevision: result.result.revision, includeSpec: false, edits: [
+    const extraEdit = [{ type: 'duplicate', id: 'tile_0', newId: 'extra' }];
+    const preview = await tool('velocut_scene_edit', { sessionId, assetId, preflight: true, edits: extraEdit });
+    expect(preview.ok, JSON.stringify(preview)).toBe(true);
+    expect(preview.budget.limits.instances).toBeNull(); expect(preview.budget.used.instances).toBe(1001);
+    const extra = await tool('velocut_scene_edit', { sessionId, assetId, expectedRevision: preview.revision, includeSpec: false, edits: extraEdit });
+    expect(extra.ok, JSON.stringify(extra)).toBe(true); expect(extra.budget.used.instances).toBe(1001);
+    const reverted = await tool('velocut_history', { sessionId, action: 'undo', expectedRevision: extra.revision });
+    expect(reverted.ok).toBe(true);
+    const unique = await tool('velocut_scene_edit', { sessionId, assetId, expectedRevision: reverted.revision, includeSpec: false, edits: [
       { type: 'makeUnique', id: 'tile_0' },
       { type: 'transform', ids: ['tile_0'], relative: true, transform: { position: { y: 1 } } },
       { type: 'geometry.update', id: 'tile', geometry: { ...tileGeometry(), vertices: tileGeometry().vertices.map(([x,y,z]) => [x,y*2,z]) } },

@@ -365,7 +365,8 @@ Read compact data through the existing query API (MCP: `velocut_query`):
 - `capabilities` includes `sceneLimits`. `sceneAssets` explains the complete edit
   grammar. No new large workflow tool or third-party dependency is needed.
 
-Initial limits: 1000 instances plus 200 ordinary props; 64 shared geometries;
+There is no fixed instance-count limit (`limits.instances:null`). Other limits:
+200 ordinary props; 64 shared geometries;
 100 groups; 128 instance draw batches; 2 million instanced triangles; a 16 MiB logical referenced-geometry budget, and a
 256 KiB compact scene manifest. `used.specBytes` estimates the compact manifest;
 `documentBytes` reports current JSON bytes, which can be larger for inline input. Each shared geometry has at most 4096
@@ -404,8 +405,9 @@ uses one shared geometry, one draw call and 68000 triangles. This is a rendering
 batch check, not a promise about interactive frame rate. The test also verifies
 per-object colors, render equivalence with independent meshes, animated objects
 under transformed parents, selected GLB export, shared edits, conversion to an independent
-mesh, undo/redo, persistence and the compact properties control. The 1001st
-instance fails preflight with counts and leaves the document untouched.
+mesh, undo/redo, persistence and the compact properties control. This earlier increment rejected the 1001st instance; that count limit has since
+been removed. The current test preflights and commits the 1001st instance, then
+undoes it successfully.
 
 ## Geometry resources and incremental transforms
 
@@ -543,11 +545,12 @@ patch writes a new version for that definition only. Other definitions and undo
 history retain their original references. `sceneGeometries` distinguishes
 `instanceCount` from `objectCount`, because ordinary meshes can now reference it.
 
-Limits remain 1000 instances, 200 ordinary props, 64 geometry definitions, 128
+There is no fixed instance-count limit. Existing limits remain 200 ordinary props,
+64 geometry definitions, 128
 shared material definitions, 128 instance draw batches and 256 KiB manifest.
 Cloned definitions count toward the logical geometry count/byte budgets even
 when their immutable files initially deduplicate. Reusable animation definitions,
-visibility/scale animation and increasing instance limits remain separate work.
+visibility/scale animation and further resource scaling remain separate work.
 
 ## Compact history storage
 
@@ -593,3 +596,13 @@ same isolated-browser memory protocol, loaded/after-reload JS heap is about
 not an equivalent percentage reduction of GPU or total browser memory. Existing
 legacy disk data remains a recovery copy. No package has been published by this
 increment.
+
+### Instance-count policy
+
+The fixed 1000-instance ceiling has been removed from validation and budget
+preflight. `limits.instances:null` means no configured count ceiling;
+`used.instances` still reports the actual count. The former combined props-array
+length check has also been removed so it cannot reintroduce the same ceiling.
+Per-call edit/copy sizes, geometry validity, and other existing byte/render-budget
+checks are unchanged. More than 1000 instances can be authored across ordinary
+batches; this is not a claim that every scene size fits all remaining budgets.
