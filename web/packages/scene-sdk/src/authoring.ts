@@ -12,6 +12,7 @@ export type SceneEdit =
   | { type: 'geometry.create'; id: string; geometry: SceneGeometry }
   | { type: 'geometry.update'; id: string; geometry: SceneGeometry }
   | { type: 'geometry.remove'; id: string }
+  | { type: 'geometry.patch'; id: string; attribute: 'vertices' | 'faces' | 'uvs'; updates: Array<{index: number; value: number[]}> }
   | { type: 'makeUnique'; id: string }
   | { type: 'duplicateMany'; ids: string[]; copies: Array<{ prefix: string; transform?: ObjectTransform; relative?: boolean }>; timeS?: number }
   | { type: 'transform'; ids: string[]; transform: ObjectTransform; relative?: boolean; timeS?: number }
@@ -108,10 +109,21 @@ export function applySceneEdits(input: SceneSpec, edits: SceneEdit[]): { spec: S
   if (expanded.length > 500) fail('expanded batch exceeds 500 operations');
   for (const edit of expanded) {
     if (!edit || typeof edit !== 'object') fail('invalid scene edit');
-    if (edit.type === 'geometry.create' || edit.type === 'geometry.update' || edit.type === 'geometry.remove') {
+    if (edit.type === 'geometry.patch') {
+      const g = spec.geometries?.[edit.id];
+      if (!g) fail('geometry.patch requires resolved geometry data');
+      if (!['vertices','faces','uvs'].includes(edit.attribute) || !Array.isArray(edit.updates) || !edit.updates.length || edit.updates.length > 1024) fail('geometry.patch requires an attribute and 1..1024 updates');
+      const data = g![edit.attribute]; if (!data) fail('geometry attribute does not exist');
+      const seen = new Set<number>();
+      for (const update of edit.updates) {
+        if (!Number.isInteger(update?.index) || update.index < 0 || update.index >= data!.length || seen.has(update.index)) fail('geometry patch indices must be unique and in range');
+        seen.add(update.index); data![update.index] = structuredClone(update.value) as [number, number, number];
+      }
+      geometryIds.add(edit.id); for (const p of spec.props ?? []) if (p.geometryId === edit.id) changed.add(p.id!);
+    } else if (edit.type === 'geometry.create' || edit.type === 'geometry.update' || edit.type === 'geometry.remove') {
       if (typeof edit.id !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}$/.test(edit.id) || ['__proto__', 'constructor', 'prototype'].includes(edit.id)) fail('invalid geometry id');
       const registry = spec.geometries ??= {};
-      const exists = Object.hasOwn(registry, edit.id);
+      const exists = Object.hasOwn(registry, edit.id) || Object.hasOwn(spec.geometryResources ?? {}, edit.id);
       if (edit.type === 'geometry.create' && exists) fail(`geometry '${edit.id}' already exists`);
       if (edit.type !== 'geometry.create' && !exists) fail(`unknown geometry '${edit.id}'`);
       const users = (spec.props ?? []).filter(p => p.geometryId === edit.id);
@@ -119,6 +131,7 @@ export function applySceneEdits(input: SceneSpec, edits: SceneEdit[]): { spec: S
         if (users.length) fail(`geometry '${edit.id}' is referenced by ${users.length} instances`);
         delete registry[edit.id];
       } else registry[edit.id] = structuredClone(edit.geometry);
+      if (spec.geometryResources) delete spec.geometryResources[edit.id];
       geometryIds.add(edit.id); users.forEach(p => changed.add(p.id!));
     } else if (edit.type === 'makeUnique') {
       const { kind, object } = find(edit.id);

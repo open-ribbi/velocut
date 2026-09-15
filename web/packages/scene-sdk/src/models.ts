@@ -5,6 +5,7 @@ export const MAX_MODEL_BYTES = 64 * 1024 * 1024;
 export interface SceneResources {
   /** Resolve immutable, project-owned model bytes. Never fetch arbitrary URLs. */
   modelBytes(src: string): Promise<ArrayBuffer>;
+  geometryBytes?(src: string): Promise<ArrayBuffer>;
 }
 
 /** Self-contained GLB 2 only. Reject missing/remote dependencies before a loader

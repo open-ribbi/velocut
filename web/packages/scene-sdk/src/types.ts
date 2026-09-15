@@ -9,6 +9,7 @@ import { validateAssembly, type AssemblyRecipe } from './assemblies.ts';
 import type { Animatable } from '@velocut/render-sdk';
 import { MANNEQUIN_JOINTS, POSE_PRESETS, type MannequinJoint } from './mannequin.ts';
 import { validateGeometry, sceneBudget, SCENE_LIMITS, type SceneGeometry } from './geometry.ts';
+import { validateGeometryResource, type SceneGeometryResource } from './geometry-resource.ts';
 
 /** Per-axis animatable 3D value (world units = meters, Y up). */
 export interface Vec3A {
@@ -203,6 +204,8 @@ export interface SceneSpec {
   version: 1;
   /** Editable native meshes shared by prop/instance objects. */
   geometries?: Record<string, SceneGeometry>;
+  /** Immutable project-owned geometry files; keys share the geometries namespace. */
+  geometryResources?: Record<string, SceneGeometryResource>;
   durationUs: number;
   width?: number;
   height?: number;
@@ -352,6 +355,14 @@ export function validateSceneSpec(spec: unknown): string | null {
       const error = validateGeometry(geometry); if (error) return `geometry '${id}': ${error}`;
     }
   }
+  if (s.geometryResources != null) {
+    if (typeof s.geometryResources !== 'object' || Array.isArray(s.geometryResources)) return 'invalid geometry resource registry';
+    for (const [id, resource] of Object.entries(s.geometryResources)) {
+      if (!/^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}$/.test(id) || ['__proto__', 'constructor', 'prototype'].includes(id)) return 'invalid geometry id';
+      if (Object.hasOwn(s.geometries ?? {}, id)) return 'geometry id exists in both registries';
+      const error = validateGeometryResource(resource); if (error) return `geometry '${id}': ${error}`;
+    }
+  }
   if (s.models != null) {
     if (typeof s.models !== 'object' || Array.isArray(s.models) || Object.keys(s.models).length > 64) return 'models must be a registry with at most 64 entries';
     for (const [id, m] of Object.entries(s.models)) {
@@ -436,7 +447,7 @@ export function validateSceneSpec(spec: unknown): string | null {
     for (const p of s.props) {
       if (!p || typeof p.model !== 'string') return 'every prop needs a model id';
       if (p.model === 'prop/instance') {
-        if (typeof p.geometryId !== 'string' || !Object.hasOwn(s.geometries ?? {}, p.geometryId)) return `instance '${p.id ?? ''}' references unknown geometry`;
+        if (typeof p.geometryId !== 'string' || !(Object.hasOwn(s.geometries ?? {}, p.geometryId) || Object.hasOwn(s.geometryResources ?? {}, p.geometryId))) return `instance '${p.id ?? ''}' references unknown geometry`;
         if (p.physics != null || p.attachTo != null) return 'instances do not support physics or bone attachment; makeUnique first';
         if (['vertices', 'faces', 'uvs', 'points', 'depth', 'holes', 'bevel', 'path', 'radius', 'closed'].some(k => k in p)) return 'instances store geometryId only; edit the shared geometry or makeUnique';
         if (p.material?.opacity != null && p.material.opacity !== 1) return 'instances require opaque materials; makeUnique for transparency';

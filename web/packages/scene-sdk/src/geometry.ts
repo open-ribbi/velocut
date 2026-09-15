@@ -1,4 +1,5 @@
 import type { SceneMaterial, SceneProp, SceneSpec } from './types.ts';
+import { geometryByteLength } from './geometry-resource.ts';
 
 /** Scene-local editable geometry. Instances reference its registry key. */
 export interface SceneGeometry {
@@ -12,6 +13,7 @@ export const SCENE_LIMITS = Object.freeze({
   specBytes: 262_144, props: 200, instances: 1000, geometries: 64,
   groups: 100, geometryVertices: 4096, geometryTriangles: 8192,
   instanceBatches: 128, instanceTriangles: 2_000_000,
+  geometryBytes: 16 * 1024 * 1024,
 });
 
 export function validateGeometry(value: unknown): string | null {
@@ -45,17 +47,30 @@ export function instanceBatchKey(p: SceneProp): string {
 export function sceneBudget(spec: SceneSpec) {
   const props = spec.props ?? [], instances = props.filter(p => p?.model === 'prop/instance');
   const geometries = Object.values(spec.geometries ?? {});
+  const resources = Object.values(spec.geometryResources ?? {});
+  // A deterministic size estimate for the compact manifest. Hash strings have
+  // fixed length; preflight can calculate costs without storage or hashing.
+  const manifest = { ...spec, geometryResources: { ...spec.geometryResources } };
+  delete manifest.geometries;
+  for (const [id, g] of Object.entries(spec.geometries ?? {})) manifest.geometryResources[id] = {
+    src: `opfs://scene-geometry-${'0'.repeat(64)}.vmesh`, name:g.name,
+    vertexCount:g.vertices?.length ?? 0, triangleCount:g.faces?.length ?? 0,
+    hasUvs:!!g.uvs, byteLength:geometryByteLength(g.vertices?.length ?? 0,g.faces?.length ?? 0,!!g.uvs),
+  };
+  if (!Object.keys(manifest.geometryResources).length) delete (manifest as SceneSpec).geometryResources;
   const used = {
-    specBytes: new TextEncoder().encode(JSON.stringify(spec)).length,
+    specBytes: new TextEncoder().encode(JSON.stringify(manifest)).length,
     props: props.length - instances.length, instances: instances.length,
-    geometries: geometries.length, groups: spec.groups?.length ?? 0,
+    geometries: geometries.length + resources.length, groups: spec.groups?.length ?? 0,
+    geometryBytes: geometries.reduce((n,g) => n + geometryByteLength(g.vertices?.length ?? 0,g.faces?.length ?? 0,!!g.uvs),0) + resources.reduce((n,r) => n+r.byteLength,0),
     instanceBatches: new Set(instances.map(instanceBatchKey)).size,
-    instanceTriangles: instances.reduce((n, p) => n + (spec.geometries?.[p.geometryId!]?.faces?.length ?? 0), 0),
+    instanceTriangles: instances.reduce((n, p) => n + (spec.geometries?.[p.geometryId!]?.faces?.length ?? spec.geometryResources?.[p.geometryId!]?.triangleCount ?? 0), 0),
   };
   const violations = (Object.keys(used) as Array<keyof typeof used>).filter(k => used[k] > SCENE_LIMITS[k])
     .map(field => ({ field, used: used[field], limit: SCENE_LIMITS[field] }));
   return { withinLimits: !violations.length, used, limits: SCENE_LIMITS, violations,
-    sharedVertices: geometries.reduce((n, g) => n + (g?.vertices?.length ?? 0), 0),
-    sharedTriangles: geometries.reduce((n, g) => n + (g?.faces?.length ?? 0), 0),
+    documentBytes: new TextEncoder().encode(JSON.stringify(spec)).length,
+    sharedVertices: geometries.reduce((n, g) => n + (g?.vertices?.length ?? 0), 0) + resources.reduce((n,r) => n+r.vertexCount,0),
+    sharedTriangles: geometries.reduce((n, g) => n + (g?.faces?.length ?? 0), 0) + resources.reduce((n,r) => n+r.triangleCount,0),
   };
 }

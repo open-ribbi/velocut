@@ -199,6 +199,16 @@ try {
       props: [{ id: 'cube', model: 'prop/cube', color: '#ff2222' }],
     },
   });
+  const geometryEdit = await call('velocut_scene_edit', {sessionId,assetId:created.assetId,includeSpec:false,edits:[
+    {type:'geometry.create',id:'tile',geometry:{vertices:[[0,0,0],[1,0,0],[0,1,0]],faces:[[0,1,2]]}},
+    {type:'add',kind:'prop',object:{id:'tile',model:'prop/instance',geometryId:'tile',position:{x:2},color:'#ff2222'}},
+  ]});
+  assert.ok(geometryEdit.ok);
+  const vertex = await call('velocut_scene_geometry', {sessionId,assetId:created.assetId,geometryId:'tile',offset:1,limit:1});
+  assert.deepEqual(vertex.items,[[1,0,0]]);assert.match(vertex.resource.src,/scene-geometry-.*\.vmesh$/);
+  const moved = await call('velocut_scene_edit',{sessionId,assetId:created.assetId,includeSpec:false,expectedRevision:vertex.revision,
+    edits:[{type:'transform',ids:['tile'],transform:{position:{x:3}}}]});
+  assert.ok(moved.ok);assert.equal(moved.updateMode,'transforms');
   const observed = await client.callTool({
     name: 'velocut_observe',
     arguments: { sessionId, mode: 'scene', source: { assetId: created.assetId }, view: 'front' },
@@ -321,6 +331,7 @@ window.probe=(async()=>{
       'atomic-query-transaction',
       'resource-probe-register-duplicate',
       'shared-geometry-instances',
+      'geometry-resource-and-incremental-transform',
           'types',
           'cli-doctor',
           'http-headers-ranges',

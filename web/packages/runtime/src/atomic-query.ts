@@ -30,14 +30,14 @@ const FIELDS = {
   tracks: ['id', 'name', 'kind', 'muted', 'locked', 'clipIds'],
   clips: ['id', 'trackId', 'assetId', 'startUs', 'endUs', 'durationUs', 'sourceInUs', 'speed', 'transform', 'volume', 'text', 'keyframes', 'effects', 'transition'],
   sceneObjects: ['id', 'kind', 'name', 'parentId', 'geometryId', 'object'],
-  sceneGeometries: ['id', 'name', 'vertexCount', 'triangleCount', 'instanceCount', 'geometry'],
+  sceneGeometries: ['id', 'name', 'vertexCount', 'triangleCount', 'instanceCount', 'storage', 'resource', 'geometry'],
 };
 const DEFAULT_FIELDS = {
   assets: ['id', 'name', 'kind', 'durationUs', 'width', 'height', 'hasAudio'],
   tracks: FIELDS.tracks,
   clips: ['id', 'trackId', 'assetId', 'startUs', 'endUs', 'durationUs', 'sourceInUs', 'speed'],
   sceneObjects: ['id', 'kind', 'name', 'parentId', 'geometryId'],
-  sceneGeometries: ['id', 'name', 'vertexCount', 'triangleCount', 'instanceCount'],
+  sceneGeometries: ['id', 'name', 'vertexCount', 'triangleCount', 'instanceCount', 'storage'],
 };
 export const QUERY_FIELDS = Object.fromEntries(Object.keys(FIELDS).map(kind => [kind, {
   allowed: FIELDS[kind as keyof typeof FIELDS], defaults: DEFAULT_FIELDS[kind as keyof typeof DEFAULT_FIELDS],
@@ -98,9 +98,11 @@ export function queryDocument(doc: VDocument, q: AtomicQuery) {
     if (q.kind === 'sceneBudget') return sceneBudget(spec);
     const counts = new Map<string, number>();
     for (const p of spec.props ?? []) if (p.geometryId) counts.set(p.geometryId, (counts.get(p.geometryId) ?? 0) + 1);
-    items = q.kind === 'sceneGeometries' ? Object.entries(spec.geometries ?? {}).map(([id, geometry]) => {
+    items = q.kind === 'sceneGeometries' ? [...Object.entries(spec.geometries ?? {}), ...Object.entries(spec.geometryResources ?? {})].map(([id, geometry]) => {
       const g = geometry as import('@velocut/scene-sdk').SceneGeometry;
-      return { id, name: g.name, vertexCount: g.vertices.length, triangleCount: g.faces.length, instanceCount: counts.get(id) ?? 0, geometry: g };
+      const resource = spec.geometryResources?.[id];
+      return { id, name: g.name, vertexCount: resource?.vertexCount ?? g.vertices.length, triangleCount: resource?.triangleCount ?? g.faces.length,
+        instanceCount: counts.get(id) ?? 0, storage: resource ? 'resource' : 'inline', ...(resource ? {resource} : {geometry:g}) };
     }) : sceneObjects(normalizeSceneSpec(spec)).map(({ kind, object }) => ({ id: object.id, kind, name: object.name, parentId: object.parentId, ...('geometryId' in object ? { geometryId: object.geometryId } : {}), object }));
   } else fault('invalidArg', 'unsupported entity query');
   if (q.ids) items = items.filter(item => q.ids!.includes(item.id as string));

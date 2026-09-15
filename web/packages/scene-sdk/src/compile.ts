@@ -28,6 +28,8 @@ export interface CompiledScene {
   render(index: number): VideoFrame;
   /** Release the GL context and scene resources. */
   dispose(): void;
+  canUpdateTransforms(spec: SceneSpec): boolean;
+  updateTransforms(spec: SceneSpec): boolean;
   inspect(timeS: number): ReturnType<typeof inspectStage>;
   capture(opts: { timeS?: number; view?: SceneView; objectId?: string; camera?: SceneViewCamera }): Promise<Blob>;
 }
@@ -88,7 +90,7 @@ export function compileSceneSpec(
   rawSpec: SceneSpec,
   defaults: { width: number; height: number; fps: number; assetBase?: string; resources?: SceneResources },
 ): CompiledScene {
-  const spec = expandShots(rawSpec);
+  let spec = expandShots(rawSpec);
   const width = Math.round(spec.width ?? defaults.width);
   const height = Math.round(spec.height ?? defaults.height);
   // Inherit the document's frame rate (24fps projects must not get a 30fps
@@ -172,5 +174,12 @@ export function compileSceneSpec(
     canvas = null;
   }
 
-  return { width, height, frameDurUs, frameCount, load, render, dispose, inspect, capture };
+  return { width, height, frameDurUs, frameCount, load, render, dispose, inspect, capture,
+    canUpdateTransforms: next => !!stage?.canUpdateTransforms(expandShots(next)),
+    updateTransforms: next => {
+      const expanded = expandShots(next);
+      if (!stage?.updateTransforms(expanded)) return false;
+      spec = expanded; return true;
+    },
+  };
 }

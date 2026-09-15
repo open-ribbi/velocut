@@ -66,6 +66,7 @@ export interface ScriptApi {
   sceneArrange(opts: unknown): Promise<unknown>;
   sceneImportModel(opts: unknown): Promise<unknown>;
   sceneInspect(opts: unknown): Promise<unknown>;
+  sceneGeometry(opts: unknown): Promise<unknown>;
   directorSession(opts?: unknown): Promise<unknown>;
   /** Generate an AI video clip via a CONFIGURED channel and land it on the
    *  timeline. The sandbox may name a channel id + model + prompt only — the
@@ -105,6 +106,7 @@ const RPC_METHODS = [
   'sceneArrange',
   'sceneImportModel',
   'sceneInspect',
+  'sceneGeometry',
   'directorSession',
   'previewSession',
   'capabilities',

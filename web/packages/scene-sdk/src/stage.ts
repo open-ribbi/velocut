@@ -19,6 +19,8 @@ import { loadImportedModel, type SceneResources } from './models.ts';
 import { normalizeSceneSpec } from './authoring.ts';
 import { validateSceneSpec } from './types.ts';
 import { buildInstances, syncInstanceBatches, type InstanceBatch } from './instances.ts';
+import { resolveSceneGeometry } from './geometry-resource.ts';
+import { sceneStructureKey } from './incremental.ts';
 import type { SceneAssetManifest, SceneSpec, Scale3, Vec3A, SceneTransform, SceneGroup, SceneLight } from './types.ts';
 
 /** Apply a uniform or per-axis scale (missing axes stay 1). */
@@ -112,6 +114,8 @@ export interface Stage {
   lights: Array<{ root: THREE.Group; spec: SceneLight; light: THREE.Light }>;
   instanceBatches: InstanceBatch[];
   syncInstances(): void;
+  canUpdateTransforms(spec: SceneSpec): boolean;
+  updateTransforms(spec: SceneSpec): boolean;
   /** Pose every character/prop for time t (seconds) — pure w.r.t. prior calls.
    *  Pass the shot camera's position so `gaze: 'camera'` heads can aim at it. */
   poseAt(t: number, opts?: { cameraPos?: [number, number, number] }): void;
@@ -124,6 +128,9 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
   const error = validateSceneSpec(spec);
   if (error) throw new Error(error);
   spec = normalizeSceneSpec(spec);
+  const structureKey = sceneStructureKey(spec);
+  for (const id of Object.keys(spec.geometryResources ?? {})) (spec.geometries ??= {})[id] = await resolveSceneGeometry(spec, id, resources);
+  delete spec.geometryResources;
   const three = await import('three');
   const [{ GLTFLoader }, SkeletonUtils] = await Promise.all([
     import('three/examples/jsm/loaders/GLTFLoader.js'),
@@ -654,6 +661,14 @@ export async function buildStage(spec: SceneSpec, assetBase: string = DEFAULT_AS
     return point.toArray() as [number, number, number];
   }
 
-  return { three, scene, characters, props, groups, lights, instanceBatches: instances.batches,
+  const canUpdateTransforms = (next: SceneSpec) => !validateSceneSpec(next) && sceneStructureKey(next) === structureKey;
+  function updateTransforms(next: SceneSpec) {
+    if (!canUpdateTransforms(next)) return false;
+    const normalized = normalizeSceneSpec(next);
+    groups.forEach((g,i) => { g.spec = normalized.groups![i]; });
+    props.forEach((p,i) => { if (p.spec.model === 'prop/instance') p.spec = normalized.props![i]; });
+    return true;
+  }
+  return { three, scene, characters, props, groups, lights, instanceBatches: instances.batches, canUpdateTransforms, updateTransforms,
     syncInstances: () => syncInstanceBatches(scene, instances.batches), poseAt, characterPosition };
 }

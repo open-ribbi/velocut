@@ -28,6 +28,9 @@ import {
   SCENE_VIEWS,
   normalizeSceneSpec,
   sceneObjects,
+  sceneStructureKey,
+  resolveSceneGeometry,
+  type SceneGeometry,
   nextSceneId,
   type SceneEdit,
   applySpecCamera,
@@ -275,6 +278,9 @@ export function DirectorPanel({
     });
   };
 
+  const renderedSpec = useMemo(() => spec ? expandShots(normalizeSceneSpec(spec)) : null, [spec]);
+  const currentSpecRef = useRef(renderedSpec); currentSpecRef.current = renderedSpec;
+  const structureKey = useMemo(() => renderedSpec ? sceneStructureKey(renderedSpec) : null, [renderedSpec]);
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !specText) return;
@@ -593,6 +599,8 @@ export function DirectorPanel({
         if (disposed || !stage || !renderer) return;
         const currentSession = controller.getSnapshot();
         if (!currentSession) return;
+        const nextSpec = currentSpecRef.current;
+        if (nextSpec && nextSpec !== parsed && stage.updateTransforms(nextSpec)) parsed = nextSpec;
         const now = performance.now();
         if (currentSession.playing) {
           const next = Math.min(
@@ -714,7 +722,7 @@ export function DirectorPanel({
       renderer?.dispose();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [specText, asset.id]);
+  }, [structureKey, asset.id]);
 
   const keys = spec ? cameraKeyTimes(spec) : [];
   const selChar =
@@ -726,6 +734,20 @@ export function DirectorPanel({
   const isMannequin =
     !!selChar && !!manifest?.characters[selChar.model]?.file.startsWith('builtin:');
   const characterModels = Object.keys(manifest?.characters ?? {});
+  const selectedGeometryId = selProp?.geometryId;
+  const selectedGeometryResource = spec?.geometryResources?.[selectedGeometryId!];
+  const geometryKey = `${asset.id}:${selectedGeometryId}:${selectedGeometryResource?.src}:${selectedGeometryResource?.name}`;
+  const [loadedGeometry, setLoadedGeometry] = useState<{key:string;data:SceneGeometry} | null>(null);
+  useEffect(() => {
+    let disposed = false;
+    if (selectedGeometryId && selectedGeometryResource && spec) {
+      void resolveSceneGeometry(spec, selectedGeometryId, sceneResources(store)).then(data => {
+        if (!disposed) setLoadedGeometry({key:geometryKey,data});
+      }).catch(e => { if (!disposed) setError(String(e)); });
+    }
+    return () => { disposed = true; };
+  }, [geometryKey, store]);
+  const selectedGeometry = spec?.geometries?.[selectedGeometryId!] ?? (loadedGeometry?.key === geometryKey ? loadedGeometry.data : undefined);
   const propModels = Object.keys(manifest?.props ?? {});
   const clipNames = (model: string) => Object.keys(manifest?.characters[model]?.clips ?? {});
 
@@ -1313,14 +1335,14 @@ export function DirectorPanel({
                     onChange={(patch) => mutateSel((o) => Object.assign(o, patch))}
                   />
                 )}
-                {selProp?.model === 'prop/instance' && spec?.geometries?.[selProp.geometryId!] && (
+                {selProp?.model === 'prop/instance' && selectedGeometry && (
                   <>
                     <div className="group-title">Shared geometry · {selProp.geometryId}</div>
-                    <p className="empty-hint">Geometry edits affect all {spec.props?.filter(p => p.geometryId === selProp.geometryId).length} instances. Transform and color affect this object only.</p>
+                    <p className="empty-hint">Geometry edits affect all {spec?.props?.filter(p => p.geometryId === selProp.geometryId).length} instances. Transform and color affect this object only.</p>
                     <button className="fx-add" onClick={() => runEdits([{ type: 'makeUnique', id: sel.id }])}>Make geometry unique</button>
                     <MeshFields
-                      value={{ model: 'prop/mesh', ...spec.geometries[selProp.geometryId!] }}
-                      onChange={(patch) => runEdits([{ type: 'geometry.update', id: selProp.geometryId!, geometry: { ...spec.geometries![selProp.geometryId!], ...patch } }])}
+                      value={{ model: 'prop/mesh', ...selectedGeometry }}
+                      onChange={(patch) => runEdits([{ type: 'geometry.update', id: selProp.geometryId!, geometry: { ...selectedGeometry, ...patch } }])}
                     />
                   </>
                 )}

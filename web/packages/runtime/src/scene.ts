@@ -10,6 +10,8 @@
 import {
   MAX_MODEL_BYTES,
   sceneBudget,
+  resolveSceneGeometry,
+  type SceneResources,
   validateGlb,
   loadImportedModel,
   nextSceneId,
@@ -28,7 +30,7 @@ import {
 import type { MediaLibrary } from '@velocut/render-sdk';
 import { validateCommand, type Envelope, type VDocument } from '@velocut/protocol';
 import type { Asset, Command } from '@velocut/protocol';
-import { sceneResources, modelDigest, saveSceneModel } from './scene-resources';
+import { sceneResources, modelDigest, saveSceneModel, externalizeSceneGeometry } from './scene-resources';
 import type { Store } from './store';
 
 export type { SceneSpec } from '@velocut/scene-sdk';
@@ -55,9 +57,10 @@ async function compileFor(
   store: Store,
   spec: SceneSpec,
   doc: VDocument = store.getState().doc,
+  resources: SceneResources = sceneResources(store),
 ): Promise<CompiledScene> {
   const compiled = compileSceneSpec(spec, {
-    resources: sceneResources(store),
+    resources,
     assetBase: sceneState(store).assetBase,
     width: doc.width,
     height: doc.height,
@@ -76,7 +79,8 @@ function attach(store: Store, media: MediaLibrary, assetId: string, compiled: Co
   // Every attached scene holds a live WebGL context (browsers cap those at
   // ~8-16) — replacing a renderer without disposing the old one turns spec
   // iteration into "oldest context will be lost" black frames.
-  sceneState(store).compiled.get(assetId)?.dispose();
+  const previous = sceneState(store).compiled.get(assetId);
+  if (previous !== compiled) previous?.dispose();
   sceneState(store).compiled.set(assetId, compiled);
   // The motion-source seam is shape-generic (render(index) → VideoFrame);
   // scenes ride it unchanged.
@@ -113,6 +117,7 @@ export async function createSceneClip(
   // Compile BEFORE dispatching so a failing spec leaves no document residue.
   let compiled: CompiledScene;
   try {
+    spec = (await externalizeSceneGeometry(store, spec, true)).spec;
     compiled = await compileFor(store, spec);
   } catch (e) {
     return {
@@ -251,6 +256,12 @@ export async function syncSceneAsset(
   }
   if (validateSceneSpec(parsed)) return false;
   try {
+    const live = sceneState(store).compiled.get(asset.id);
+    if (live?.updateTransforms(parsed)) {
+      attach(store, media, asset.id, live);
+      sceneState(store).specs.set(asset.id, spec);
+      return true;
+    }
     const compiled = await compileFor(store, parsed);
     if (store.getState().doc.assets.find((a) => a.id === asset.id)?.spec !== spec) {
       compiled.dispose();
@@ -316,15 +327,18 @@ export async function replaceSceneSpec(
       throw new Error('conflict: document changed; read the scene again');
     const error = validateSceneSpec(spec);
     if (error) throw new Error(error);
-    const normalized = normalizeSceneSpec(spec);
     // Metadata changes need a timeline resize transaction, not an opaque spec edit.
     for (const k of ['durationUs', 'width', 'height', 'fps'] as const) {
       if (spec[k] !== before.spec[k]) throw new Error(`change ${k} by creating a new scene clip`);
     }
+    const prepared = await externalizeSceneGeometry(store, normalizeSceneSpec(spec), !dryRun);
+    const normalized = prepared.spec;
     const serialized = JSON.stringify(normalized);
     if (new TextEncoder().encode(serialized).length > 262144)
       throw new Error('scene spec exceeds 256 KiB');
-    compiled = await compileFor(store, normalized);
+    const live = sceneState(store).specs.get(assetId) === before.asset.spec ? sceneState(store).compiled.get(assetId) : undefined;
+    const incremental = !dryRun && !!live?.canUpdateTransforms(normalized);
+    if (!incremental) compiled = await compileFor(store, normalized, store.getState().doc, prepared.resources);
     if (
       store.getState().revision !== expectedRevision ||
       store.getState().doc.assets.find((a) => a.id === assetId)?.spec !== before.asset.spec
@@ -332,13 +346,16 @@ export async function replaceSceneSpec(
       throw new Error('conflict: document changed while compiling; read the scene again');
     }
     if (dryRun) {
-      compiled.dispose();
+      compiled!.dispose();
       compiled = undefined;
       return { ok: true as const, assetId, revision: expectedRevision, ready: false, preview: true, spec: normalized };
     }
     const r = dispatch({ type: 'setAssetSpec', assetId, spec: serialized });
     if (!r.ok) throw new Error(r.error.message);
-    attach(store, media, assetId, compiled);
+    if (incremental) {
+      if (!live!.updateTransforms(normalized)) throw new Error('committed scene needs renderer resynchronization');
+      attach(store, media, assetId, live!);
+    } else attach(store, media, assetId, compiled!);
     sceneState(store).specs.set(assetId, serialized);
     compiled = undefined; // ownership transferred
     return {
@@ -346,6 +363,7 @@ export async function replaceSceneSpec(
       assetId,
       revision: store.getState().revision,
       ready: true,
+      updateMode: incremental ? 'transforms' as const : 'rebuild' as const,
       spec: normalized,
     };
   } catch (e) {
@@ -360,7 +378,18 @@ export async function editScene(store: Store, opts: SceneEditOptions, dispatch?:
     if (opts.expectedRevision != null && opts.expectedRevision !== before.revision) throw new Error('conflict: document changed; read the scene again');
     if (opts.preflight != null && typeof opts.preflight !== 'boolean' || opts.includeSpec != null && typeof opts.includeSpec !== 'boolean') throw new Error('preflight/includeSpec must be boolean');
     if (opts.preflight && opts.dryRun) throw new Error('choose preflight or dryRun, not both');
-    const result = applySceneEdits(before.spec, opts.edits);
+    const input = structuredClone(before.spec);
+    // Only operations that need vertex data hydrate it. Transforms and full
+    // geometry replacement never load unrelated geometry into the document.
+    for (const edit of opts.edits ?? []) {
+      const id = edit.type === 'geometry.patch' ? edit.id : edit.type === 'makeUnique'
+        ? input.props?.find(p => p.id === edit.id)?.geometryId : undefined;
+      if (id && Object.hasOwn(input.geometryResources ?? {}, id)) {
+        (input.geometries ??= {})[id] = await resolveSceneGeometry(input, id, sceneResources(store));
+        delete input.geometryResources![id];
+      }
+    }
+    const result = applySceneEdits(input, opts.edits);
     const budget = sceneBudget(result.spec);
     if (opts.preflight) return { ok: true as const, assetId: opts.assetId, revision: before.revision, preview: true,
       ready: false, compiled: false, budget, changedIds: result.changedIds, createdIds: result.createdIds,
@@ -381,6 +410,21 @@ export async function editScene(store: Store, opts: SceneEditOptions, dispatch?:
     return { ok: false as const, message: e instanceof Error ? e.message : String(e),
       ...(e instanceof Error && 'budget' in e ? { budget: e.budget } : {}) };
   }
+}
+
+/** Bounded vertex/index access without expanding geometry into document queries. */
+export async function readSceneGeometry(store: Store, options: {
+  assetId: string; geometryId: string; attribute?: 'vertices' | 'faces' | 'uvs'; offset?: number; limit?: number;
+}) {
+  try {
+    if (!options || Object.keys(options).some(k => !['assetId','geometryId','attribute','offset','limit'].includes(k))) throw new Error('invalid geometry query');
+    const {spec,revision} = readScene(store,options.assetId);
+    const attribute=options.attribute ?? 'vertices',offset=options.offset ?? 0,limit=options.limit ?? 256;
+    if (!['vertices','faces','uvs'].includes(attribute) || !Number.isSafeInteger(offset) || offset < 0 || !Number.isInteger(limit) || limit < 1 || limit > 1024) throw new Error('invalid geometry query range (limit 1..1024)');
+    const geometry=await resolveSceneGeometry(spec,options.geometryId,sceneResources(store)), data=geometry[attribute] ?? [];
+    return {ok:true as const,assetId:options.assetId,geometryId:options.geometryId,revision,attribute,
+      resource:spec.geometryResources?.[options.geometryId],total:data.length,items:data.slice(offset,offset+limit),nextOffset:offset+limit<data.length?offset+limit:null};
+  } catch(e) { return {ok:false as const,message:e instanceof Error?e.message:String(e)}; }
 }
 
 /** Queries use their own compiler: a concurrent preview/export cannot change

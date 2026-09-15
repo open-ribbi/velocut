@@ -47,7 +47,8 @@ test('MCP CodeAct creates 1000 linked tiles, preflights costs and preserves edit
     const performanceSample = await page.evaluate(async ({ assetId, sdkUrl }) => {
       const sdk=await import(sdkUrl), v=(window as any).velocut;
       const spec=JSON.parse(v.doc().assets.find((a:any)=>a.id===assetId).spec), start=performance.now();
-      const stage=await sdk.buildStage(spec), buildMs=performance.now()-start;
+      const runtime=await import(sdkUrl.replace('/scene-sdk/','/runtime/'));
+      const stage=await sdk.buildStage(spec,undefined,runtime.sceneResources(v.store)), buildMs=performance.now()-start;
       stage.poseAt(0);
       const T=stage.three, renderer=new T.WebGLRenderer({canvas:new OffscreenCanvas(640,360),antialias:false});
       renderer.setSize(640,360,false);

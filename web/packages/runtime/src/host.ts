@@ -17,7 +17,7 @@ import {
   dispatchSceneAware,
   editScene,
   arrangeScene,
-  inspectScene,
+  inspectScene, readSceneGeometry,
   importSceneModel,
   exportSceneModel,
   type SceneExportOptions,
@@ -147,6 +147,8 @@ export function createProjectHost(
       }
       case 'sceneImportModel':
         return importSceneModel(store, args as SceneModelImportOptions, dispatch);
+      case 'sceneGeometry':
+        return readSceneGeometry(store, args as Parameters<typeof readSceneGeometry>[1]);
       case 'sceneInspect':
         return inspectScene(store, args as { assetId: string; timeS?: number });
       case 'observe':
@@ -198,6 +200,7 @@ export function createProjectHost(
           sceneArrange: local('sceneArrange'),
           sceneImportModel: local('sceneImportModel'),
           sceneInspect: local('sceneInspect'),
+          sceneGeometry: local('sceneGeometry'),
           directorSession: local('directorSession'),
           observe: async (input) => {
             const r = await observeForAgent(store, observer, input as ObserveInput);

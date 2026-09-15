@@ -55,3 +55,5 @@ export { exportSceneGlb, type SceneGlbOptions, type SceneGlbResult } from './exp
 export { type ObjectTransform, type SceneLayout, type PlacementVector } from './placement.ts';
 export { sceneBudget, SCENE_LIMITS, validateGeometry, type SceneGeometry } from './geometry.ts';
 export { type InstanceBatch } from './instances.ts';
+export { sceneStructureKey } from './incremental.ts';
+export { encodeGeometry, decodeGeometry, geometryHash, resolveSceneGeometry, GEOMETRY_SOURCE, type SceneGeometryResource } from './geometry-resource.ts';

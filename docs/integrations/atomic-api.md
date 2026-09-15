@@ -292,8 +292,9 @@ the track's current end explicitly and selects the new clip after success.
 A scene can store one editable mesh under `spec.geometries[geometryId]` and
 reference it from many props with `model:'prop/instance'` and `geometryId`.
 Geometry IDs are scene-local registry keys, not imported-media job handles.
-Vertices are stored once in the document and one BufferGeometry is built per
-geometry per stage. Compatible opaque instances share an InstancedMesh draw
+Runtime scene creation/edits externalize vertices into immutable project files,
+recording references in `spec.geometryResources`. One BufferGeometry is built per
+geometry per stage. Legacy inline geometry remains readable. Compatible opaque instances share an InstancedMesh draw
 batch; each still has its own stable object ID, parent, transform and color.
 
 Existing `sceneEdit` exposes the new atomic operations:
@@ -302,6 +303,7 @@ Existing `sceneEdit` exposes the new atomic operations:
 | --- | --- |
 | `geometry.create {id,geometry}` | Create a definition; duplicate registry IDs fail |
 | `geometry.update {id,geometry}` | Replace its full definition; all referring instances update |
+| `geometry.patch {id,attribute,updates}` | Replace selected vertex/face/UV indices; preserve all other data |
 | `geometry.remove {id}` | Remove an unreferenced definition; live references reject deletion |
 | `add {kind:'prop',object:{id,model:'prop/instance',geometryId,...}}` | Create one independently editable instance |
 | `update/transform/layout/duplicate/duplicateMany/remove` | Existing object edits work on instances; duplication preserves the shared reference |
@@ -338,8 +340,9 @@ return await velocut.sceneEdit({
 });
 ```
 
-`preflight:true` performs structural validation and budget checks only, returns
-`ready:false, compiled:false`, and never creates a renderer or changes history.
+`preflight:true` performs structural validation and budget checks, returns
+`ready:false, compiled:false`, and never writes files, creates a renderer or changes
+history. Patching or making a resource-backed geometry unique reads its source file.
 It is not proof that models load or that the result looks correct. `dryRun:true`
 also compiles the candidate. Commit without either flag, then observe actual
 frames. Successful preflights/edits return `budget`; failed candidate validation
@@ -350,8 +353,9 @@ batch is one undo step; a script containing several batches is not one transacti
 Read compact data through the existing query API (MCP: `velocut_query`):
 
 - `kind:'sceneGeometries',assetId`: paginated `id/name/vertexCount/triangleCount/instanceCount`.
-  Opt into `fields:['id','geometry']` to read vertices/faces. Reduce the page size
-  for large geometry; response budgets still apply.
+  Includes `storage:'inline'|'resource'`. Opt into `fields:['id','geometry']` for
+  legacy inline data or `fields:['id','resource']` for immutable file metadata.
+  Use `sceneGeometry` below to read arrays regardless of storage type.
 - `kind:'sceneObjects',assetId`: includes `geometryId` by default. It returns
   authored objects without repeating their referenced geometry.
 - `kind:'sceneBudget',assetId`: counts, limits and violations, without GPU work.
@@ -360,8 +364,9 @@ Read compact data through the existing query API (MCP: `velocut_query`):
   grammar. No new large workflow tool or third-party dependency is needed.
 
 Initial limits: 1000 instances plus 200 ordinary props; 64 shared geometries;
-100 groups; 128 instance draw batches; 2 million instanced triangles; and the
-existing 256 KiB total scene description. Each shared geometry has at most 4096
+100 groups; 128 instance draw batches; 2 million instanced triangles; a 16 MiB logical referenced-geometry budget, and a
+256 KiB compact scene manifest. `used.specBytes` estimates the compact manifest;
+`documentBytes` reports current JSON bytes, which can be larger for inline input. Each shared geometry has at most 4096
 vertices and 8192 triangles. Per-instance colors do not split batches; geometry
 or material differences can. Triangle/batch counters describe native instances,
 not the full GPU cost of imported GLBs, shadows or procedural primitives.
@@ -379,11 +384,10 @@ Current boundaries:
 - Static GLB export emits individually named nodes with shared geometry and
   per-instance appearance. It preserves selection and evaluated parent/world
   transforms, but does not export Velocut editing recipes or animation tracks.
-- This first increment keeps the scene registry in the native document, with
-  undo/redo and project persistence. It does not yet externalize binary geometry,
-  incrementally compile changes, or claim a 10000-instance workload. A renderer
-  is still rebuilt after a scene commit. Raising numeric caps alone is not the
-  next scaling step.
+- The runtime now externalizes native shared geometry and updates instance/group
+  transforms without rebuilding renderers. Other scene edits still compile a
+  fresh candidate. This does not yet claim a 10000-instance workload or incremental
+  topology/material/physics recompilation.
 
 ### Instance increment verification
 
@@ -400,3 +404,95 @@ per-object colors, render equivalence with independent meshes, animated objects
 under transformed parents, selected GLB export, shared edits, conversion to an independent
 mesh, undo/redo, persistence and the compact properties control. The 1001st
 instance fails preflight with counts and leaves the document untouched.
+
+## Geometry resources and incremental transforms
+
+Shared geometry is now stored as an immutable `.vmesh` file in project storage.
+`sceneClip`, `sceneEdit` and `replaceSceneSpec` convert inline `geometries` to
+`geometryResources` before committing. Hashes identify exact binary versions;
+geometry names stay in the manifest. Identical content reuses a file. Format v1
+stores Float64 positions/UVs and Uint32 triangle indices with a validated header,
+so source numbers survive exact save/load round trips. Float32 conversion remains
+an operation of the renderer, not a destructive source conversion.
+
+The compact manifest still has a 256 KiB budget. Shared geometry has a separate
+16 MiB budget per scene; each geometry retains the 4096-vertex/8192-triangle limit.
+`sceneBudget` reports both budgets and the actual current JSON size. A large inline
+input can exceed 256 KiB while its compact manifest fits. Use CodeAct to generate
+such data inside the editor rather than a large literal MCP/transaction payload.
+Raw protocol `setAssetSpec` does not automatically externalize oversized input;
+use the scene editing APIs for that path.
+
+Read and edit a small range through SDK/CodeAct or the equivalent MCP tool
+`velocut_scene_geometry`:
+
+```js
+const page = await velocut.sceneGeometry({
+  assetId, geometryId:'tile', attribute:'vertices', offset:4, limit:1
+});
+if (!page.ok) throw new Error(page.message);
+const [x,y,z] = page.items[0];
+return await velocut.sceneEdit({
+  assetId, expectedRevision:page.revision, includeSpec:false,
+  edits:[{type:'geometry.patch', id:'tile', attribute:'vertices',
+    updates:[{index:4, value:[x,y+0.01,z]}]}]
+});
+```
+
+Reads support vertices/faces/uvs, default offset 0 and limit 256, maximum 1024.
+They return captured revision, source metadata, items, total and nextOffset.
+Patches replace 1..1024 unique existing indices; invalid topology fails atomically.
+Inserting/removing vertices or faces still uses `geometry.update` with a complete
+replacement definition. A patch creates a new immutable file version; it does not
+modify old files or yet patch GPU topology in place.
+
+Instance/group transform-only edits reuse the existing stage, shared GPU geometry,
+batches and renderer, while invalidating cached preview frames. Director gizmos
+and playback use the updated transforms. Scene edit replies identify the chosen
+path as `updateMode:'transforms'|'rebuild'`. Undo/redo and document synchronization
+also attempt the transform update path. Changes to hierarchy, geometry, materials,
+physics or other scene structure fall back to full compilation before commit.
+Raw scene command batches currently retain their full-compile preflight path.
+
+SDK hosts configure project storage with `configureSceneStorage` once per Store.
+The adapter must preserve the hash-based filename and source bytes. Direct
+scene-sdk consumers supply `SceneResources.geometryBytes(src)`; the SDK verifies
+hash, binary structure and manifest counts. `resolveSceneGeometry(spec,id,resources)`
+reads either inline or resource-backed geometry. Old inline scenes continue to
+load and are externalized on their next runtime scene edit.
+
+Storage/history boundaries:
+
+- History records compact references. Undo restores an earlier reference, and
+  reload resolves that exact version from the same project's storage.
+- `preflight` writes nothing. `dryRun` compiles using temporary in-memory geometry
+  resources and writes nothing; commit the original edit list, not its temporary
+  returned manifest.
+- Missing, truncated, corrupted or cross-project resources fail explicitly.
+  Geometry editing must not fall back to an empty or different mesh.
+- Files from old versions, and files prepared for edits that later fail, are
+  retained. Garbage collection across history/branches is not implemented; the
+  per-scene budget is not a disk-retention quota.
+- Project backups/transfer must include the referenced `.vmesh` files. Document
+  synchronization alone does not transfer these binary assets to another peer.
+- This resource path covers shared geometry definitions. Ordinary `prop/mesh`
+  data, including meshes produced by `makeUnique`, remains inline and counts
+  against the manifest budget. Geometry topology edits still rebuild the stage;
+  only compatible instance/group transforms take the incremental path.
+
+### Resource increment verification
+
+115 Node/TypeScript tests, 8 MCP tests and all 48 browser tests pass. New coverage
+checks exact binary round trips, hash/header/count validation, project isolation,
+source-range reads, atomic index patches and storage failure. A large inline
+fixture exceeds 256 KiB and persists as a compact manifest under 1 KiB; identical
+definitions reuse one file.
+
+Browser tests also instrument WebGL context requests: eight consecutive instance
+moves plus undo/redo create no new preview or Director renderer, while actual
+rendered pixel positions change correctly. GPU geometry/batch identities and
+source-read counts stay stable under compatible transforms. Geometry edits create
+new file versions; undo and reload restore the correct vertices. Independently
+installed CLI/MCP/SDK packages pass geometry reads and incremental-transform
+checks, alongside the existing development/production render probes. Production
+builds and plugin validation pass. This remains an unreleased source increment.

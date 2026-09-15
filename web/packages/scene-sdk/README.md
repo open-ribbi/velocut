@@ -49,6 +49,9 @@ render in one batch. `applySceneEdits` supports `geometry.create`,
 also work on instances. `sceneBudget(spec)` exposes counts and limits.
 
 The initial budget allows 1000 instances, 64 geometries and 128 instance draw
-batches within the existing 256 KiB scene. Geometry still lives in the native
-document; edits still rebuild the stage. See the [atomic API guide](../../../docs/integrations/atomic-api.md#shared-native-geometry-and-instances)
+batches within the existing 256 KiB scene. Runtime scene edits move geometry to immutable `.vmesh` files and store
+references in `geometryResources`. Supply `SceneResources.geometryBytes` when
+compiling these specs directly; `resolveSceneGeometry` verifies bytes and metadata.
+`Stage.updateTransforms` and `CompiledScene.updateTransforms` retain renderers
+for compatible instance/group transform changes; other edits rebuild the stage. See the [atomic API guide](../../../docs/integrations/atomic-api.md#shared-native-geometry-and-instances)
 for preflight, query, persistence and material/physics restrictions.
