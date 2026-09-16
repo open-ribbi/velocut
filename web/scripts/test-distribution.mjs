@@ -47,6 +47,31 @@ try {
     `import {TsEngine} from '@velocut/core-ts';import {validateCommand, BRIDGE_PROTOCOL_VERSION} from '@velocut/protocol';import {normalizeSceneSpec,applySceneEdits} from '@velocut/scene-sdk';import {Store,TsEngineAdapter,atomicRuntime} from '@velocut/runtime';import {ops,ref} from '@velocut/protocol';const e=new TsEngine('packed',320,180,30,1);if(!e.apply({type:'addTrack',kind:'video'}).ok)throw Error('apply');const s=new Store(new TsEngineAdapter('runtime',320,180,30,1));s.dispatch({type:'addTrack',kind:'video'});s.undo();if(s.getState().doc.tracks.length)throw Error('undo');if(BRIDGE_PROTOCOL_VERSION!==2)throw Error('protocol');const a=atomicRuntime(s);const snap=a.query({kind:'snapshot'});if(!snap.ok)throw Error('snapshot');const result=await a.transaction({action:'commit',requestId:'packed-atomic',runtimeId:snap.runtimeId,expectedRevision:snap.revision,operations:[{id:'track',command:ops.addTrack({kind:'text'})},{id:'title',command:ops.addTextClip({trackId:ref('track','trackId'),startUs:0,durationUs:1000000,text:{content:'Packed'}})}]});if(!result.ok||!result.data.results.title.clipId)throw Error('atomic composition');if(!a.capabilities({name:'splitClip'}).data.inputSchema)throw Error('atomic schema');console.log('node sdk ok');`,
   );
   assert.match(output, /node sdk ok/);
+  // Build a third-party package against installed public declarations, outside the checkout.
+  const providerExample=resolve(workspace,'consumer-provider');
+  await cp(resolve(web,'../examples/provider-example'),providerExample,{recursive:true});
+  execFileSync(process.execPath,[resolve(workspace,'node_modules/typescript/bin/tsc'),'-p',resolve(providerExample,'tsconfig.json')],{cwd:workspace,stdio:'inherit'});
+  const providersOutput=run(`
+    import assert from 'node:assert/strict';
+    import {ProviderRegistry} from '@velocut/provider-sdk';
+    import {asVideoGenerator} from '@velocut/provider-sdk/video';
+    import {taskApiProvider} from '@velocut/provider-task-api';
+    import {minimaxProvider} from '@velocut/provider-minimax';
+    import {exampleProvider} from './consumer-provider/dist/index.js';
+    const registry=new ProviderRegistry().register(exampleProvider).register(taskApiProvider).register(minimaxProvider);
+    let posts=0,reads=0;
+    const provider=registry.create({id:'external',provider:'example-video',config:{endpoint:'https://external.invalid'},credentials:{apiKey:{store:'host',key:'test'}}},{resolveCredential:async()=>{reads++;return 'test-key'},fetch:async(url,init)=>{
+      if(init?.method==='POST'){posts++;return Response.json({id:'external-task',region:'west'})}
+      assert.match(String(url),/region=west/);return Response.json({status:'done',url:'https://cdn.invalid/video.mp4'});
+    }});
+    assert.equal(registry.list().length,3);assert.equal(provider.describe().models[0].id,'example-1');assert.equal(reads,0);
+    const video=asVideoGenerator(provider),receipt=await video.submit({model:'example-1',prompt:'Independent provider'});
+    assert.equal(receipt.handle.region,'west');const done=await video.poll(receipt.taskId,undefined,JSON.parse(JSON.stringify(receipt.handle)));assert.equal(done.state,'succeeded');assert.equal(done.result.videoUrl,'https://cdn.invalid/video.mp4');assert.equal(posts,1);
+    const speech=registry.create({id:'audio',provider:'minimax',config:{endpoint:'https://speech.invalid',model:'test-speech'}},{resolveCredential:async()=>undefined,fetch:async()=>Response.json({data:{audio:'494433'}})});
+    const audio=await speech.execute({capability:'audio.synthesize',model:'test-speech',input:{text:'Hello'}});assert.equal(audio.outputs[0].source.kind,'bytes');assert.equal(globalThis.AudioContext,undefined);
+    console.log('independent providers ok');
+  `);
+  assert.match(providersOutput,/independent providers ok/);
   const resourceOutput = run(`
     import { Store, TsEngineAdapter, atomicRuntime, configureMediaResources } from '@velocut/runtime';
     import { ops, ref } from '@velocut/protocol';
@@ -447,6 +472,7 @@ window.probe=(async()=>{
       'atomic-query-transaction',
       'resource-probe-register-duplicate',
       'generation-slots-durable-jobs-and-adoption',
+      'independent-provider-package-and-encoded-speech',
       'shared-geometry-instances',
       'geometry-resource-and-incremental-transform',
       'surface-local-invalidation-and-atomic-repair',

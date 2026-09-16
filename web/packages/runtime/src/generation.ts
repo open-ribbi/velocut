@@ -1,5 +1,6 @@
+import type {JsonObject} from '@velocut/provider-sdk';
 import {GenerationRequestSchema,type GenerationRequest,type GenerationSlot,type Command,type Envelope} from '@velocut/protocol';
-import type {VideoModelCapabilities,VideoGenResult,VideoGenPoll} from '@velocut/render-sdk';
+import type {VideoModelCapabilities,VideoGenResult,VideoGenPoll} from '@velocut/provider-sdk/video';
 import type {Store} from './store';
 
 export interface GenerationChannel {id:string;label?:string;models:string[];defaultModel?:string;capabilities?:Record<string,VideoModelCapabilities>}
@@ -13,8 +14,8 @@ export interface GenerationJob {
   submissionStartedAt?:number;
   error?:string;result?:GenerationMedia;cost?:number;
 }
-interface PrivateJob extends GenerationJob {binding:string;providerResult?:VideoGenResult}
-export interface GenerationLedger {version:1;projectId:string;jobs:PrivateJob[];references:GenerationReference[]}
+interface PrivateJob extends GenerationJob {binding:string;providerHandle?:JsonObject;providerResult?:VideoGenResult}
+export interface GenerationLedger {version:1|2;projectId:string;jobs:PrivateJob[];references:GenerationReference[]}
 export interface GenerationAdapter {
   projectId:string;channels():GenerationChannel[];binding(channel:string):string|Promise<string>;
   flushDocument?():Promise<void>;
@@ -25,8 +26,8 @@ export interface GenerationAdapter {
   lead(work:()=>Promise<void>,signal:AbortSignal):Promise<void>;
   watch?(notify:()=>void):()=>void;
   prepareReference(reference:GenerationReference,signal:AbortSignal):Promise<string>;
-  submit(job:GenerationJob,referenceUrl:string|undefined,signal:AbortSignal):Promise<{taskId:string}>;
-  poll(job:GenerationJob,signal:AbortSignal):Promise<VideoGenPoll>;
+  submit(job:GenerationJob,referenceUrl:string|undefined,signal:AbortSignal):Promise<{taskId:string;handle?:JsonObject}>;
+  poll(job:GenerationJob,signal:AbortSignal,handle?:JsonObject):Promise<VideoGenPoll>;
   download(job:GenerationJob,result:VideoGenResult,signal:AbortSignal):Promise<GenerationMedia>;
   capture(input:Record<string,unknown>,signal?:AbortSignal):Promise<{blob:Blob;name:string;provenance:Record<string,unknown>}>;
   saveReference(id:string,blob:Blob):Promise<string>;
@@ -43,8 +44,8 @@ export const GENERATION_SCHEMA={type:'object',required:['action'],properties:{ac
 const id=(v:unknown)=>{if(typeof v!=='string'||!/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/.test(v))throw Error('Invalid identifier');return v;};
 const err=(e:unknown)=>String(e instanceof Error?e.message:e).replace(/https?:\/\/[^\s]+/g,'[provider URL]').slice(0,1000);
 const wait=(ms:number,signal:AbortSignal)=>new Promise<void>(resolve=>{if(signal.aborted)return resolve();const finish=()=>{clearTimeout(timer);signal.removeEventListener('abort',finish);resolve();};const timer=setTimeout(finish,ms);signal.addEventListener('abort',finish,{once:true});});
-const fresh=(projectId:string):GenerationLedger=>({version:1,projectId,jobs:[],references:[]});
-const publicJob=({binding:_binding,providerResult:_result,...job}:PrivateJob):GenerationJob=>structuredClone(job);
+const fresh=(projectId:string):GenerationLedger=>({version:2,projectId,jobs:[],references:[]});
+const publicJob=({binding:_binding,providerResult:_result,providerHandle:_handle,...job}:PrivateJob):GenerationJob=>structuredClone(job);
 
 export class GenerationManager {
   readonly ready:Promise<void>;
@@ -74,7 +75,7 @@ export class GenerationManager {
   getSnapshot=()=>this.snapshot;
   private publish(ledger:GenerationLedger){for(const j of ledger.jobs)if(j.state==='cancelled')this.controllers.get(j.id)?.abort();const signature=JSON.stringify(ledger);if(signature===this.published)return;this.published=signature;this.wake();this.snapshot={jobs:ledger.jobs.map(publicJob),references:structuredClone(ledger.references)};this.listeners.forEach(fn=>fn());}
   private problem(e:unknown){this.snapshot={...this.snapshot,error:err(e)};this.listeners.forEach(fn=>fn());}
-  private async read(){const l=await this.adapter.read();if(l&&l.version!==1)throw Error('Unsupported generation ledger version');if(l&&!l.projectId&&l.jobs.every(j=>j.projectId===this.adapter.projectId))l.projectId=this.adapter.projectId;if(l&&l.projectId!==this.adapter.projectId)throw Error('Generation ledger belongs to another project');return l??fresh(this.adapter.projectId);}
+  private async read(){const l=await this.adapter.read();if(l&&l.version!==1&&l.version!==2)throw Error('Unsupported generation ledger version');if(l&&!l.projectId&&l.jobs.every(j=>j.projectId===this.adapter.projectId))l.projectId=this.adapter.projectId;if(l&&l.projectId!==this.adapter.projectId)throw Error('Generation ledger belongs to another project');if(l)l.version=2;return l??fresh(this.adapter.projectId);}
   async refresh(){this.publish(await this.read());}
   private async mutate<T>(fn:(l:GenerationLedger)=>T|Promise<T>):Promise<T>{return this.adapter.lock(async()=>{const l=await this.read(),result=await fn(l);await this.adapter.write(l);this.publish(l);return result;});}
   private async update(jobId:string,fn:(j:PrivateJob)=>void){return this.mutate(l=>{const j=l.jobs.find(j=>j.id===jobId);if(!j)throw Error('Unknown generation job');fn(j);j.updatedAt=Date.now();return structuredClone(j);});}
@@ -188,7 +189,7 @@ export class GenerationManager {
         job=await this.update(jobId,j=>{if(j.state==='cancelled')throw Error('Cancelled');j.state='submitting';j.submissionStartedAt=Date.now();});
         const receipt=await this.adapter.submit(publicJob(job),referenceUrl,controller.signal);
         if(typeof receipt.taskId!=='string'||!receipt.taskId.trim())throw Error('Provider returned no valid task receipt');
-        job=await this.update(jobId,j=>{j.providerTaskId=receipt.taskId;if(j.state!=='cancelled'){j.state='running';delete j.error;}});
+        job=await this.update(jobId,j=>{j.providerTaskId=receipt.taskId;if(receipt.handle!==undefined)j.providerHandle=structuredClone(receipt.handle);if(j.state!=='cancelled'){j.state='running';delete j.error;}});
       }
       while(!controller.signal.aborted){
         job=(await this.read()).jobs.find(j=>j.id===jobId)!;
@@ -199,13 +200,14 @@ export class GenerationManager {
           await this.update(jobId,j=>{j.result=result;if(j.state!=='cancelled'){j.state='succeeded';delete j.error;}});return;
         }
         let poll:VideoGenPoll;
-        try{poll=await this.adapter.poll(publicJob(job),controller.signal);}catch(e){
+        try{poll=await this.adapter.poll(publicJob(job),controller.signal,job.providerHandle);}catch(e){
           if(controller.signal.aborted)throw e;
           if((e as {retryable?:boolean}).retryable===false)throw e;
           await this.update(jobId,j=>{j.error='Polling interrupted; retrying the saved provider task. '+err(e);});await wait(this.adapter.pollIntervalMs??5000,controller.signal);continue;
         }
         job=await this.update(jobId,j=>{
           j.providerStatus=poll.status;
+          if(poll.handle!==undefined)j.providerHandle=structuredClone(poll.handle);
           if(poll.result){j.providerResult=poll.result;j.cost=poll.result.cost;}
           if(j.state==='cancelled')return;
           delete j.error;

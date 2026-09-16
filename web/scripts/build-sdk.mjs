@@ -4,7 +4,7 @@ import { resolve, dirname, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 const web = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const all = ['protocol', 'core-ts', 'render-sdk', 'scene-sdk', 'runtime'];
+const all = ['provider-sdk', 'provider-task-api', 'provider-minimax', 'protocol', 'core-ts', 'render-sdk', 'scene-sdk', 'runtime'];
 async function files(dir) {
   const entries = await readdir(dir, { withFileTypes: true });
   return (
@@ -75,7 +75,7 @@ for (const name of process.argv.length > 2 ? process.argv.slice(2) : all) {
           emitDeclarationOnly: true,
           rootDir: 'src',
           outDir: 'dist',
-          types: ['@webgpu/types'],
+          types: name.startsWith('provider-') ? [] : ['@webgpu/types'],
         },
         include: ['src/**/*.ts'],
       },

@@ -2,10 +2,14 @@
 
 The monorepo publishes seven public packages at version 0.0.1. Start the editor
 with `npx @velocut/cli@0.0.1 studio`, or install individual SDKs with npm.
-Build/test commands never publish to the registry.
+Current source additionally builds three Provider packages; these are not yet
+published. Build/test commands never publish to the registry.
 
 | Package | Environment | Public responsibility |
 | --- | --- | --- |
+| `@velocut/provider-sdk` | Node/browser | Host-neutral provider/model/channel/lifecycle contracts (unreleased) |
+| `@velocut/provider-task-api` | Node/browser | Video task API transport (unreleased) |
+| `@velocut/provider-minimax` | Node/browser | MiniMax encoded speech transport (unreleased) |
 | `@velocut/protocol` | Node/browser | Document and command contract, validation, bridge compatibility |
 | `@velocut/core-ts` | Node/browser | Pure timeline engine and evaluation; no GPU required |
 | `@velocut/render-sdk` | Browser | WebGPU, WebCodecs, workers, audio, export, observation |
@@ -17,7 +21,7 @@ Build/test commands never publish to the registry.
 All SDKs ship ESM JS and declarations tested with TypeScript 5.9.3. They do not
 require a TypeScript loader. CommonJS SDK entry points and a Node/headless GPU
 renderer are not provided. MCP uses a bundled CJS executable for portability.
-The root workspace, UI, collaboration glue and built-in provider agent remain
+The root workspace, UI, collaboration glue and built-in Assistant remain
 private packages. Public packages declare their dependencies explicitly; the
 runtime does not import application files or require React.
 
@@ -33,7 +37,7 @@ npm run pack:release
 
 The generated `artifacts/` directory (repository root) contains:
 
-- Seven `.tgz` npm packages and `manifest.json` with versions and SHA-256 hashes.
+- Ten `.tgz` npm packages in current source and `manifest.json` with versions and SHA-256 hashes.
 - `velocut-0.0.1/`: a relocatable standalone distribution. Run
   `node start-studio.mjs` there. Its `studio/` includes the prebuilt UI, scene
   assets and bundled browser dependencies; npm install is unnecessary.
@@ -52,6 +56,8 @@ dependencies. The MCP package bundles its executable dependencies; it still
 requires a running editor and a browser pairing. Neither includes Node itself.
 
 ## Integrate the SDKs
+
+- [Providers](providers.md): public contracts, adapters and an independent package example.
 
 - [TS core](../../web/packages/core-ts/README.md): direct engine command/evaluation example.
 - [Renderer](../../web/packages/render-sdk/README.md): FrameGraph → GPU canvas, workers and cleanup.

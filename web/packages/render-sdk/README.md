@@ -71,6 +71,14 @@ Optional modules also have explicit subpath exports: `/transcribe`, `/tts`,
 libraries affect only the corresponding inference feature. No provider key or
 model download is needed to composite and export existing media.
 
+## Provider compatibility
+
+Video HTTP transport now lives in `@velocut/provider-task-api`; MiniMax speech
+transport lives in `@velocut/provider-minimax`. Both depend on the host-neutral
+`@velocut/provider-sdk`. Existing render-sdk exports delegate to those packages.
+Only browser waveform decoding remains in `MiniMaxTextToSpeech`. New Provider
+authors should import provider-sdk directly; see the [Provider guide](../../../docs/integrations/providers.md).
+
 ## Video provider lifecycle
 
 `createVideoGen(kind, config)` retains `generate(request)` for legacy consumers.

@@ -107,3 +107,20 @@ Engine (wasm/ts runtime detection), MediaLibrary, Renderer, Playback, and Store 
 - Preview frame grabbing is best-effort (nearest available frame), preserving smoothness rather than frame-exact accuracy — only the export path requires exactness.
 - Text rendering goes through Canvas2D rasterization, with no glyph caching and no stroke/shadow.
 - Audio mixing v1: slices with speed≠1 are muted (speed change with pitch preservation is an export-path feature); preview mixing is AudioBufferSource scheduling, and during playback the AudioContext is the master clock.
+
+
+## Provider packages
+
+`provider-sdk` is a dependency-free host contract. Model input schemas and pure
+validators describe the request; Provider implementations own wire mapping,
+reference transport, authentication and service errors. A configured channel
+selects one implementation and explicit credential references. The host resolves
+only its declared slots. `execute` serves immediate operations; remote tasks use
+`submit/poll/collect` with optional cancellation and pricing queries.
+
+The task-api video and MiniMax speech transports are independent packages. The
+renderer retains compatibility factories and decodes encoded speech, but Provider
+packages never import the renderer. Runtime owns persistent job records, private
+provider handles, scheduling and the separate adoption command. Provider outputs
+contain media references/bytes, never tracks or clips. See the
+[Provider integration guide](docs/integrations/providers.md).

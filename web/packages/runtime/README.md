@@ -86,3 +86,8 @@ Custom hosts must supply equivalent durability and single-runner coordination;
 an in-memory adapter does not provide reload safety. Refer to the
 [atomic API contract](../../../docs/integrations/atomic-api.md#timeline-video-generation)
 for commands, action parameters and recovery behavior.
+
+The generation journal also retains an optional provider-owned JSON handle,
+privately beside the task ID. Submit receipts and poll updates persist it; reload
+passes it to the same adapter. Public job get/list metadata omits it. Provider
+contracts come from `@velocut/provider-sdk`; see the [Provider guide](../../../docs/integrations/providers.md).

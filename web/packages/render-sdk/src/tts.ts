@@ -1,3 +1,5 @@
+import {ProviderRegistry,type ConfiguredProvider} from '@velocut/provider-sdk';
+import {minimaxProvider} from '@velocut/provider-minimax';
 // tts.ts — text → speech (the first GENERATIVE primitive), pluggable + configurable.
 //
 // Architecture (mirrors the effect registry's "register once, everyone reads"):
@@ -159,44 +161,19 @@ export class MmsTextToSpeech implements TextToSpeech {
  *  same-origin proxy path to dodge CORS), key, groupId, model, voice. The
  *  response is encoded audio (mp3, hex-string) → decoded to a waveform. */
 export class MiniMaxTextToSpeech implements TextToSpeech {
-  private ctx: AudioContext | null = null;
-  constructor(
-    private config?: {
-      endpoint?: string; // default: /minimax-proxy/v1/t2a_v2 (Vite proxies → api.minimaxi.com)
-      apiKey?: string;
-      groupId?: string;
-      model?: string;
-      voice?: string;
-    },
-  ) {}
-
-  async synthesize(text: string, opts?: SynthOptions): Promise<SynthResult> {
-    const c = this.config ?? {};
-    const base = c.endpoint ?? '/minimax-proxy/v1/t2a_v2';
-    const url = c.groupId ? `${base}?GroupId=${encodeURIComponent(c.groupId)}` : base;
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        ...(c.apiKey ? { authorization: `Bearer ${c.apiKey}` } : {}),
-      },
-      body: JSON.stringify({
-        model: c.model ?? 'speech-2.8-hd',
-        text,
-        stream: false,
-        voice_setting: { voice_id: opts?.voice ?? c.voice ?? 'male-qn-jingying', speed: opts?.speed ?? 1.0 },
-        audio_setting: { format: 'mp3', sample_rate: 32000 },
-      }),
-    });
-    if (!resp.ok) throw new Error(`MiniMax ${resp.status}: ${(await resp.text()).slice(0, 160)}`);
-    const json = (await resp.json()) as { data?: { audio?: string }; base_resp?: { status_msg?: string } };
-    const hex = json.data?.audio;
-    if (!hex) throw new Error(`MiniMax returned no audio: ${json.base_resp?.status_msg ?? 'unknown'}`);
-    const bytes = new Uint8Array(hex.length / 2);
-    for (let i = 0; i < bytes.length; i++) bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
-    this.ctx ??= new AudioContext();
-    const buf = await this.ctx.decodeAudioData(bytes.buffer);
-    return { samples: buf.getChannelData(0).slice(), sampleRate: buf.sampleRate };
+  private ctx:AudioContext|null=null;
+  private provider:ConfiguredProvider;
+  private model:string;
+  constructor(config?:{endpoint?:string;apiKey?:string;groupId?:string;model?:string;voice?:string}){
+    const {apiKey,...values}=config??{};
+    this.model=values.model??'speech-2.8-hd';
+    this.provider=new ProviderRegistry().register(minimaxProvider).create({id:'minimax',provider:'minimax',config:Object.fromEntries(Object.entries(values).filter(([,v])=>v!==undefined)),...(apiKey?{credentials:{apiKey:{store:'host',key:'minimax'}}}:{})},{resolveCredential:async()=>apiKey});
+  }
+  async synthesize(text:string,opts?:SynthOptions):Promise<SynthResult>{
+    const result=await this.provider.execute({capability:'audio.synthesize',model:this.model,input:{text,...(opts?.voice?{voice:opts.voice}:{}),...(opts?.speed!==undefined?{speed:opts.speed}:{})}});
+    const output=result.outputs[0];if(output?.kind!=='audio'||output.source.kind!=='bytes')throw Error('MiniMax returned no encoded audio');
+    this.ctx??=new AudioContext();const buffer=await this.ctx.decodeAudioData(new Uint8Array(output.source.bytes).buffer);
+    return {samples:buffer.getChannelData(0).slice(),sampleRate:buffer.sampleRate};
   }
 }
 

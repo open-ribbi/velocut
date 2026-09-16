@@ -88,3 +88,9 @@ await writeFile(
 console.log(out);
 
 await cp(resolve(root, '../../../docs/integrations/atomic-api.md'), resolve(out, 'skills/director/references/atomic-api.md'));
+
+const providerGuide=await readFile(resolve(root,'../../../docs/integrations/providers.md'),'utf8');
+await writeFile(resolve(out,'skills/director/references/providers.md'),providerGuide.replaceAll('../../examples/provider-example','provider-example/README.md'));
+await cp(resolve(root,'../../../examples/provider-example'),resolve(out,'skills/director/references/provider-example'),{recursive:true,filter:source=>!['node_modules','dist'].includes(basename(source))});
+const providerReadme=resolve(out,'skills/director/references/provider-example/README.md');
+await writeFile(providerReadme,(await readFile(providerReadme,'utf8')).replaceAll('../../docs/integrations/providers.md','../providers.md'));

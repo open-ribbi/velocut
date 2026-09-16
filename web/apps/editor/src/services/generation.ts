@@ -29,8 +29,8 @@ export function bindGeneration(store:Store,media:MediaLibrary,observer:Observer,
       signal.throwIfAborted();const result=await createUploader(cfg.kind,cfg.config).upload(file,{name:ref.name,contentType:'image/png'});signal.throwIfAborted();
       const url=new URL(result.url);if(!['http:','https:'].includes(url.protocol))throw Error('Upload storage returned an invalid reference URL');return result.url;
     },
-    submit:async(job,firstFrameUrl,signal)=>{try{return await provider(job).submit!({model:job.request.model,prompt:job.request.prompt,durationS:job.providerDurationS,ratio:job.request.ratio,resolution:job.request.resolution,generateAudio:job.request.generateAudio,firstFrameUrl,signal});}catch(e){throw sanitize(e,job.request.channel);}},
-    poll:async(job,signal)=>{try{return await provider(job).poll!(job.providerTaskId!,signal);}catch(e){throw sanitize(e,job.request.channel);}},
+    submit:async(job,firstFrameUrl,signal)=>{try{return await provider(job).submit!({model:job.request.model,prompt:job.request.prompt,durationS:job.providerDurationS,ratio:job.request.ratio,resolution:job.request.resolution,generateAudio:job.request.generateAudio,firstFrameUrl,requestId:job.requestId,signal});}catch(e){throw sanitize(e,job.request.channel);}},
+    poll:async(job,signal,handle)=>{try{return await provider(job).poll!(job.providerTaskId!,signal,handle);}catch(e){throw sanitize(e,job.request.channel);}},
     download:async(job,result,signal)=>{
       const filename=`generation-${job.id}.mp4`,src=`opfs://${filename}`;
       let file=await loadMedia(src,storage.mediaDir);

@@ -66,7 +66,8 @@
     "@velocut/core-ts": "0.0.1",
     "@velocut/render-sdk": "0.0.1",
     "@velocut/scene-sdk": "0.0.1",
-    "three": "^0.185.1"
+    "three": "^0.185.1",
+    "@velocut/provider-sdk": "0.0.1"
   },
   "engines": {
     "node": ">=22.6"

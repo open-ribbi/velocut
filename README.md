@@ -113,10 +113,13 @@ requires an explicit choice for short results. See the [atomic generation API](d
 
 ## Use the SDKs
 
-The editor and its integrations share a monorepo. Seven independently packaged modules ship as JavaScript and, for the SDKs, TypeScript declarations. GPU rendering remains a browser capability; an npm package does not imply a headless Node renderer.
+The editor and its integrations share a monorepo. The published release contains seven packages; current source adds three independent Provider packages. Packages ship JavaScript and, for the SDKs, TypeScript declarations. GPU rendering remains a browser capability; an npm package does not imply a headless Node renderer.
 
 | Package | Purpose |
 | --- | --- |
+| [`@velocut/provider-sdk`](web/packages/provider-sdk) | Provider/model/channel contracts, credential references and lifecycle APIs (unreleased) |
+| [`@velocut/provider-task-api`](web/packages/provider-task-api) | Standalone video task API adapter (unreleased) |
+| [`@velocut/provider-minimax`](web/packages/provider-minimax) | Standalone MiniMax speech adapter; encoded audio, no browser decoder (unreleased) |
 | [`@velocut/protocol`](web/packages/protocol) | Document types, commands, validation and protocol compatibility |
 | [`@velocut/core-ts`](web/packages/core-ts) | Pure timeline editing, evaluation and engine history |
 | [`@velocut/render-sdk`](web/packages/render-sdk) | WebGPU composition, media workers, audio and export; includes a Vite helper |
@@ -127,7 +130,7 @@ The editor and its integrations share a monorepo. Seven independently packaged m
 
 The `.tgz` files are available in [Release 0.0.1](https://github.com/open-ribbi/velocut/releases/tag/v0.0.1). Install SDKs directly with `npm install @velocut/scene-sdk@0.0.1 @velocut/runtime@0.0.1`, or use the tarballs offline.
 
-[SDK integration examples and release workflow →](docs/integrations/npm-packages.md)
+[SDK integration examples and release workflow →](docs/integrations/npm-packages.md) · [Build a Provider →](docs/integrations/providers.md)
 
 ## Develop from source
 
