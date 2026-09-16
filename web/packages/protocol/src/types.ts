@@ -20,6 +20,7 @@ import type {
 
 export * from './schema.ts';
 export * from './atomic.ts';
+export * from './generation.ts';
 
 export type TimeUs = number; // integer microseconds
 
@@ -77,11 +78,13 @@ export interface VDocument {
   assets: Asset[];
   tracks: Track[];
   nextId: number;
+  generationSlots?:import('./generation.ts').GenerationSlot[];
 }
 
 // ---------------------------------------------------------------- results
 
 export type EngineEvent =
+  | {kind:'generationSlotAdded'|'generationSlotUpdated'|'generationSlotRemoved';slotId:string}
   | { kind: 'assetAdded'; assetId: string }
   | { kind: 'assetUpdated'; assetId: string }
   | { kind: 'trackAdded'; trackId: string }
@@ -144,6 +147,7 @@ export interface AudioSlice {
 }
 
 export interface FrameGraph {
+  pendingGenerationIds?:string[];
   timeUs: TimeUs;
   width: number;
   height: number;

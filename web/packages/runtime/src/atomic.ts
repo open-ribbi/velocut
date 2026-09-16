@@ -1,4 +1,5 @@
 import { createResourceJobs, RESOURCES_SCHEMA, JOBS_SCHEMA } from './resource-jobs';
+import {generationManager,GENERATION_SCHEMA} from './generation';
 import { ATOMIC_COMMAND_SCHEMAS, COMMAND_CATALOG, TRANSACTION_SCHEMA, RESULT_FIELDS, commandDefinition, type NonBatch, type AtomicCommand, type Command, type Envelope, type VDocument, type TransactionRequest, type ResultField } from '@velocut/protocol';
 import { TsEngine } from '@velocut/core-ts';
 import { EFFECT_REGISTRY } from '@velocut/render-sdk';
@@ -31,9 +32,9 @@ function localRestriction(c: NonBatch, doc: VDocument) {
   return null;
 }
 function entityChanges(before: VDocument, after: VDocument) {
-  const groups = (d: VDocument) => ({ assets: d.assets, tracks: d.tracks.map(({ clips, ...t }) => ({ ...t, clipIds: clips.map(c => c.id) })), clips: d.tracks.flatMap(t => t.clips.map(c => ({ ...c, trackId: t.id }))) });
+  const groups = (d: VDocument) => ({ assets: d.assets, generationSlots:d.generationSlots??[], tracks: d.tracks.map(({ clips, ...t }) => ({ ...t, clipIds: clips.map(c => c.id) })), clips: d.tracks.flatMap(t => t.clips.map(c => ({ ...c, trackId: t.id }))) });
   const a = groups(before), b = groups(after);
-  return Object.fromEntries((['assets', 'tracks', 'clips'] as const).map(kind => {
+  return Object.fromEntries((['assets', 'tracks', 'clips','generationSlots'] as const).map(kind => {
     const old = new Map(a[kind].map(e => [e.id, JSON.stringify(e)]));
     const next = new Map(b[kind].map(e => [e.id, JSON.stringify(e)]));
     return [kind, { created: [...next.keys()].filter(id => !old.has(id)), removed: [...old.keys()].filter(id => !next.has(id)), updated: [...next.keys()].filter(id => old.has(id) && old.get(id) !== next.get(id)) }];
@@ -79,6 +80,7 @@ export function createAtomicRuntime(store: Store) {
       const q = normalize(input); object(q, ['name', 'namespace', 'offset', 'limit'], 'capabilities');
       const names = Object.keys(ATOMIC_COMMAND_SCHEMAS) as AtomicCommand['type'][];
       const entries = [
+        {name:'generation',namespace:'runtime',category:'job',available:!!generationManager(store),transactional:false,summary:'Project-persistent video generation: capabilities/plan/captureReference/submit/get/list/cancel/resume/registerResult/adopt. Submission does not edit clips.'},
         ...names.map(name => ({ name, namespace: 'commands', category: 'command', available: name === 'registerAsset' ? mediaJobs.available() : true, transactional: true, summary: name === 'registerAsset' ? 'Register a probed project resource without inserting a clip' : COMMAND_CATALOG.find(c => c.type === name)!.summary })),
         { name: 'query', namespace: 'runtime', category: 'query', available: true, transactional: false, summary: 'Snapshot/entity queries, projection and pagination. Selection is live only.' },
         { name: 'transaction', namespace: 'runtime', category: 'command', available: true, transactional: false, summary: 'Validate/commit/status; requires runtimeId, expectedRevision and a requestId for commit.' },
@@ -96,7 +98,7 @@ export function createAtomicRuntime(store: Store) {
       if (q.name !== undefined) {
         if (typeof q.name !== 'string') fault('invalidArg', 'name must be a string');
         const entry = entries.find(e => e.name === q.name); if (!entry) fault('notFound', 'unknown capability');
-        return ok({ ...entry, ...(names.includes(q.name as AtomicCommand['type']) ? commandDefinition(q.name as AtomicCommand['type']) : q.name === 'query' ? { inputSchema: QUERY_SCHEMA, fieldCatalog: QUERY_FIELDS } : q.name === 'sceneSpatial' ? { inputSchema: SCENE_SPATIAL_SCHEMA } : q.name === 'transaction' ? { inputSchema: TRANSACTION_SCHEMA } : q.name === 'resources' || q.name === 'resource.import' ? { inputSchema: RESOURCES_SCHEMA, limits: mediaJobs.limits } : q.name === 'jobs' || q.name === 'media.probe' ? { inputSchema: JOBS_SCHEMA, limits: mediaJobs.limits } : {}),
+        return ok({ ...entry, ...(names.includes(q.name as AtomicCommand['type']) ? commandDefinition(q.name as AtomicCommand['type']) : q.name==='generation'?{inputSchema:GENERATION_SCHEMA}:q.name === 'query' ? { inputSchema: QUERY_SCHEMA, fieldCatalog: QUERY_FIELDS } : q.name === 'sceneSpatial' ? { inputSchema: SCENE_SPATIAL_SCHEMA } : q.name === 'transaction' ? { inputSchema: TRANSACTION_SCHEMA } : q.name === 'resources' || q.name === 'resource.import' ? { inputSchema: RESOURCES_SCHEMA, limits: mediaJobs.limits } : q.name === 'jobs' || q.name === 'media.probe' ? { inputSchema: JOBS_SCHEMA, limits: mediaJobs.limits } : {}),
           ...(q.name === 'observe' ? { modes: ['frame', 'contact', 'scan', 'audio', 'shots', 'scene'], scriptImages: false } : {}) });
       }
       if (q.namespace !== undefined && !['commands', 'runtime', 'legacy', 'pending', 'effects'].includes(q.namespace as string)) fault('invalidArg', 'unknown namespace');
@@ -123,7 +125,7 @@ export function createAtomicRuntime(store: Store) {
         const command = structuredClone(operation.command) as unknown as Record<string, unknown>;
         if (!command || typeof command !== 'object' || typeof command.type !== 'string' || !Object.hasOwn(ATOMIC_COMMAND_SCHEMAS, command.type)) fault('unsupported', 'unknown command or nested batch; use an operation sequence', 'command.type');
         const schema = ATOMIC_COMMAND_SCHEMAS[command.type as AtomicCommand['type']];
-        for (const field of ['assetId', 'trackId', 'clipId', 'effectId']) {
+        for (const field of ['assetId', 'trackId', 'clipId', 'slotId', 'effectId']) {
           const value = command[field];
           if (!value || typeof value !== 'object') continue;
           object(value, ['$ref'], field); object(value.$ref, ['operationId', 'field'], `${field}.$ref`);
@@ -145,6 +147,8 @@ export function createAtomicRuntime(store: Store) {
         for (const e of applied.events) {
           if (e.kind === 'assetAdded') output.assetId = e.assetId;
           if (e.kind === 'trackAdded') output.trackId = e.trackId;
+          if(e.kind==='generationSlotAdded'||e.kind==='generationSlotUpdated')output.slotId=e.slotId;
+          if(c.type==='resolveGenerationSlot'&&e.kind==='clipUpdated')output.clipId=e.clipId;
           if (e.kind === 'clipAdded') { if (c.type === 'splitClip') { output.leftClipId = c.clipId; output.rightClipId = e.clipId; } else output.clipId = e.clipId; }
         }
         if (c.type === 'addEffect') output.effectId = engine.document().tracks.flatMap(t => t.clips).find(c0 => c0.id === c.clipId)?.effects.find(e => !oldEffects.has(e.id))?.id;

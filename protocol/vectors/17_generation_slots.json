@@ -1,0 +1,210 @@
+{
+  "name": "generation intents, source adoption and lifecycle stay deterministic",
+  "steps": [
+    {
+      "apply": {
+        "type": "addTrack",
+        "kind": "video"
+      }
+    },
+    {
+      "apply": {
+        "type": "addGenerationSlot",
+        "trackId": "track_1",
+        "startUs": 0,
+        "durationUs": 6000000,
+        "request": {
+          "channel": "test",
+          "model": "m",
+          "prompt": "A lake"
+        }
+      }
+    },
+    {
+      "apply": {
+        "type": "addAsset",
+        "id": "a",
+        "kind": "video",
+        "src": "mem://a",
+        "name": "A",
+        "durationUs": 10000000
+      }
+    },
+    {
+      "apply": {
+        "type": "resolveGenerationSlot",
+        "slotId": "slot_2",
+        "intentVersion": 1,
+        "assetId": "a",
+        "jobId": "job_a"
+      }
+    },
+    {
+      "apply": {
+        "type": "setClipVolume",
+        "clipId": "clip_3",
+        "volume": 0.4
+      }
+    },
+    {
+      "apply": {
+        "type": "addEffect",
+        "clipId": "clip_3",
+        "effect": "brightnessContrast",
+        "params": {
+          "brightness": 0.1
+        }
+      }
+    },
+    {
+      "apply": {
+        "type": "addAsset",
+        "id": "b",
+        "kind": "video",
+        "src": "mem://b",
+        "name": "B",
+        "durationUs": 12000000
+      }
+    },
+    {
+      "apply": {
+        "type": "resolveGenerationSlot",
+        "slotId": "slot_2",
+        "intentVersion": 1,
+        "assetId": "b",
+        "jobId": "job_b"
+      }
+    },
+    {
+      "apply": {
+        "type": "moveClip",
+        "clipId": "clip_3",
+        "startUs": 4000000
+      }
+    },
+    {
+      "apply": {
+        "type": "setClipSpeed",
+        "clipId": "clip_3",
+        "speed": 2
+      }
+    },
+    {
+      "apply": {
+        "type": "updateGenerationSlot",
+        "slotId": "slot_2",
+        "request": {
+          "channel": "test",
+          "model": "m",
+          "prompt": "A forest"
+        }
+      }
+    },
+    {
+      "applyErr": {
+        "cmd": {
+          "type": "resolveGenerationSlot",
+          "slotId": "slot_2",
+          "intentVersion": 1,
+          "assetId": "a"
+        },
+        "code": "conflict"
+      }
+    },
+    {
+      "applyErr": {
+        "cmd": {
+          "type": "replaceClipSource",
+          "clipId": "clip_3",
+          "assetId": "a",
+          "sourceInUs": 9000000
+        },
+        "code": "outOfRange"
+      }
+    },
+    {
+      "apply": {
+        "type": "addGenerationSlot",
+        "trackId": "track_1",
+        "startUs": 20000000,
+        "durationUs": 1000000,
+        "request": {
+          "channel": "",
+          "model": "",
+          "prompt": ""
+        }
+      }
+    },
+    {
+      "apply": {
+        "type": "removeGenerationSlot",
+        "slotId": "slot_5"
+      }
+    },
+    {
+      "undo": true
+    },
+    {
+      "reload": true
+    }
+  ],
+  "expect": {
+    "clips": [
+      {
+        "id": "clip_3",
+        "trackId": "track_1",
+        "startUs": 4000000,
+        "durationUs": 3000000,
+        "speed": 2,
+        "data": {
+          "assetId": "b",
+          "volume": 0.4,
+          "effects": [
+            {
+              "id": "fx_4",
+              "effect": "brightnessContrast",
+              "params": {
+                "brightness": 0.1
+              },
+              "enabled": true
+            }
+          ]
+        }
+      }
+    ],
+    "clipCounts": {
+      "track_1": 1
+    },
+    "generationSlots": [
+      {
+        "id": "slot_2",
+        "trackId": "track_1",
+        "startUs": 4000000,
+        "durationUs": 3000000,
+        "intentVersion": 3,
+        "clipId": "clip_3",
+        "selectedJobId": "job_b",
+        "request": {
+          "prompt": "A forest"
+        }
+      },
+      {
+        "id": "slot_5",
+        "startUs": 20000000,
+        "intentVersion": 1
+      }
+    ],
+    "eval": [
+      {
+        "timeUs": 20000000,
+        "pendingGenerationIds": [
+          "slot_5"
+        ]
+      },
+      {
+        "timeUs": 21000000,
+        "pendingGenerationIds": []
+      }
+    ]
+  }
+}

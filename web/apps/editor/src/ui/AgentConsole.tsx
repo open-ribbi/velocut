@@ -27,6 +27,7 @@ import { captionAsset } from '../services/caption';
 import { observeForAgent } from '../services/observe';
 import { synthesizeNarration } from '../services/tts';
 import { runAgentScript } from '../services/script';
+import {generation} from '@velocut/runtime';
 import { createMotionClip, type MotionClipOptions } from '../services/motion';
 import {
   dispatchSceneAware,
@@ -54,6 +55,7 @@ import {
 } from '../services/llm';
 import {
   loadVideoGenConfig,
+  parseVideoCapabilities,
   saveVideoGenConfig,
   testVideoGenChannel,
   describeVideoGenChannels,
@@ -461,6 +463,7 @@ export function AgentConsole({
                 // media only as host-minted upload:// handles.
                 videoGen: sandboxVideoGen(store, media),
                 videoGenChannels: () => describeVideoGenChannels(),
+                generation:(o)=>generation(store,o,{dispatch:cmd=>store.dispatch(cmd,{kind:'ai',peerId:store.getLocalUser().peerId,name:'AI',model:cfg.model},text)}),
                 ...sandboxUploads(store, media, observer),
               },
               code,
@@ -738,7 +741,8 @@ export function AgentConsole({
  *  but plural: each CHANNEL is an endpoint + key + model list speaking one of
  *  the registered protocol kinds (render-sdk registry). Channels are what the
  *  agent names; endpoints/keys never leave this browser's localStorage. */
-function VideoGenSettings() {
+export function VideoGenSettings() {
+  const [capabilityError,setCapabilityError]=useState<string|null>(null);
   const [cfg, setCfg] = useState<VideoGenConfig>(loadVideoGenConfig);
   const [draft, setDraft] = useState<VideoGenChannel | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null); // null = adding
@@ -756,6 +760,7 @@ function VideoGenSettings() {
     setCfg(next);
   };
   const closeEditor = () => {
+    setCapabilityError(null);
     setDraft(null);
     setEditingId(null);
     setKeyDraft('');
@@ -778,7 +783,7 @@ function VideoGenSettings() {
   if (draft) {
     const d = finalDraft()!;
     const idTaken = editingId !== d.id && cfg.channels.some((c) => c.id === d.id);
-    const valid = Boolean(d.id && d.baseUrl && d.apiKey && d.models.length && !idTaken);
+    const valid = Boolean(d.id && d.baseUrl && d.apiKey && d.models.length && !idTaken&&!capabilityError);
     return (
       <div className="videogen-settings">
         <h4>{editingId ? `Edit channel — ${editingId}` : 'Add video generation channel'}</h4>
@@ -871,6 +876,10 @@ function VideoGenSettings() {
         {idTaken && (
           <div className="llm-test llm-test-fail">A channel with id '{d.id}' already exists.</div>
         )}
+        <details><summary>Model capability overrides</summary><p className="empty-hint">Optional provider-documented constraints, keyed by model ID. Unknown fields stay unspecified.</p>
+          <textarea className="scene-json" aria-label="Model capabilities JSON" defaultValue={JSON.stringify(draft.capabilities??{},null,2)} placeholder={'{"model-id":{"durationsS":[5,10],"imageToVideo":true}}'} onChange={e=>{try{const capabilities=parseVideoCapabilities(JSON.parse(e.target.value));setDraft({...draft,capabilities});setCapabilityError(null);}catch(error){setCapabilityError(error instanceof Error?error.message:String(error));}}}/>
+          {capabilityError&&<p className="scene-error">{capabilityError}</p>}
+        </details>
         <div className="llm-actions">
           <button
             disabled={!d.baseUrl || !d.apiKey || test.busy}
@@ -924,6 +933,7 @@ function VideoGenSettings() {
           <span className="videogen-models">{c.models.join(', ') || 'no models'}</span>
           <button
             onClick={() => {
+              setCapabilityError(null);
               setDraft({ ...c });
               setEditingId(c.id);
             }}
@@ -941,6 +951,7 @@ function VideoGenSettings() {
       <div className="llm-actions">
         <button
           onClick={() => {
+            setCapabilityError(null);
             setDraft({
               id: '',
               kind: kinds[0]?.id ?? 'task-api',

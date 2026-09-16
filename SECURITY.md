@@ -11,7 +11,7 @@ Below are the boundaries you should understand before using the Agent features.
   endpoint/model configuration). Requests go directly from the browser to the
   configured endpoint, through no intermediate server of Velocut's.
 - This means: anything that can execute JS on that page (browser extensions, XSS,
-  the script tool described below) can read it. Use a rate-limited key, and clear
+  unsandboxed developer-console code) can read it. Use a rate-limited key, and clear
   it from the console when not in use.
 - **Configuring a relay/gateway base URL is a trust decision.** The default
   endpoint is the official Anthropic API. If you point the base URL at a
@@ -59,6 +59,24 @@ Below are the boundaries you should understand before using the Agent features.
      host-side configuration, and reference-media URL options are rejected, so
      a prompt-injected program can neither point the host at an attacker
      endpoint nor make the provider fetch attacker URLs.
+
+## Timeline generation jobs
+
+The MCP host and sandbox expose `generation`, an allowlisted host service. It
+accepts configured channel/model IDs, prompts and project reference IDs, never
+endpoint overrides, keys or arbitrary reference URLs. Capturing a reference is
+local; submission uploads that saved snapshot through the configured storage
+provider. Prompts and references leave the browser when the user-authorized job
+runs. The provider may charge credits even if local tracking is later stopped.
+
+The job journal stores request metadata, a channel/credential fingerprint, task
+receipts and downloaded-file references separately from undo history. Keys are
+not stored in that journal or returned to the agent. Result URLs stay private to
+the adapter; downloads go to the original project's storage. Browser lifecycle
+locks coordinate same-project tabs. These locks do not coordinate separate
+browser profiles or machines. Uncertain submissions are retained for inspection
+and never automatically retried as a new paid request. The legacy MCP upload,
+videoGen and speech methods remain disabled.
 
 ## Known risk: the injection chain (mitigated)
 

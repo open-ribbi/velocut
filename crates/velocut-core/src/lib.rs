@@ -10,6 +10,7 @@ pub mod command;
 pub mod engine;
 pub mod eval;
 pub mod model;
+mod generation;
 
 pub use command::{apply, CmdError, EditCommand, Event, TrimEdge};
 pub use engine::Engine;

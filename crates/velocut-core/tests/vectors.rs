@@ -98,6 +98,7 @@ fn run_vector(path: &PathBuf) {
 
     let doc: Value = serde_json::from_str(&engine.document_json()).unwrap();
     let expect = &v["expect"];
+    if let Some(slots)=expect.get("generationSlots"){let doc:Value=serde_json::from_str(&engine.document_json()).unwrap();assert_data(&doc["generationSlots"],slots);}
 
     if let Some(assets) = expect.get("assets").and_then(|a| a.as_array()) {
         for want in assets {
@@ -197,6 +198,7 @@ fn run_vector(path: &PathBuf) {
         for case in evals {
             let t = case["timeUs"].as_i64().unwrap();
             let fg: Value = serde_json::from_str(&engine.evaluate_json(t)).unwrap();
+            if let Some(ids)=case.get("pendingGenerationIds"){assert_data(fg.get("pendingGenerationIds").unwrap_or(&serde_json::json!([])),ids);}
             if let Some(want_audio) = case.get("audio").and_then(|a| a.as_array()) {
                 let got_audio = fg["audio"].as_array().unwrap();
                 for want in want_audio {

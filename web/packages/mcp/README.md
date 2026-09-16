@@ -21,3 +21,10 @@ skill and API references. It bundles the server, rather than downloading a
 potentially different version on each launch. The plugin does not include the
 browser editor. On Windows, a client unable to execute `npx` directly should
 use the installed Node executable and this package's `dist/cli.cjs` path.
+
+`velocut_generation` exposes project-bound asynchronous video generation with
+configured provider channels. Use ordinary timeline commands to create slots,
+then plan/submit/inspect candidates and explicitly adopt a result. Submission
+uses provider credits. The tool accepts no endpoint/key or raw reference URL;
+saved first-frame references upload only through the host's configured storage.
+Legacy `videoGen` and general upload methods remain unavailable in MCP.

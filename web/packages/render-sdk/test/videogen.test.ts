@@ -129,3 +129,19 @@ test('task-api: empty prompt/model rejected before any network call', async () =
   await assert.rejects(() => gen().generate({ model: '', prompt: 'p' }), /model is required/);
   assert.equal(calls.length, 0);
 });
+
+test('task-api lifecycle saves a receipt separately and preserves fractional source duration',async()=>{
+  const calls=scriptFetch([{body:{task_id:'saved/task'}},{body:{status:'processing'}},{body:{status:'completed',result:{video_url:'https://cdn.example/result.mp4'},cost:3}}]);
+  const provider=gen(),receipt=await provider.submit({model:'m',prompt:'p',durationS:2.5});assert.equal(calls.length,1);assert.equal(JSON.parse(calls[0].init!.body as string).params.duration,2.5);
+  assert.equal((await provider.poll(receipt.taskId)).state,'running');assert.equal(calls[1].url,'https://relay.example/api/v1/tasks/saved%2Ftask');
+  assert.equal((await provider.poll(receipt.taskId)).result?.cost,3);assert.equal(calls.filter(c=>c.init?.method==='POST').length,1);
+});
+
+test('task-api lifecycle distinguishes rejected/uncertain submission and retryable/blocked polling',async()=>{
+  for(const [status,body,outcome] of [[401,{detail:{message:'denied'}},'rejected'],[502,{},'unknown'],[200,{task_id:42},'unknown']] as const){
+    scriptFetch([{status,body}]);await assert.rejects(()=>gen().submit({model:'m',prompt:'p'}),(e:any)=>e.outcome===outcome);
+  }
+  for(const [status,retryable] of [[429,true],[503,true],[401,false],[404,false]] as const){
+    scriptFetch([{status,body:{}}]);await assert.rejects(()=>gen().poll('saved'),(e:any)=>e.retryable===retryable);
+  }
+});

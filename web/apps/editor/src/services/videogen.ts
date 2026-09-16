@@ -13,7 +13,7 @@
 // URL fetches. The full surface (reference URLs) is reserved for the user
 // paths: window.velocut.videoGen and the settings UI.
 
-import { createVideoGen, videoGenProviders, type MediaLibrary, type VideoGenRequest } from '@velocut/render-sdk';
+import { createVideoGen, videoGenProviders, type MediaLibrary, type VideoGenRequest,type VideoModelCapabilities } from '@velocut/render-sdk';
 import { saveMedia } from '@velocut/collab-sdk';
 import type { Store } from '../state/store';
 import { activeStorage } from './projects';
@@ -30,6 +30,7 @@ export interface VideoGenChannel {
   /** Model ids this channel offers (advertised to the agent). */
   models: string[];
   defaultModel?: string;
+  capabilities?:Record<string,VideoModelCapabilities>;
 }
 
 export interface VideoGenConfig {
@@ -37,6 +38,19 @@ export interface VideoGenConfig {
 }
 
 const STORAGE = 'velocut.videogen';
+
+export function parseVideoCapabilities(value:unknown):Record<string,VideoModelCapabilities>{
+  if(!value||typeof value!=='object'||Array.isArray(value))throw Error('Model capabilities must be an object keyed by model ID');
+  return Object.fromEntries(Object.entries(value).map(([model,v])=>{
+    if(!v||typeof v!=='object'||Array.isArray(v))throw Error(`Invalid capabilities for ${model}`);
+    const p=v as Record<string,unknown>,out:VideoModelCapabilities={};
+    if(Object.keys(p).some(k=>!['durationsS','ratios','resolutions','imageToVideo','audio'].includes(k)))throw Error(`Unknown model capability field for ${model}`);
+    if(p.durationsS!==undefined){if(!Array.isArray(p.durationsS)||!p.durationsS.length||p.durationsS.some(v=>typeof v!=='number'||!Number.isFinite(v)||v<=0))throw Error('durationsS must contain positive seconds');out.durationsS=p.durationsS;}
+    for(const k of ['ratios','resolutions'] as const)if(p[k]!==undefined){if(!Array.isArray(p[k])||!p[k].length||p[k].some(v=>typeof v!=='string'||!v))throw Error(`${k} must contain strings`);out[k]=p[k] as string[];}
+    for(const k of ['imageToVideo','audio'] as const)if(p[k]!==undefined){if(typeof p[k]!=='boolean')throw Error(`${k} must be boolean`);out[k]=p[k];}
+    return [model,out];
+  }));
+}
 
 export function loadVideoGenConfig(): VideoGenConfig {
   try {
@@ -47,11 +61,15 @@ export function loadVideoGenConfig(): VideoGenConfig {
       return {
         channels: channels
           .filter((c): c is VideoGenChannel => Boolean(c && typeof c.id === 'string' && typeof c.baseUrl === 'string'))
-          .map((c) => ({
+          .map((c) => {
+            let capabilities:VideoGenChannel["capabilities"];
+            try{if(c.capabilities!==undefined)capabilities=parseVideoCapabilities(c.capabilities);}catch{/* Preserve the channel when optional constraints are malformed. */}
+            return ({
             ...c,
             kind: c.kind || 'task-api',
             models: Array.isArray(c.models) ? c.models.filter((m) => typeof m === 'string') : [],
-          })),
+            capabilities,
+          });}),
       };
     }
   } catch {

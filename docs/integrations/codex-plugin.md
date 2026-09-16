@@ -13,8 +13,9 @@ observations are returned to the Codex conversation for reasoning and vision.
   execution, heartbeat and explicit disconnect.
 - `services/codex-host.ts`: allowlisted adapter to existing native authoring
   services. Writes are attributed to Codex. Programs use the existing isolated
-  iframe sandbox; provider configuration, network publishing, uploads and paid
-  generation services are not exposed. The generic command path also blocks
+  iframe sandbox. The `generation` service uses configured provider channels and
+  saved project references; endpoints and keys are never tool arguments. General
+  publishing, raw uploads and legacy `videoGen` remain unavailable. The generic command path also blocks
   remote asset creation and procedural motion specs, whose image layers can fetch
   external URLs; existing local timeline clips remain editable.
 - The toolbar's Codex control displays connection status and lets the user paste
@@ -174,3 +175,18 @@ clears/reconnects sessions, and exercises compact selection and atomic undo.
 Unit coverage also verifies reference isolation between stores/sessions and locked
 multi-delete rejection. A delayed audio-output-clock startup found during this
 regression run now falls back to the preview wall clock until audio advances.
+
+## Timeline generation (unreleased source)
+
+Use the timeline's **Draw generation range** tool, or **Set range…** in a narrow
+panel, to create a video slot. Fill its prompt, channel and model; configure model
+constraints when needed. Generate returns a persistent job immediately. Preview a
+candidate, keep it in assets, or use it for the slot. First-frame references come
+from an imported image or captured project frame. They need Upload storage for
+provider access; text-only generation needs only a video channel.
+
+Codex has the same atomic flow through `velocut_generation` and CodeAct. Read
+[the job and adoption contract](atomic-api.md#timeline-video-generation). Closing
+Studio stops local processing; opening the original project resumes saved
+receipts. An unknown submission is never automatically posted again. This does
+not imply that every provider supports cancellation, arbitrary lengths or CORS.

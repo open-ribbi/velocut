@@ -333,6 +333,11 @@ const us = (n?: number | null) => (n == null ? '?' : (Math.round(n / 1e5) / 10).
 /** A short human description of a command for the history board. */
 export function describeCommand(cmd: Command): string {
   switch (cmd.type) {
+    case 'addGenerationSlot': return 'Create generation slot';
+    case 'updateGenerationSlot': return 'Edit generation slot';
+    case 'removeGenerationSlot': return 'Remove generation slot';
+    case 'resolveGenerationSlot': return 'Adopt generated video';
+    case 'replaceClipSource': return 'Replace clip source';
     case 'addAsset':
       return `Import ${trackKindLabel[cmd.kind] ?? cmd.kind} "${cmd.name}"`;
     case 'addTrack':

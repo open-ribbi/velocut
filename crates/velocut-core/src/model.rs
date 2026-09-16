@@ -31,6 +31,8 @@ pub struct Document {
     pub assets: Vec<Asset>,
     /// Render order: tracks[0] is the bottom layer.
     pub tracks: Vec<Track>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub generation_slots: Vec<GenerationSlot>,
     /// Monotonic counter for ID minting; never reused.
     #[serde(default)]
     pub next_id: u64,
@@ -47,6 +49,7 @@ impl Document {
             fps_den,
             assets: Vec::new(),
             tracks: Vec::new(),
+            generation_slots: Vec::new(),
             next_id: 1,
         }
     }
@@ -63,7 +66,7 @@ impl Document {
             .iter()
             .flat_map(|t| t.clips.iter())
             .map(|c| c.end_us())
-            .max()
+            .chain(self.generation_slots.iter().map(|s| s.start_us+s.duration_us)).max()
             .unwrap_or(0)
     }
 
@@ -93,6 +96,24 @@ impl Document {
         let (ti, ci) = self.locate_clip(clip_id)?;
         Some(&mut self.tracks[ti].clips[ci])
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all="camelCase", deny_unknown_fields)]
+pub struct GenerationRequest {
+    pub channel:String, pub model:String, pub prompt:String,
+    #[serde(default,skip_serializing_if="Option::is_none")] pub ratio:Option<String>,
+    #[serde(default,skip_serializing_if="Option::is_none")] pub resolution:Option<String>,
+    #[serde(default,skip_serializing_if="Option::is_none")] pub generate_audio:Option<bool>,
+    #[serde(default,skip_serializing_if="Option::is_none")] pub first_frame_reference_id:Option<String>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all="camelCase")]
+pub struct GenerationSlot {
+    pub id:String, pub track_id:String, pub start_us:TimeUs, pub duration_us:TimeUs, pub name:String,
+    pub intent_version:u64, pub request:GenerationRequest,
+    #[serde(default,skip_serializing_if="Option::is_none")] pub clip_id:Option<String>,
+    #[serde(default,skip_serializing_if="Option::is_none")] pub selected_job_id:Option<String>,
 }
 
 // ---------------------------------------------------------------------------

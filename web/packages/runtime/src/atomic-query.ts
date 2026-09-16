@@ -1,7 +1,7 @@
 import type { VDocument } from '@velocut/protocol';
 import { normalizeSceneSpec, sceneObjects, validateSceneSpec, sceneBudget, colliderDefinitions } from '@velocut/scene-sdk';
 
-export type QueryKind = 'document' | 'snapshot' | 'assets' | 'tracks' | 'clips' | 'sceneObjects' | 'sceneGeometries' | 'sceneMaterials' | 'sceneCurves' | 'sceneJoints' | 'sceneBindings' | 'sceneBudget' | 'selection';
+export type QueryKind = 'document' | 'snapshot' | 'assets' | 'tracks' | 'clips' | 'generationSlots' | 'sceneObjects' | 'sceneGeometries' | 'sceneMaterials' | 'sceneCurves' | 'sceneJoints' | 'sceneBindings' | 'sceneBudget' | 'selection';
 export interface AtomicQuery {
   kind: QueryKind;
   snapshotId?: string;
@@ -29,6 +29,7 @@ const FIELDS = {
   assets: ['id', 'name', 'kind', 'src', 'durationUs', 'width', 'height', 'hasAudio', 'spec'],
   tracks: ['id', 'name', 'kind', 'muted', 'locked', 'clipIds'],
   clips: ['id', 'trackId', 'assetId', 'startUs', 'endUs', 'durationUs', 'sourceInUs', 'speed', 'transform', 'volume', 'text', 'keyframes', 'effects', 'transition'],
+  generationSlots: ['id','trackId','startUs','durationUs','name','intentVersion','request','clipId','selectedJobId'],
   sceneObjects: ['id', 'kind', 'name', 'parentId', 'model', 'geometryId', 'materialId', 'object'],
   sceneGeometries: ['id', 'name', 'vertexCount', 'triangleCount', 'instanceCount', 'objectCount', 'storage', 'resource', 'geometry'],
   sceneMaterials: ['id', 'name', 'objectCount', 'material'],
@@ -40,6 +41,7 @@ const DEFAULT_FIELDS = {
   assets: ['id', 'name', 'kind', 'durationUs', 'width', 'height', 'hasAudio'],
   tracks: FIELDS.tracks,
   clips: ['id', 'trackId', 'assetId', 'startUs', 'endUs', 'durationUs', 'sourceInUs', 'speed'],
+  generationSlots: ['id','trackId','startUs','durationUs','name','intentVersion','request','clipId','selectedJobId'],
   sceneObjects: ['id', 'kind', 'name', 'parentId', 'model', 'geometryId', 'materialId'],
   sceneGeometries: ['id', 'name', 'vertexCount', 'triangleCount', 'instanceCount', 'objectCount', 'storage'],
   sceneMaterials: ['id', 'name', 'objectCount'],
@@ -52,7 +54,7 @@ export const QUERY_FIELDS = Object.fromEntries(Object.keys(FIELDS).map(kind => [
 }]));
 export const QUERY_SCHEMA = {
   type: 'object', additionalProperties: false, required: ['kind'], properties: {
-    kind: { enum: ['document', 'snapshot', 'assets', 'tracks', 'clips', 'sceneObjects', 'sceneGeometries', 'sceneMaterials', 'sceneCurves', 'sceneJoints', 'sceneBindings', 'sceneBudget', 'selection'] },
+    kind: { enum: ['document', 'snapshot', 'assets', 'tracks', 'clips', 'generationSlots', 'sceneObjects', 'sceneGeometries', 'sceneMaterials', 'sceneCurves', 'sceneJoints', 'sceneBindings', 'sceneBudget', 'selection'] },
     snapshotId: { type: 'string' }, ids: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 100, uniqueItems: true },
     trackId: { type: 'string' }, assetId: { type: 'string' },
     fromUs: { type: 'integer', minimum: 0 }, toUs: { type: 'integer', minimum: 0 },
@@ -78,8 +80,8 @@ export function validateQuery(input: unknown): AtomicQuery {
   } else if (['document', 'snapshot', 'selection'].includes(q.kind)) {
     for (const key of Object.keys(q)) if (key !== 'kind' && !(q.kind === 'document' && key === 'snapshotId')) fault('invalidArg', `${q.kind} does not accept ${key}`, key);
   } else {
-    if (q.kind !== 'clips' && [q.trackId, q.fromUs, q.toUs].some(v => v !== undefined)) fault('invalidArg', 'track/time filters require kind:clips');
-    if (q.assetId !== undefined && !['clips', 'sceneObjects', 'sceneGeometries', 'sceneMaterials', 'sceneCurves', 'sceneJoints', 'sceneBindings'].includes(q.kind)) fault('invalidArg', 'assetId filter requires clips or a scene query');
+    if (!['clips','generationSlots'].includes(q.kind) && [q.trackId, q.fromUs, q.toUs].some(v => v !== undefined)) fault('invalidArg', 'track/time filters require kind:clips');
+    if (q.assetId !== undefined && !['clips', 'generationSlots', 'sceneObjects', 'sceneGeometries', 'sceneMaterials', 'sceneCurves', 'sceneJoints', 'sceneBindings'].includes(q.kind)) fault('invalidArg', 'assetId filter requires clips or a scene query');
     for (const f of q.fields ?? []) if (!FIELDS[q.kind as keyof typeof FIELDS].includes(f)) fault('invalidArg', `unknown ${q.kind} field '${f}'`, 'fields');
   }
   return q;
@@ -98,7 +100,8 @@ export function queryDocument(doc: VDocument, q: AtomicQuery) {
       .filter(c => (!q.assetId || c.assetId === q.assetId) && (q.fromUs === undefined || c.startUs + c.durationUs > q.fromUs) && (q.toUs === undefined || c.startUs < q.toUs))
       .map(c => ({ ...c, trackId: t.id, endUs: c.startUs + c.durationUs })))
       .sort((a, b) => a.startUs - b.startUs || a.trackId.localeCompare(b.trackId) || a.id.localeCompare(b.id));
-  } else if (['sceneObjects', 'sceneGeometries', 'sceneMaterials', 'sceneCurves', 'sceneJoints', 'sceneBindings', 'sceneBudget'].includes(q.kind)) {
+  } else if(q.kind==='generationSlots') items=(doc.generationSlots??[]).filter(s=>(!q.trackId||s.trackId===q.trackId)&&(q.fromUs===undefined||s.startUs+s.durationUs>q.fromUs)&&(q.toUs===undefined||s.startUs<q.toUs)).map(s=>({...s}));
+  else if (['sceneObjects', 'sceneGeometries', 'sceneMaterials', 'sceneCurves', 'sceneJoints', 'sceneBindings', 'sceneBudget'].includes(q.kind)) {
     const asset = doc.assets.find(a => a.id === q.assetId && a.src.startsWith('scene://'));
     if (!asset?.spec) fault('notFound', 'scene queries require a scene assetId', 'assetId');
     const spec = JSON.parse(asset.spec);

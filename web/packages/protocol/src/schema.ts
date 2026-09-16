@@ -11,6 +11,7 @@
 // value types re-exported here.
 
 import { z } from 'zod';
+import {GenerationRequestSchema} from './generation.ts';
 
 /** Command-protocol version. Bump only on a breaking change to the command
  *  set or error contract; consumers can compare against it to detect a
@@ -146,6 +147,11 @@ const cAddClip = z.object({
   durationUs: TimeUsField.nullish(),
   sourceInUs: TimeUsField.optional(),
 });
+const cAddGenerationSlot=z.object({type:z.literal('addGenerationSlot'),trackId:z.string(),startUs:TimeUsField,durationUs:TimeUsField,name:z.string().optional(),request:GenerationRequestSchema});
+const cUpdateGenerationSlot=z.object({type:z.literal('updateGenerationSlot'),slotId:z.string(),trackId:z.string().optional(),startUs:TimeUsField.optional(),durationUs:TimeUsField.optional(),name:z.string().optional(),request:GenerationRequestSchema.optional()});
+const cRemoveGenerationSlot=z.object({type:z.literal('removeGenerationSlot'),slotId:z.string()});
+const cResolveGenerationSlot=z.object({type:z.literal('resolveGenerationSlot'),slotId:z.string(),intentVersion:z.number().int().positive(),assetId:z.string(),sourceInUs:TimeUsField.optional(),durationUs:TimeUsField.optional(),jobId:z.string().optional()});
+const cReplaceClipSource=z.object({type:z.literal('replaceClipSource'),clipId:z.string(),assetId:z.string(),sourceInUs:TimeUsField.optional(),durationUs:TimeUsField.optional()});
 const cAddTextClip = z.object({
   type: z.literal('addTextClip'),
   trackId: z.string(),
@@ -217,6 +223,7 @@ const NonBatchSchema = z.discriminatedUnion('type', [
   cRemoveTrack,
   cMoveTrack,
   cAddClip,
+  cAddGenerationSlot,cUpdateGenerationSlot,cRemoveGenerationSlot,cResolveGenerationSlot,cReplaceClipSource,
   cAddTextClip,
   cRemoveClip,
   cDuplicateClip,
@@ -250,6 +257,11 @@ const SUMMARIES: Record<string, string> = {
   removeTrack: 'trackId — remove a track (including its clips)',
   moveTrack: 'trackId, toIndex — reorder the track to position toIndex (0 = top of the render order)',
   addClip: 'trackId, assetId, startUs, durationUs?, sourceInUs? — place an asset on a track',
+  addGenerationSlot:'trackId, startUs, durationUs, request, name? — create an undoable video-generation intent; does not submit a job',
+  updateGenerationSlot:'slotId, trackId?, startUs?, durationUs?, request?, name? — edit intent; content/duration changes advance intentVersion',
+  removeGenerationSlot:'slotId — remove generation intent; keeps any adopted clip and remote jobs',
+  resolveGenerationSlot:'slotId, intentVersion, assetId, sourceInUs?, durationUs?, jobId? — atomically adopt an existing video asset, retaining clip identity and effects',
+  replaceClipSource:'clipId, assetId, sourceInUs?, durationUs? — replace media while preserving placement, speed and edits; validates source coverage',
   addTextClip: 'trackId, startUs, durationUs, text:TextPayload (see below) — text clip',
   removeClip: 'clipId — remove a clip',
   duplicateClip: 'clipId, trackId?, startUs? — deep-copy a clip with fresh clip/effect IDs; defaults to same track after source end; destination must be unlocked and non-overlapping',

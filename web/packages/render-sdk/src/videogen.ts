@@ -49,6 +49,14 @@ export interface VideoGenResult {
 /** Prompt (+ optional image conditioning) → a generated video URL. */
 export interface VideoGenerator {
   generate(req: VideoGenRequest): Promise<VideoGenResult>;
+  submit?(req:VideoGenRequest):Promise<{taskId:string}>;
+  poll?(taskId:string,signal?:AbortSignal):Promise<VideoGenPoll>;
+}
+export interface VideoGenPoll {state:'pending'|'running'|'succeeded'|'failed';status:string;result?:VideoGenResult;error?:string}
+export interface VideoModelCapabilities {durationsS?:number[];ratios?:string[];resolutions?:string[];imageToVideo?:boolean;audio?:boolean}
+export class VideoGenTransportError extends Error {
+  outcome:'rejected'|'unknown';retryable:boolean;
+  constructor(message:string,outcome:'rejected'|'unknown'='unknown',retryable=true){super(message);this.outcome=outcome;this.retryable=retryable;}
 }
 
 /** Endpoint configuration a channel supplies — the part that differs between
@@ -141,11 +149,11 @@ export class TaskApiVideoGen implements VideoGenerator {
     return this.config.baseUrl.replace(/\/+$/, '');
   }
 
-  async generate(req: VideoGenRequest): Promise<VideoGenResult> {
+  async submit(req: VideoGenRequest):Promise<{taskId:string}> {
     if (!req.prompt?.trim()) throw new Error('videoGen: prompt is required');
     if (!req.model) throw new Error('videoGen: model is required');
     const params: Record<string, unknown> = { prompt: req.prompt };
-    if (req.durationS != null) params.duration = Math.round(req.durationS);
+    if (req.durationS != null) params.duration = req.durationS;
     if (req.resolution) params.resolution = req.resolution;
     if (req.ratio) params.ratio = req.ratio;
     if (req.generateAudio != null) params.generate_audio = req.generateAudio;
@@ -161,16 +169,32 @@ export class TaskApiVideoGen implements VideoGenerator {
       signal: req.signal,
     });
     const submitBody = (await submit.json().catch(() => ({}))) as TaskSubmitResponse;
-    if (!submit.ok || !submitBody.task_id) {
+    if (!submit.ok || typeof submitBody.task_id!=='string' || !submitBody.task_id.trim()) {
       const msg = submitBody.detail?.message ?? JSON.stringify(submitBody).slice(0, 200);
-      throw new Error(`videoGen submit failed (HTTP ${submit.status}): ${msg}`);
+      throw new VideoGenTransportError(`videoGen submit failed (HTTP ${submit.status}): ${msg}`,submit.status>=400&&submit.status<500?'rejected':'unknown',submit.status>=500);
     }
-    const taskId = submitBody.task_id;
+    return {taskId:submitBody.task_id};
+  }
+
+  async poll(taskId:string,signal?:AbortSignal):Promise<VideoGenPoll>{
+    const poll=await fetch(`${this.base()}/api/v1/tasks/${encodeURIComponent(taskId)}`,{headers:this.headers(),signal});
+    const body=await poll.json().catch(()=>({})) as TaskStatusResponse;
+    if(!poll.ok)throw new VideoGenTransportError(`videoGen poll failed (HTTP ${poll.status}): ${body.detail?.message??'provider error'}`,'unknown',poll.status>=500||poll.status===429);
+    if(body.status==='completed'){
+      const url=body.result?.video_url;if(!url)throw new VideoGenTransportError('Completed task returned no video URL','unknown',false);
+      return {state:'succeeded',status:body.status,result:{videoUrl:url,taskId,durationS:body.result?.duration,resolution:body.result?.resolution,ratio:body.result?.ratio,cost:body.cost}};
+    }
+    if(body.status==='failed')return {state:'failed',status:body.status,error:body.error_message??'Provider generation failed'};
+    return {state:body.status==='pending'?'pending':'running',status:body.status??'unknown'};
+  }
+
+  async generate(req:VideoGenRequest):Promise<VideoGenResult>{
+    const {taskId}=await this.submit(req);
 
     const started = Date.now();
     const pollMs = this.config.pollIntervalMs ?? 5000;
     const deadline = started + (this.config.timeoutMs ?? 20 * 60_000);
-    req.onStatus?.(submitBody.status ?? 'pending', 0);
+    req.onStatus?.('pending', 0);
 
     for (;;) {
       await sleep(pollMs, req.signal);

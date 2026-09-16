@@ -27,6 +27,7 @@ interface Vector {
   name: string;
   steps: Step[];
   expect: {
+    generationSlots?:Array<Record<string,unknown>>;
     /** spec: string = exact match; null = must be ABSENT from the asset. */
     assets?: Array<{ id: string; hasAudio?: boolean; spec?: string | null; specRepeat?: { value: string; count: number } }>;
     clips?: Array<{
@@ -40,6 +41,7 @@ interface Vector {
     }>;
     clipCounts?: Record<string, number>;
     eval?: Array<{
+      pendingGenerationIds?:string[];
       timeUs: number;
       layers?: Array<{ clipId: string; sourceTimeUs?: number; opacity?: number; x?: number }>;
       audio?: Array<{ clipId: string; gain?: number; sourceTimeUs?: number }>;
@@ -48,6 +50,7 @@ interface Vector {
 }
 
 const approx = (a: number, b: number) => Math.abs(a - b) < 1e-3;
+function partial(actual:any,expected:any):void {if(Array.isArray(expected)){assert.equal(actual.length,expected.length);expected.forEach((v,i)=>partial(actual[i],v));}else if(expected&&typeof expected==='object'){for(const [k,v]of Object.entries(expected))partial(actual[k],v);}else assert.deepEqual(actual,expected);}
 
 function findClip(doc: VDocument, id: string) {
   for (const track of doc.tracks) {
@@ -89,6 +92,7 @@ for (const file of files) {
       } else if ('load' in step) {
         const resp = engine.load(step.load as VDocument);
         assert.ok(resp.ok, `step ${i}: load failed`);
+
       } else if ('undo' in step) {
         const resp = engine.undo();
         assert.ok(resp.ok, `step ${i}: nothing to undo`);
@@ -128,6 +132,7 @@ for (const file of files) {
       if (want.speed !== undefined) assert.ok(approx(clip.speed, want.speed), `${want.id} speed`);
     }
 
+    if(vec.expect.generationSlots)partial(doc.generationSlots??[],vec.expect.generationSlots);
     for (const [trackId, count] of Object.entries(vec.expect.clipCounts ?? {})) {
       const track = doc.tracks.find((t) => t.id === trackId);
       assert.ok(track, `track ${trackId} not found`);
@@ -136,6 +141,7 @@ for (const file of files) {
 
     for (const evalCase of vec.expect.eval ?? []) {
       const fg = engine.evaluate(evalCase.timeUs);
+      if(evalCase.pendingGenerationIds)assert.deepEqual(fg.pendingGenerationIds??[],evalCase.pendingGenerationIds);
       for (const want of evalCase.audio ?? []) {
         const slice = fg.audio.find((s) => s.clipId === want.clipId);
         assert.ok(slice, `eval t=${evalCase.timeUs} missing audio slice ${want.clipId}`);

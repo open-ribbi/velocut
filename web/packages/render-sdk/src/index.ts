@@ -74,6 +74,9 @@ export {
   type VideoGenEndpointConfig,
   type VideoGenRequest,
   type VideoGenResult,
+  type VideoGenPoll,
+  type VideoModelCapabilities,
+  VideoGenTransportError,
 } from './videogen.ts';
 export {
   compileMotionSpec,

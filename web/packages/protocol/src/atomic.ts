@@ -6,13 +6,13 @@ export const RegisterAssetSchema = z.object({ type: z.literal('registerAsset'), 
 export type AtomicCommand = NonBatch | z.infer<typeof RegisterAssetSchema>;
 export const ATOMIC_COMMAND_SCHEMAS = { ...COMMAND_SCHEMAS, registerAsset: RegisterAssetSchema };
 
-export const RESULT_FIELDS = ['assetId', 'trackId', 'clipId', 'leftClipId', 'rightClipId', 'effectId'] as const;
+export const RESULT_FIELDS = ['assetId', 'trackId', 'clipId', 'slotId', 'leftClipId', 'rightClipId', 'effectId'] as const;
 export type ResultField = typeof RESULT_FIELDS[number];
 export interface OperationRef { $ref: { operationId: string; field: ResultField } }
 export function ref(operationId: string, field: ResultField): OperationRef {
   return { $ref: { operationId, field } };
 }
-type Args<C> = { [K in keyof C as K extends 'type' ? never : K]: K extends 'assetId' | 'trackId' | 'clipId' | 'effectId' ? C[K] | OperationRef : C[K] };
+type Args<C> = { [K in keyof C as K extends 'type' ? never : K]: K extends 'assetId' | 'trackId' | 'clipId' | 'slotId' | 'effectId' ? C[K] | OperationRef : C[K] };
 export type PlanCommand = { [T in AtomicCommand['type']]: { type: T } & Args<Extract<AtomicCommand, { type: T }>> }[AtomicCommand['type']];
 export type OperationBuilders = { [T in AtomicCommand['type']]: (args: Args<Extract<AtomicCommand, { type: T }>>) => { type: T } & Args<Extract<AtomicCommand, { type: T }>> };
 /** Pure data construction: this never dispatches or allocates document IDs. */
@@ -44,7 +44,7 @@ export const TRANSACTION_SCHEMA = {
 
 export function commandDefinition(type: AtomicCommand['type']) {
   const inputSchema = zodToJsonSchema(ATOMIC_COMMAND_SCHEMAS[type], { $refStrategy: 'none' });
-  const referenceFields = Object.keys(ATOMIC_COMMAND_SCHEMAS[type].shape).filter(k => ['assetId', 'trackId', 'clipId', 'effectId'].includes(k));
+  const referenceFields = Object.keys(ATOMIC_COMMAND_SCHEMAS[type].shape).filter(k => ['assetId', 'trackId', 'clipId', 'slotId', 'effectId'].includes(k));
   const properties = (inputSchema as { properties: Record<string, unknown> }).properties;
   for (const key of referenceFields) properties[key] = { anyOf: [properties[key], {
     type: 'object', additionalProperties: false, required: ['$ref'], properties: { $ref: {
@@ -52,7 +52,7 @@ export function commandDefinition(type: AtomicCommand['type']) {
       properties: { operationId: { type: 'string' }, field: { enum: [...RESULT_FIELDS] } },
     } },
   }] };
-  const fields = type === 'splitClip' ? ['leftClipId', 'rightClipId']
+  const fields = type === 'addGenerationSlot' ? ['slotId'] : type==='resolveGenerationSlot'?['slotId','clipId']:type === 'splitClip' ? ['leftClipId', 'rightClipId']
     : type === 'addAsset' || type === 'registerAsset' ? ['assetId'] : type === 'addTrack' ? ['trackId']
       : type === 'addClip' || type === 'addTextClip' || type === 'duplicateClip' ? ['clipId'] : type === 'addEffect' ? ['effectId'] : [];
   return { name: type, summary: type === 'registerAsset' ? 'resourceId, probeId, name? — register a successfully probed resource; no clip insertion or file import' : COMMAND_CATALOG.find(c => c.type === type)!.summary,

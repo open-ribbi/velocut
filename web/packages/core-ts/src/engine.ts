@@ -24,6 +24,7 @@ import type {
   Track,
   VDocument,
 } from '@velocut/protocol';
+import {generationRequestKey,GenerationRequestSchema} from '@velocut/protocol';
 
 const MAX_HISTORY = 200;
 
@@ -90,7 +91,68 @@ function locateClip(doc: VDocument, clipId: string): [number, number] | null {
 // ----------------------------------------------------------- command apply
 
 function applyCommand(doc: VDocument, cmd: Command): EngineEvent[] {
+  const events=applyCommandInner(doc,cmd);
+  if(doc.generationSlots){
+    doc.generationSlots=doc.generationSlots.filter(s=>doc.tracks.some(t=>t.id===s.trackId)&&(!s.clipId||locateClip(doc,s.clipId)));
+    for(const s of doc.generationSlots){if(!s.clipId)continue;const [ti,ci]=locateClip(doc,s.clipId)!;const c=doc.tracks[ti].clips[ci];
+      if(s.durationUs!==c.durationUs)s.intentVersion++;s.trackId=doc.tracks[ti].id;s.startUs=c.startUs;s.durationUs=c.durationUs;
+    }
+    if(!doc.generationSlots.length)delete doc.generationSlots;
+  }
+  return events;
+}
+function applyCommandInner(doc: VDocument, cmd: Command): EngineEvent[] {
   switch (cmd.type) {
+    case 'addGenerationSlot':{
+      const track=doc.tracks.find(t=>t.id===cmd.trackId);
+      if(!track)fail(notFound('track',cmd.trackId));if(track!.locked)fail(err('locked',`track '${cmd.trackId}' is locked`));
+      if(track!.kind!=='video'||cmd.startUs<0||cmd.durationUs<=0||!GenerationRequestSchema.safeParse(cmd.request).success)fail(err('invalidArg','generation slot requires a video track, positive duration and a valid request'));
+      if(overlaps(track!,cmd.startUs,cmd.durationUs,null)||(doc.generationSlots??[]).some(s=>!s.clipId&&s.trackId===cmd.trackId&&cmd.startUs<s.startUs+s.durationUs&&s.startUs<cmd.startUs+cmd.durationUs))fail(err('overlap','generation slot overlaps an existing clip or slot'));
+      const id=mintId(doc,'slot');(doc.generationSlots??=[]).push({id,trackId:cmd.trackId,startUs:cmd.startUs,durationUs:cmd.durationUs,name:cmd.name??'Generated shot',intentVersion:1,request:clone(cmd.request)});
+      return [{kind:'generationSlotAdded',slotId:id}];
+    }
+    case 'updateGenerationSlot':{
+      const s=doc.generationSlots?.find(s=>s.id===cmd.slotId);if(!s)fail(notFound('generation slot',cmd.slotId));
+      const track=doc.tracks.find(t=>t.id===(cmd.trackId??s!.trackId)),oldTrack=doc.tracks.find(t=>t.id===s!.trackId)!;
+      if(!track)fail(notFound('track',cmd.trackId!));if(track!.locked||oldTrack.locked)fail(err('locked','generation slot track is locked'));
+      const start=cmd.startUs??s!.startUs,duration=cmd.durationUs??s!.durationUs;
+      if(track!.kind!=='video'||start<0||duration<=0||cmd.request&&!GenerationRequestSchema.safeParse(cmd.request).success)fail(err('invalidArg','invalid generation slot edit'));
+      if(overlaps(track!,start,duration,s!.clipId??null)||(doc.generationSlots??[]).some(o=>o.id!==s!.id&&!o.clipId&&o.trackId===track!.id&&start<o.startUs+o.durationUs&&o.startUs<start+duration))fail(err('overlap','generation slot overlaps an existing clip or slot'));
+      if(s!.clipId){const [ti,ci]=locateClip(doc,s!.clipId)!;const c=doc.tracks[ti].clips[ci];if(duration!==c.durationUs)fail(err('invalidArg','trim an adopted clip to change its duration'));doc.tracks[ti].clips.splice(ci,1);c.startUs=start;track!.clips.push(c);sortClips(track!);}
+      if(duration!==s!.durationUs||cmd.request&&generationRequestKey(cmd.request)!==generationRequestKey(s!.request))s!.intentVersion++;
+      Object.assign(s!,{trackId:track!.id,startUs:start,durationUs:duration,...(cmd.request?{request:clone(cmd.request)}:{}),...(cmd.name!==undefined?{name:cmd.name}:{})});
+      return [{kind:'generationSlotUpdated',slotId:cmd.slotId}];
+    }
+    case 'removeGenerationSlot':{
+      const s=doc.generationSlots?.find(s=>s.id===cmd.slotId);if(!s)fail(notFound('generation slot',cmd.slotId));
+      if(doc.tracks.find(t=>t.id===s!.trackId)?.locked)fail(err('locked','generation slot track is locked'));
+      doc.generationSlots=doc.generationSlots!.filter(s=>s.id!==cmd.slotId);return [{kind:'generationSlotRemoved',slotId:cmd.slotId}];
+    }
+    case 'replaceClipSource':{
+      const loc=locateClip(doc,cmd.clipId);if(!loc)fail(notFound('clip',cmd.clipId));const [ti,ci]=loc!;const t=doc.tracks[ti],c=t.clips[ci],a=doc.assets.find(a=>a.id===cmd.assetId);
+      if(!a)fail(notFound('asset',cmd.assetId));if(t.locked)fail(err('locked',`track '${t.id}' is locked`));
+      const duration=cmd.durationUs??c.durationUs,sourceIn=cmd.sourceInUs??0;
+      if(c.text||t.kind==='text'||t.kind==='video'&&a!.kind==='audio'||t.kind==='audio'&&a!.kind!=='audio')fail(err('invalidArg','source kind does not match the clip track'));
+      if(duration<=0||sourceIn<0||a!.kind!=='image'&&sourceIn+Math.round(duration*c.speed)>a!.durationUs)fail(err('outOfRange','replacement source is shorter than the requested clip window'));
+      if(overlaps(t,c.startUs,duration,c.id))fail(err('overlap','replacement would overlap an existing clip'));
+      c.assetId=cmd.assetId;c.sourceInUs=sourceIn;c.durationUs=duration;return [{kind:'clipUpdated',clipId:c.id}];
+    }
+    case 'resolveGenerationSlot':{
+      const s=doc.generationSlots?.find(s=>s.id===cmd.slotId);if(!s)fail(notFound('generation slot',cmd.slotId));
+      if(s!.intentVersion!==cmd.intentVersion)fail(err('conflict','generation intent changed'));
+      const a=doc.assets.find(a=>a.id===cmd.assetId);if(!a||a.kind!=='video')fail(err('invalidArg','generation result must be a video asset'));
+      const duration=cmd.durationUs??s!.durationUs,sourceIn=cmd.sourceInUs??0;
+      const events:EngineEvent[]=[];
+      if(s!.clipId)events.push(...applyCommandInner(doc,{type:'replaceClipSource',clipId:s!.clipId,assetId:cmd.assetId,durationUs:duration,sourceInUs:sourceIn}));
+      else{
+        if(sourceIn<0||duration<=0||sourceIn+duration>a!.durationUs)fail(err('outOfRange','generation result is shorter than the requested slot'));
+        const added=applyCommandInner(doc,{type:'addClip',trackId:s!.trackId,assetId:cmd.assetId,startUs:s!.startUs,durationUs:duration,sourceInUs:sourceIn});events.push(...added);
+        s!.clipId=(added.find(e=>e.kind==='clipAdded') as {clipId:string}).clipId;
+      }
+      if(duration!==s!.durationUs)s!.intentVersion++;s!.durationUs=duration;
+      if(cmd.jobId!==undefined)s!.selectedJobId=cmd.jobId;
+      events.push({kind:'generationSlotUpdated',slotId:s!.id},{kind:'clipUpdated',clipId:s!.clipId!});return events;
+    }
     case 'addAsset': {
       let assetId: string;
       if (cmd.id != null) {
@@ -637,7 +699,8 @@ export function evaluate(doc: VDocument, timeUs: TimeUs): FrameGraph {
       }
     }
   }
-  return { timeUs, width: doc.width, height: doc.height, layers, audio };
+  const pendingGenerationIds=(doc.generationSlots??[]).filter(s=>!s.clipId&&s.startUs<=timeUs&&timeUs<s.startUs+s.durationUs&&!doc.tracks.find(t=>t.id===s.trackId)?.muted).map(s=>s.id);
+  return { timeUs, width: doc.width, height: doc.height, layers, audio,...(pendingGenerationIds.length?{pendingGenerationIds}:{}) };
 }
 
 // ----------------------------------------------------------------- engine
@@ -661,6 +724,7 @@ export class TsEngine {
   durationUs(): TimeUs {
     let max = 0;
     for (const t of this.doc.tracks) for (const c of t.clips) max = Math.max(max, clipEnd(c));
+    for(const s of this.doc.generationSlots??[])max=Math.max(max,s.startUs+s.durationUs);
     return max;
   }
 

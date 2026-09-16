@@ -2737,6 +2737,19 @@ button.danger-button {
 /* Viewing rate stays visible in compact panels, independent of clip retiming. */
 .timeline-reference-status { display: flex; align-items: center; justify-content: space-between; gap: 6px; flex: none; padding: 3px 10px; color: var(--accent); border-bottom: 1px solid var(--line); font-size: 10px; }
 .timeline-reference-status .icon-button { min-height: 24px; width: 24px; padding: 3px; }
+.generation-dialog { width: min(640px, calc(100vw - 24px)); }
+.generation-dialog .dialog-body { display: flex; flex-direction: column; gap: 12px; }
+.generation-dialog label { display: block; min-width: 0; }
+.generation-dialog input:not([type=checkbox]), .generation-dialog select, .generation-dialog textarea { width: 100%; min-width: 0; box-sizing: border-box; }
+.generation-dialog textarea { resize: vertical; min-height: 80px; }
+.generation-range { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
+.generation-jobs { display: grid; gap: 10px; }
+.generation-job { padding: 10px; border: 1px solid var(--line); border-radius: 8px; overflow-wrap: anywhere; }
+.generation-job p { margin: 6px 0; white-space: pre-wrap; }
+.generation-job small { color: var(--muted); }
+.generation-preview { width: 100%; max-height: 260px; background: #111; border-radius: 8px; }
+.generation-pending-badge { position: absolute; top: 8px; left: 8px; z-index: 3; background: #332d21; color: #edc482; border: 1px solid #8e7344; border-radius: 6px; padding: 6px 10px; font-size: 12px; pointer-events: none; }
+@media (max-width: 420px) { .generation-range { grid-template-columns: 1fr; } .timeline-heading { gap: 4px; } }
 .timeline-heading [aria-pressed="true"] { color: var(--accent); background: var(--panel); }
 .preview-rate { display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto; color: var(--subtle); font-size: 11px; white-space: nowrap; }
 .preview-rate select { width: 58px; min-height: 28px; min-width: 58px; padding: 2px 5px; color: var(--text); }

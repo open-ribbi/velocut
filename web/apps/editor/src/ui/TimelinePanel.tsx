@@ -22,6 +22,12 @@ import type { Store, UiState } from '../state/store';
 import type { CodexConnection } from '../services/codex-connection';
 import { referenceToAgent } from '../services/reference';
 import { draggedAsset, type DraggedAsset } from '../services/dnd';
+import {generationManager} from '@velocut/runtime';
+import {GenerationPanel} from './GenerationPanel';
+import {createGenerationSlot} from '../services/generation';
+import type {GenerationSlot} from '@velocut/protocol';
+const EMPTY_GENERATIONS={jobs:[],references:[]};
+const noGenerationSubscription=()=>()=>{};
 
 const RULER_H = 30;
 const TRACK_H = 54;
@@ -33,6 +39,8 @@ const SNAP_PX = 8;
 const MIN_CLIP_US = 50_000;
 
 type Gesture =
+  | {kind:'generation';trackId?:string;trackIdx:number;anchorUs:number;fromUs:number;toUs:number}
+  | {kind:'slot';slot:GenerationSlot;edge:'body'|'in'|'out';grabOffsetUs:number;startUs:number;durationUs:number;trackId:string}
   | { kind: 'scrub' }
   | {
       kind: 'move';
@@ -59,7 +67,7 @@ type Gesture =
 
 type Menu =
   | { x: number; y: number; kind: 'clip'; clipId: string }
-  | { x: number; y: number; kind: 'track'; trackId: string };
+  | { x: number; y: number; kind: 'track'; trackId: string;atUs?:number };
 
 const TRACK_COLORS: Record<string, [string, string]> = {
   video: ['#394c5c', '#4c6577'],
@@ -86,6 +94,11 @@ export function TimelinePanel({
 }) {
   const connection = useSyncExternalStore(codex.subscribe, codex.getSnapshot, codex.getSnapshot);
   const [multiSelect, setMultiSelect] = useState(false);
+  const manager=generationManager(store);
+  const generationData=useSyncExternalStore(manager?.subscribe??noGenerationSubscription,manager?.getSnapshot??(()=>EMPTY_GENERATIONS),manager?.getSnapshot??(()=>EMPTY_GENERATIONS));
+  const generationDataRef=useRef(generationData);generationDataRef.current=generationData;
+  const [generationMode,setGenerationMode]=useState(false),generationModeRef=useRef(false);generationModeRef.current=generationMode;
+  const [generationPanel,setGenerationPanel]=useState<{slotId:string|null}|null>(null);
   const multiSelectRef = useRef(false);
   multiSelectRef.current = multiSelect;
   const [referenceError, setReferenceError] = useState<string | null>(null);
@@ -127,6 +140,15 @@ export function TimelinePanel({
   const usToX = (us: TimeUs) => headerWidth() + (us - view.current.scrollUs) * view.current.pxPerUs;
   const xToUs = (x: number) =>
     Math.max(0, Math.round(view.current.scrollUs + (x - headerWidth()) / view.current.pxPerUs));
+  const frameSnap=(us:number)=>{const d=stateRef.current.doc;return Math.max(0,Math.round(Math.round(us*d.fpsNum/(1e6*d.fpsDen))*1e6*d.fpsDen/d.fpsNum));};
+  const makeGeneration=async(startUs:number,durationUs:number,trackId?:string)=>{
+    try{const slotId=await createGenerationSlot(store,startUs,durationUs,trackId);setGenerationPanel({slotId});setGenerationMode(false);setReferenceError(null);}catch(e){setReferenceError(e instanceof Error?e.message:String(e));}
+  };
+  const slotHit=(x:number,y:number)=>{
+    const ti=trackIdxAtY(y),t=stateRef.current.doc.tracks[ti];if(!t||x<headerWidth())return null;
+    const slot=stateRef.current.doc.generationSlots?.find(s=>!s.clipId&&s.trackId===t.id&&x>=usToX(s.startUs)-HANDLE_PX&&x<=usToX(s.startUs+s.durationUs)+HANDLE_PX);
+    if(!slot)return null;return {slot,edge:Math.abs(x-usToX(slot.startUs))<HANDLE_PX?'in' as const:Math.abs(x-usToX(slot.startUs+slot.durationUs))<HANDLE_PX?'out' as const:'body' as const};
+  };
 
   // Per-track height (collapsed lanes shrink). Layout is in "content space" (no
   // ruler, no scroll); screen Y adds the ruler and subtracts the scroll.
@@ -583,6 +605,23 @@ export function TimelinePanel({
     });
 
     // ---- asset drop ghost (drag from the AssetPanel): the would-be clip,
+    for(const s of stateRef.current.doc.generationSlots??[]){
+      if(s.clipId)continue;
+      const g=gesture.current,ghost=g?.kind==='slot'&&g.slot.id===s.id?g:null;
+      const ti=stateRef.current.doc.tracks.findIndex(t=>t.id===(ghost?.trackId??s.trackId));if(ti<0)continue;
+      const start=ghost?.startUs??s.startUs,duration=ghost?.durationUs??s.durationUs,x0=Math.max(headerWidth(),usToX(start)),x1=usToX(start+duration),y=trackTop(ti)+4,h=trackH(ti)-8;
+      if(x1<headerWidth()||x0>W||y+h<RULER_H)continue;
+      const latest=[...generationDataRef.current.jobs].reverse().find(j=>j.slotId===s.id&&j.intentVersion===s.intentVersion);
+      ctx.save();ctx.beginPath();ctx.rect(headerWidth(),RULER_H,W-headerWidth(),H-RULER_H);ctx.clip();ctx.fillStyle='#50452f';roundRect(ctx,x0,y,Math.max(2,x1-x0),h,5);ctx.fill();ctx.strokeStyle='#e0b36b';ctx.setLineDash([5,3]);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle='#f1d8af';ctx.font='11px system-ui';ctx.textBaseline='middle';
+      ctx.beginPath();ctx.rect(x0+5,y,Math.max(0,x1-x0-10),h);ctx.clip();ctx.fillText(`✦ ${latest?.result?'Ready':latest?.state??'Draft'} · ${s.name}`,x0+7,y+h/2);ctx.restore();
+    }
+    const gg=gesture.current;
+    if(gg?.kind==='generation'){
+      const y=gg.trackId?trackTop(gg.trackIdx):RULER_H+contentHeight()-view.current.scrollY+TRACK_GAP;
+      const x0=Math.max(headerWidth(),usToX(Math.min(gg.fromUs,gg.toUs))),x1=usToX(Math.max(gg.fromUs,gg.toUs));ctx.fillStyle='rgba(224,179,107,.35)';ctx.fillRect(x0,y+3,Math.max(2,x1-x0),TRACK_H-6);
+    }
+
+    // ---- asset drop ghost (drag from the AssetPanel): the would-be clip,
     //      blue on a valid lane/span, red where it can't land; a dashed lane
     //      hints the track that a below-the-lanes drop would mint.
     const dg = dropGhost.current;
@@ -749,6 +788,13 @@ export function TimelinePanel({
       }
 
       // clips
+      if(generationModeRef.current&&x>=headerWidth()){
+        const ti=trackIdxAtY(y),t=stateRef.current.doc.tracks[ti];
+        if(t&&(t.kind!=='video'||t.locked)){setReferenceError('Choose an unlocked video track.');return;}
+        const at=frameSnap(snap(xToUs(x),null).us);gesture.current={kind:'generation',trackId:t?.id,trackIdx:ti,anchorUs:at,fromUs:at,toUs:at};draw();return;
+      }
+      const gh=slotHit(x,y);
+      if(gh){if(stateRef.current.doc.tracks.find(t=>t.id===gh.slot.trackId)?.locked)return;gesture.current={kind:'slot',slot:structuredClone(gh.slot),edge:gh.edge,grabOffsetUs:xToUs(x)-gh.slot.startUs,startUs:gh.slot.startUs,durationUs:gh.slot.durationUs,trackId:gh.slot.trackId};return;}
       const hit = hitTest(x, y);
       if (!hit) {
         store.select(null);
@@ -793,6 +839,10 @@ export function TimelinePanel({
       const y = e.clientY - rect.top;
       const g = gesture.current;
       if (!g) {
+        if(y>RULER_H&&x>=headerWidth()){
+          if(generationModeRef.current){canvas.style.cursor='crosshair';return;}
+          const slot=slotHit(x,y);if(slot){canvas.style.cursor=slot.edge==='body'?'grab':'ew-resize';return;}
+        }
         if (y > RULER_H && x < headerWidth()) {
           canvas.style.cursor = 'grab'; // header = reorder handle
           return;
@@ -805,6 +855,14 @@ export function TimelinePanel({
       if (g.kind === 'scrub') {
         store.seek(xToUs(x));
         return;
+      }
+      if(g.kind==='generation'){g.toUs=frameSnap(snap(xToUs(x),null).us);draw();return;}
+      if(g.kind==='slot'){
+        const at=frameSnap(snap(xToUs(x),null).us),min=Math.max(1,frameSnap(1e6*stateRef.current.doc.fpsDen/stateRef.current.doc.fpsNum));
+        if(g.edge==='body'){g.startUs=frameSnap(Math.max(0,xToUs(x)-g.grabOffsetUs));const t=stateRef.current.doc.tracks[trackIdxAtY(y)];if(t?.kind==='video'&&!t.locked)g.trackId=t.id;}
+        else if(g.edge==='in'){const end=g.slot.startUs+g.slot.durationUs;g.startUs=Math.min(at,end-min);g.durationUs=end-g.startUs;}
+        else g.durationUs=Math.max(min,at-g.slot.startUs);
+        draw();return;
       }
       if (g.kind === 'reorder') {
         g.ghostIdx = insertIdxAtY(y);
@@ -857,6 +915,16 @@ export function TimelinePanel({
         return;
       }
       const s = stateRef.current;
+      if(g.kind==='generation'){
+        const start=Math.min(g.fromUs,g.toUs),end=Math.max(g.fromUs,g.toUs);if(end>start)void makeGeneration(start,end-start,g.trackId);draw();return;
+      }
+      if(g.kind==='slot'){
+        const current=s.doc.generationSlots?.find(v=>v.id===g.slot.id);
+        if(!current||current.intentVersion!==g.slot.intentVersion||current.startUs!==g.slot.startUs||current.trackId!==g.slot.trackId){setReferenceError('Generation slot changed during the drag. Try again.');draw();return;}
+        if(g.startUs===g.slot.startUs&&g.durationUs===g.slot.durationUs&&g.trackId===g.slot.trackId)setGenerationPanel({slotId:g.slot.id});
+        else{const r=store.dispatch({type:'updateGenerationSlot',slotId:g.slot.id,startUs:g.startUs,durationUs:g.durationUs,trackId:g.trackId});if(!r.ok)setReferenceError(r.error.message);}
+        draw();return;
+      }
       if (g.kind === 'reorder') {
         // ghostIdx is an insertion slot in the ORIGINAL array; account for the
         // removed source when it lands after its old position.
@@ -895,6 +963,14 @@ export function TimelinePanel({
       const rect = canvas.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
+      if(x>=headerWidth()&&y>RULER_H){
+        const hit=hitTest(x,y);if(hit){const s=stateRef.current.doc.generationSlots?.find(s=>s.clipId===hit.clip.id);if(s)setGenerationPanel({slotId:s.id});return;}
+        const slot=slotHit(x,y);if(slot){setGenerationPanel({slotId:slot.slot.id});return;}
+        const t=stateRef.current.doc.tracks[trackIdxAtY(y)];if(!t||t.kind!=='video'||t.locked)return;
+        const at=xToUs(x),bounds=[...t.clips.map(c=>({start:c.startUs,end:c.startUs+c.durationUs})),...(stateRef.current.doc.generationSlots??[]).filter(s=>!s.clipId&&s.trackId===t.id).map(s=>({start:s.startUs,end:s.startUs+s.durationUs}))];
+        const next=Math.min(...bounds.filter(b=>b.start>at).map(b=>b.start));const start=Number.isFinite(next)?Math.max(0,...bounds.filter(b=>b.end<=at).map(b=>b.end)):frameSnap(at),end=Number.isFinite(next)?next:start+5e6;
+        void makeGeneration(start,end-start,t.id);return;
+      }
       if (x >= headerWidth() || y <= RULER_H) return;
       const ti = trackIdxAtY(y);
       if (ti >= 0) toggleCollapse(stateRef.current.doc.tracks[ti].id);
@@ -914,6 +990,7 @@ export function TimelinePanel({
         return;
       }
       if (y <= RULER_H) return; // ruler keeps the native menu
+      const generationHit=slotHit(x,y);if(generationHit){e.preventDefault();setGenerationPanel({slotId:generationHit.slot.id});return;}
       const hit = hitTest(x, y);
       if (hit) {
         e.preventDefault();
@@ -934,6 +1011,7 @@ export function TimelinePanel({
           y: e.clientY,
           kind: 'track',
           trackId: stateRef.current.doc.tracks[ti].id,
+          atUs:frameSnap(xToUs(x)),
         });
       }
     };
@@ -1086,6 +1164,7 @@ export function TimelinePanel({
           Timeline <small className={state.selectedClipIds.length ? 'selection-count' : undefined}>{state.selectedClipIds.length ? `${state.selectedClipIds.length} selected` : `${state.doc.tracks.length} tracks`}</small>
         </span>
         <span className="spacer" />
+        <button className="icon-button" aria-label="Draw generation range" aria-pressed={generationMode} title="Generate video: draw a time range" onClick={()=>setGenerationMode(v=>!v)}><Icon name="sparkles" size={15}/></button>
         <button className="icon-button" aria-label="Select multiple clips" aria-pressed={multiSelect}
           title="Multi-select: toggle clips by clicking. Cmd/Ctrl-click toggles; Shift-click selects a range."
           onClick={() => setMultiSelect(value => !value)}><Icon name="layers" size={15} /></button>
@@ -1143,6 +1222,9 @@ export function TimelinePanel({
         </div>
       )}
       {!minimized && referenceError && <div className="timeline-reference-status" role="alert">{referenceError}</div>}
+      {!minimized&&generationMode&&<div className="timeline-reference-status"><span>Draw a range on a video track</span><button onClick={()=>void makeGeneration(frameSnap(store.getState().playheadUs),5e6)}>Set range…</button><button onClick={()=>setGenerationMode(false)}>Done</button></div>}
+      {!minimized&&generationData.jobs.length>0&&<div className="timeline-reference-status"><button onClick={()=>setGenerationPanel({slotId:null})}>Generation jobs · {generationData.jobs.length}</button></div>}
+      {generationPanel&&<GenerationPanel store={store} slotId={generationPanel.slotId} onSelect={slotId=>setGenerationPanel({slotId})} onClose={()=>setGenerationPanel(null)}/>}
       <div className="timeline-panel" ref={wrapRef} hidden={minimized}>
         <canvas ref={canvasRef} aria-label="Timeline tracks" />
         {!state.doc.tracks.length && (
@@ -1164,6 +1246,7 @@ export function TimelinePanel({
             <div className="ctx-menu" ref={menuRef} style={{ left: menu.x, top: menu.y }}>
               {menu.kind === 'clip' && (
                 <>
+                  {state.doc.generationSlots?.some(s=>s.clipId===menu.clipId)&&<button onClick={()=>{setGenerationPanel({slotId:state.doc.generationSlots!.find(s=>s.clipId===menu.clipId)!.id});setMenu(null);}}><Icon name="sparkles" size={15}/>Generation settings</button>}
                   <button
                     disabled={!canSplit}
                     onClick={() => {
@@ -1228,6 +1311,7 @@ export function TimelinePanel({
               )}
               {menu.kind === 'track' && menuTrack && (
                 <>
+                  <button disabled={menuTrack.kind!=='video'||menuTrack.locked} onClick={()=>{void makeGeneration(menu.atUs??state.playheadUs,5e6,menuTrack.id);setMenu(null);}}><Icon name="sparkles" size={15}/>Generate video here…</button>
                   <button
                     onClick={() => {
                       store.dispatch({

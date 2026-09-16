@@ -161,6 +161,9 @@ export async function createEngine(init: EngineInit): Promise<ICoreEngine> {
       module_or_path: `${(init.wasmBase ?? '/wasm').replace(/\/$/, '')}/velocut_wasm_bg.wasm`,
     });
     const inner = new mod.WasmEngine(init.name, init.width, init.height, init.fpsNum, init.fpsDen);
+    // An older WASM binary must not silently drop generation intents on load.
+    const probe=JSON.parse(inner.apply(JSON.stringify({type:'addGenerationSlot',trackId:'__feature_probe__',startUs:0,durationUs:1,request:{channel:'',model:'',prompt:''}})));
+    if(probe.ok||probe.error?.code!=='notFound')throw Error('WASM generation-slot support is missing');
     console.info('[velocut] engine: wasm (rust core)');
     return new WasmEngineAdapter(inner);
   } catch {

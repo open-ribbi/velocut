@@ -27,9 +27,10 @@ import {
   type SceneModelImportOptions,
 } from './scene';
 import { runAgentScript, type ScriptApi } from './script';
+import {generation} from './generation';
 
-/** Only project editing crosses this boundary: no settings, keys, arbitrary
- * host evaluation, uploads, provider calls or OS access. All writes are attributed. */
+/** Project editing and configured generation cross this boundary. No settings,
+ * keys, arbitrary host evaluation, raw uploads or OS access. Writes are attributed. */
 export function createProjectHost(
   store: Store,
   media: MediaLibrary,
@@ -130,6 +131,8 @@ export function createProjectHost(
         return createSceneClip(store, media, args as SceneClipOptions, dispatch);
       case 'sceneEdit':
         return editScene(store, args as SceneEditOptions, dispatch);
+      case 'generation':
+        return generation(store,args,{dispatch,signal});
       case 'sceneArrange':
         return arrangeScene(store, args as SceneArrangeOptions, dispatch);
       case 'sceneExport': {
@@ -182,7 +185,7 @@ export function createProjectHost(
           execute(name, input, sessionId, signal);
         const unavailable = async (): Promise<never> => {
           throw new Error(
-            'this MCP host exposes local scene editing only; cloud generation, uploads and speech are not enabled',
+            'This method is not enabled in the MCP host. Use generation for configured asynchronous video jobs; legacy videoGen, raw uploads and speech are unavailable.',
           );
         };
         const api: ScriptApi = {
@@ -213,6 +216,7 @@ export function createProjectHost(
           motionClip: unavailable,
           videoGen: unavailable,
           videoGenChannels: unavailable,
+          generation:local('generation'),
           uploadFrame: unavailable,
           uploadClip: unavailable,
           uploadAsset: unavailable,

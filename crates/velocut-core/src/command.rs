@@ -17,6 +17,16 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum EditCommand {
+    #[serde(rename_all="camelCase")]
+    AddGenerationSlot {track_id:String,start_us:TimeUs,duration_us:TimeUs,request:GenerationRequest,#[serde(default)]name:Option<String>},
+    #[serde(rename_all="camelCase")]
+    UpdateGenerationSlot {slot_id:String,#[serde(default)]track_id:Option<String>,#[serde(default)]start_us:Option<TimeUs>,#[serde(default)]duration_us:Option<TimeUs>,#[serde(default)]request:Option<GenerationRequest>,#[serde(default)]name:Option<String>},
+    #[serde(rename_all="camelCase")]
+    RemoveGenerationSlot {slot_id:String},
+    #[serde(rename_all="camelCase")]
+    ResolveGenerationSlot {slot_id:String,intent_version:u64,asset_id:String,#[serde(default)]source_in_us:Option<TimeUs>,#[serde(default)]duration_us:Option<TimeUs>,#[serde(default)]job_id:Option<String>},
+    #[serde(rename_all="camelCase")]
+    ReplaceClipSource {clip_id:String,asset_id:String,#[serde(default)]source_in_us:Option<TimeUs>,#[serde(default)]duration_us:Option<TimeUs>},
     // --- project / assets ---
     #[serde(rename_all = "camelCase")]
     AddAsset {
@@ -189,6 +199,9 @@ pub enum TrimEdge {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum Event {
+    #[serde(rename_all="camelCase")] GenerationSlotAdded {slot_id:String},
+    #[serde(rename_all="camelCase")] GenerationSlotUpdated {slot_id:String},
+    #[serde(rename_all="camelCase")] GenerationSlotRemoved {slot_id:String},
     #[serde(rename_all = "camelCase")]
     AssetAdded {
         asset_id: String,
@@ -270,8 +283,15 @@ fn check_spec(spec: &str) -> Result<(), CmdError> {
 // ---------------------------------------------------------------------------
 
 pub fn apply(doc: &mut Document, cmd: &EditCommand) -> CmdResult {
+    let result=apply_inner(doc,cmd)?;
+    crate::generation::sync_slots(doc);
+    Ok(result)
+}
+pub(crate) fn apply_inner(doc: &mut Document, cmd: &EditCommand) -> CmdResult {
+    if let Some(result)=crate::generation::apply_generation(doc,cmd){return result;}
     use EditCommand::*;
     match cmd {
+        EditCommand::AddGenerationSlot{..}|EditCommand::UpdateGenerationSlot{..}|EditCommand::RemoveGenerationSlot{..}|EditCommand::ResolveGenerationSlot{..}|EditCommand::ReplaceClipSource{..}=>unreachable!(),
         AddAsset {
             kind,
             src,

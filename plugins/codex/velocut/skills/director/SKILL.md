@@ -1,13 +1,14 @@
 ---
 name: director
-description: Use Velocut to build and edit 3D scenes, geometry, characters, lights and camera shots; import GLB models; inspect rendered views; and operate the live Director workspace from Codex.
+description: Use Velocut to edit video timelines, generate video into selected ranges, build editable 3D scenes, import GLB models, and inspect rendered views in the live workspace.
 ---
 
 # Velocut Director
 
 Use the model in this Codex conversation to plan and verify the work. This plugin
 provides editing tools; do not route the task through Velocut's separate chat
-agent or ask for a model API key. Tool names below may have a server prefix.
+agent or ask for a reasoning-model API key. Optional video generation uses a
+separately configured provider channel. Tool names below may have a server prefix.
 
 ## Connect to the actual project
 
@@ -65,6 +66,33 @@ transaction grammar. It uses the same `velocut` methods available in the script 
 - `velocut_apply` supports timeline commands and mixed batches. Read the current
   document for exact IDs. `velocut_history` requires the current document revision.
 
+## Generate video on the timeline
+
+Read [atomic API reference](references/atomic-api.md#timeline-video-generation)
+for exact commands and the asynchronous job contract. Use `velocut_generation`
+or `velocut.generation()` in a script; legacy `videoGen` is unavailable in MCP.
+
+- Query `generationSlots` and discover configured channels with `capabilities`.
+  Create/update/remove slots with ordinary commands and `ops`/`ref`; these edits
+  do not submit a paid job. `plan` reports target and provider durations.
+- For image-to-video, `captureReference` snapshots a project image or timeline
+  frame. Supply the returned `reference.id` in `firstFrameReferenceId`. Capture
+  is local; submission uploads this snapshot to the user's configured storage.
+- `submit` uses provider credits. Use it within the user's authorized generation
+  request, with the current `intentVersion` and a stable `requestId`. Do not put
+  endpoints, keys or remote reference URLs into a tool call. If unconfigured,
+  direct the user to Generation channel settings and Upload storage settings.
+- Inspect `get`/`list` to follow the job. Reloads keep receipts; never submit a
+  new request merely because polling or a tool timed out. An uncertain submission
+  has no safe automatic resubmit. `cancel` stops local tracking; it does not
+  promise remote cancellation or a refund. `resume` reuses a saved receipt.
+- Completed candidates do not edit the timeline. `registerResult` keeps a result
+  in assets; `adopt` uses the current revision and intent version to register and
+  place/replace it in one undo step. Preview and inspect the chosen result. A
+  short output requires an explicit duration choice; earlier-intent candidates
+  require explicit acceptance. Replacing a candidate preserves clip identity and
+  effects. Undo/redo never calls the provider again.
+
 ## Failures and completion
 
 Never blindly replay a timed-out or disconnected editing call: it may have
@@ -75,5 +103,5 @@ Don't replace the user's whole scene from a stale snapshot.
 Keep the Director open on the useful object/view when done, report what changed,
 and mention meaningful limits. Do not claim a render was inspected if no image
 was returned. Closing the editor disconnects this plugin's live editing runtime.
-Cloud video generation, publishing/uploads and speech services are not exposed
-by this local plugin.
+Configured video generation is available through the project job service.
+General publishing, raw uploads and speech services are not exposed by this plugin.

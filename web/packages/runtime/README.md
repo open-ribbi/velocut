@@ -69,3 +69,20 @@ legacy copy; older Studio versions see the last legacy state. Deleting a project
 removes both keys. This reduces the active save payload, not necessarily total
 disk use immediately. No history nodes are dropped by deduplication; the existing
 400-node retention policy is unchanged.
+
+## Timeline generation
+
+`configureGeneration(store, adapter)` installs a durable project job manager;
+`generation(store, input)` exposes capabilities, planning, reference capture,
+submit/get/list/cancel/resume, result registration and adoption. Provide a
+`GenerationAdapter` for journal/files, immutable reference capture, submit/poll,
+media probing and locks. No paid work starts when adding a document slot.
+Submission requires a stable requestId and intentVersion; adoption additionally
+checks the current document revision. The manager never automatically re-posts
+an uncertain request. Dispose the manager with the host.
+
+Studio implements this adapter with project-scoped IndexedDB/OPFS and Web Locks.
+Custom hosts must supply equivalent durability and single-runner coordination;
+an in-memory adapter does not provide reload safety. Refer to the
+[atomic API contract](../../../docs/integrations/atomic-api.md#timeline-video-generation)
+for commands, action parameters and recovery behavior.

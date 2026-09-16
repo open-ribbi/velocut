@@ -70,6 +70,38 @@ try {
     console.log('resource jobs and duplication ok');
   `);
   assert.match(resourceOutput, /resource jobs and duplication ok/);
+  const generationOutput=run(`
+    import assert from 'node:assert/strict';
+    import {Store,TsEngineAdapter,atomicRuntime,configureGeneration,generation} from '@velocut/runtime';
+    import {ops,ref,CURRENT_FORMAT_VERSION} from '@velocut/protocol';
+    const store=new Store(new TsEngineAdapter('generated',320,180,30,1)),api=atomicRuntime(store);
+    const made=await api.transaction({action:'commit',runtimeId:api.runtimeId,expectedRevision:0,requestId:'slot',operations:[
+      {id:'track',command:ops.addTrack({kind:'video'})},
+      {id:'slot',command:ops.addGenerationSlot({trackId:ref('track','trackId'),startUs:0,durationUs:1000000,request:{channel:'mock',model:'mock',prompt:'Packed generation'}})}
+    ]});
+    assert.ok(made.ok);const slotId=made.data.results.slot.slotId;
+    assert.deepEqual(store.evaluate(0).pendingGenerationIds,[slotId]);assert.equal(CURRENT_FORMAT_VERSION,3);
+    assert.ok(api.capabilities({name:'generation'}).data.inputSchema);
+    let ledger=null,posts=0,mutex=Promise.resolve();
+    const manager=configureGeneration(store,{
+      projectId:'packed',channels:()=>[{id:'mock',models:['mock']}],binding:()=> 'mock',
+      read:async()=>structuredClone(ledger),write:async value=>{ledger=structuredClone(value)},
+      lock:work=>{const next=mutex.then(work);mutex=next.catch(()=>{});return next},lead:async work=>work(),
+      submit:async()=>({taskId:'task_'+(++posts)}),poll:async()=>({state:'succeeded',status:'completed',result:{videoUrl:'https://mock.invalid/clip.mp4'}}),
+      download:async()=>({src:'opfs://mock.mp4',name:'Mock',durationUs:2000000,width:320,height:180,hasAudio:false,size:5}),
+      prepareReference:async()=>{throw Error('unused')},capture:async()=>{throw Error('unused')},saveReference:async()=>{throw Error('unused')},referenceBlob:async()=>new Blob(),mediaBlob:async()=>new Blob(['mock']),attach:async()=>{},pollIntervalMs:1,
+    });
+    try{
+      const input={action:'submit',slotId,intentVersion:1,requestId:'paid-once'};
+      const first=await generation(store,input),again=await generation(store,input);assert.ok(first.ok);assert.equal(first.job.id,again.job.id);
+      let ready=false;for(let i=0;i<300;i++){const r=await generation(store,{action:'get',jobId:first.job.id});if(r.job?.state==='succeeded'){ready=true;break}await new Promise(r=>setTimeout(r,5));}
+      assert.ok(ready);assert.equal(posts,1);assert.equal(store.getState().doc.assets.length,0);
+      const adopted=await generation(store,{action:'adopt',slotId,jobId:first.job.id,intentVersion:1,expectedRevision:store.getState().revision});assert.ok(adopted.ok);
+      assert.equal(store.getState().doc.tracks[0].clips[0].durationUs,1000000);assert.equal(store.evaluate(0).pendingGenerationIds,undefined);
+      store.undo();store.redo();assert.equal(posts,1);console.log('generation sdk ok');
+    }finally{manager.dispose()}
+  `);
+  assert.match(generationOutput,/generation sdk ok/);
   const instanceOutput = run(`
     import assert from 'node:assert/strict';
     import {applySceneEdits,sceneBudget,sampleObjectTransform} from '@velocut/scene-sdk';
@@ -166,7 +198,9 @@ try {
         stderr: 'pipe',
       }),
     );
-    assert.ok((await pluginClient.listTools()).tools.some((t) => t.name === 'velocut_scene_edit'));
+    const tools=(await pluginClient.listTools()).tools;
+    assert.ok(tools.some((t) => t.name === 'velocut_scene_edit'));
+    assert.ok(tools.some((t) => t.name === 'velocut_generation'));
   } finally {
     await pluginClient.close();
   }
@@ -412,6 +446,7 @@ window.probe=(async()=>{
           'node-import',
       'atomic-query-transaction',
       'resource-probe-register-duplicate',
+      'generation-slots-durable-jobs-and-adoption',
       'shared-geometry-instances',
       'geometry-resource-and-incremental-transform',
       'surface-local-invalidation-and-atomic-repair',

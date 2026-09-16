@@ -8,7 +8,8 @@
 //
 // The value of this anchor is forward-looking: when the document schema next
 // changes, a migration is REGISTERED here instead of old projects silently
-// breaking. Today there are no migrations (v1 is the only shape ever shipped).
+// breaking. Optional fields migrate without rewriting the document; the format marker
+// protects them from older writers.
 
 import type { VDocument } from './types.ts';
 
@@ -16,8 +17,9 @@ import type { VDocument } from './types.ts';
  *  the persisted Track/Asset/Clip/Document shape isn't backward-compatible, and
  *  register a migration below.
  *  v2: Asset.spec — procedural specs (motion/scene) live in the document. Older
- *  builds would silently DROP specs from a v2 doc, so they must refuse it. */
-export const CURRENT_FORMAT_VERSION = 2;
+ *  builds would silently DROP specs from a v2 doc, so they must refuse it.
+ *  v3: optional generation slots, protected from older writers. */
+export const CURRENT_FORMAT_VERSION = 3;
 
 /** Persisted data written before versioning existed has no formatVersion field;
  *  it is, by definition, the first shape. This baseline is FIXED at 1 forever
@@ -38,6 +40,8 @@ const MIGRATIONS: Record<number, Migration> = {
   // `motion:<project>:<assetId>` → Asset.spec) is an APP-level migration: it
   // needs kv access, which this pure chain doesn't have (see editor services).
   [1]: (doc) => doc,
+  // Optional generation slots must not be silently dropped by older writers.
+  [2]: (doc) => doc,
 };
 
 export type MigrateResult =

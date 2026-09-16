@@ -32,6 +32,7 @@ export class CollabSession {
   private ydoc = new Y.Doc();
   private tracks: Y.Map<string>;
   private assets: Y.Map<string>;
+  private generationSlots:Y.Map<string>;
   private meta: Y.Map<string | number>;
   private bc: BroadcastChannel;
   private presence: BroadcastChannel;
@@ -54,6 +55,7 @@ export class CollabSession {
   ) {
     this.tracks = this.ydoc.getMap('tracks');
     this.assets = this.ydoc.getMap('assets');
+    this.generationSlots=this.ydoc.getMap('generationSlots');
     this.meta = this.ydoc.getMap('meta');
     this.bc = new BroadcastChannel(`velocut-y-${room}`);
     this.presence = new BroadcastChannel(`velocut-presence-${room}`);
@@ -154,6 +156,9 @@ export class CollabSession {
         this.meta.set('formatVersion', CURRENT_FORMAT_VERSION);
       }
       const order = JSON.stringify(doc.tracks.map((t) => t.id));
+      const slotIds=new Set((doc.generationSlots??[]).map(s=>s.id));
+      for(const s of doc.generationSlots??[]){const json=JSON.stringify(s);if(this.generationSlots.get(s.id)!==json)this.generationSlots.set(s.id,json);}
+      for(const id of this.generationSlots.keys())if(!slotIds.has(id))this.generationSlots.delete(id);
       if (this.meta.get('trackOrder') !== order) this.meta.set('trackOrder', order);
       // nextId merges as max() so concurrent peers don't mint colliding ids.
       const current = (this.meta.get('nextId') as number) ?? 0;
@@ -191,6 +196,7 @@ export class CollabSession {
       nextId: Math.max((this.meta.get('nextId') as number) ?? 1, localNext),
       assets,
       tracks,
+      ...(this.generationSlots.size?{generationSlots:[...this.generationSlots.values()].map(j=>JSON.parse(j))}:{}),
     };
   }
 
@@ -208,11 +214,17 @@ export class CollabSession {
     }
   }
 
+  private saving:Promise<void>=Promise.resolve();
+  private persist(){
+    const bytes=Y.encodeStateAsUpdate(this.ydoc);
+    this.saving=this.saving.catch(()=>{}).then(()=>kvPut(this.storageKey,bytes));
+    return this.saving;
+  }
   private scheduleSave() {
     if (this.saveTimer) clearTimeout(this.saveTimer);
     this.saveTimer = setTimeout(() => {
       this.saveTimer = null;
-      void kvPut(this.storageKey, Y.encodeStateAsUpdate(this.ydoc));
+      void this.persist().catch(error=>console.warn('[velocut] document save failed',error));
     }, 300);
   }
 
@@ -220,17 +232,16 @@ export class CollabSession {
    *  controlled navigations (project switching) await this before reloading —
    *  the one deterministic way to close the debounce window. */
   async flushNow(): Promise<void> {
-    if (!this.saveTimer) return;
-    clearTimeout(this.saveTimer);
+    if(this.saveTimer)clearTimeout(this.saveTimer);
     this.saveTimer = null;
-    await kvPut(this.storageKey, Y.encodeStateAsUpdate(this.ydoc));
+    await this.persist();
   }
 
   /** Best-effort fire-and-forget flush for pagehide (an async IDB write during
    *  teardown may not commit — user-initiated instant reloads keep a ≤300ms
    *  lose-last-write window; see flushNow for the deterministic path). */
   private flush = () => {
-    void this.flushNow();
+    void this.flushNow().catch(()=>{});
   };
 
   dispose() {

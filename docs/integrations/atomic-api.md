@@ -38,7 +38,7 @@ const page = await velocut.query({
 });
 ```
 
-Kinds: `document`, `snapshot`, `assets`, `tracks`, `clips`, `sceneObjects`, `sceneGeometries`, `sceneMaterials`, `sceneCurves`, `sceneBindings`, `sceneBudget`,
+Kinds: `document`, `snapshot`, `assets`, `tracks`, `clips`, `generationSlots`, `sceneObjects`, `sceneGeometries`, `sceneMaterials`, `sceneCurves`, `sceneBindings`, `sceneBudget`,
 `selection`. Entity results have `data:{items,total,nextOffset}`; continue until
 nextOffset is null. Use the same snapshotId for every page. Live pages without a
 snapshot can change between calls. Expired IDs fail instead of reading live data.
@@ -56,7 +56,7 @@ Selection is live UI state and rejects snapshotId.
 
 This example creates a text track, then inserts a title by referencing the actual
 track ID returned by the previous operation. It does not edit the document until
-commit. All new APIs use the `{ok,data,...}` envelope.
+commit. The query/transaction APIs use the `{ok,data,...}` envelope.
 
 ```js
 const snap = await velocut.query({kind:'snapshot'});
@@ -1289,3 +1289,112 @@ strict Clippy pass. Eight relevant browser tests pass, including the oversized
 scene round trip. WASM and production packages rebuild successfully; separately
 installed npm packages accept and return a 400,000-character spec. Plugin
 validation also passes. This source change has not been published to npm.
+
+## Timeline video generation
+
+Generation is split between undoable document commands and persistent external
+jobs. These additions are in source and local builds, not the published 0.0.1.
+The document format is now **3**; versions 1/2 migrate forward. Older writers
+must reject format 3 rather than silently discard generation slots.
+
+| Operation | Responsibility |
+| --- | --- |
+| `addGenerationSlot`, `updateGenerationSlot`, `removeGenerationSlot` | Edit target track/range, prompt and input parameters; no network |
+| `query({kind:'generationSlots'})` | Snapshot-aware IDs, placement, intent version and adopted clip/candidate |
+| `generation({action:'capabilities'})` | Configured channel/model metadata and optional supported durations, ratios, resolutions, image/audio inputs; no keys/URLs |
+| `generation({action:'plan',slotId})` | Validate inputs; report timeline duration, required source duration (including clip speed), chosen provider duration |
+| `captureReference` / `references` | Save/list immutable project-bound first-frame snapshots |
+| `submit` / `get` / `list` / `cancel` / `resume` | Manage persistent provider jobs independently of edits |
+| `registerResult` | Register an already downloaded candidate as a video asset |
+| `adopt` | Register and resolve/replace the slot in one undoable batch |
+| `resolveGenerationSlot` / `replaceClipSource` | Pure core commands for placement or stable-identity source replacement |
+
+`generation()` returns `{ok:true,...actionResult}` or `{ok:false,message}`;
+`plan` adds `request,targetDurationUs,requiredSourceDurationS,providerDurationS`,
+`submit/get/cancel/resume` return `job`, and `list/references` return
+`items,total,nextOffset` (offset/limit pagination). An empty channel/model/prompt
+is legal in a draft slot, but cannot be submitted. `capabilitiesKnown` means a
+model has configured capability metadata; absent duration constraints cannot
+prove that a provider accepts arbitrary lengths. Providers remain authoritative.
+
+```js
+// Choose a channel/model from generation({action:'capabilities'}).
+const snap = await velocut.query({kind:'snapshot'});
+if (!snap.ok) throw Error(snap.error.message);
+const created = await velocut.transaction({
+  action:'commit', runtimeId:snap.runtimeId, expectedRevision:snap.revision,
+  requestId:'create-shot-001', operations:[
+    {id:'track',command:velocut.ops.addTrack({kind:'video',name:'Generated'})},
+    {id:'slot',command:velocut.ops.addGenerationSlot({
+      trackId:velocut.ref('track','trackId'), startUs:2000000, durationUs:6000000,
+      request:{channel:'my-channel',model:'my-model',prompt:'A slow push over a lake',ratio:'16:9'}
+    })}
+  ]
+});
+if (!created.ok) throw Error(created.error.message);
+const slotId = created.data.results.slot.slotId;
+const plan = await velocut.generation({action:'plan',slotId});
+if (!plan.ok) throw Error(plan.message);
+// This separate operation uses provider credits; reuse this requestId on retry.
+return await velocut.generation({action:'submit',slotId,
+  intentVersion:plan.intentVersion,requestId:'generate-shot-001-take-1'});
+```
+
+`captureReference` requires `expectedRevision` and `source:{kind:'timeline',timeUs,
+clipId?}` or `source:{kind:'asset',assetId}`. Timeline capture is composite by
+default; clipId isolates that visible clip. Imported image assets must be in
+project storage. Capture saves a PNG and provenance locally and returns
+`reference`; put its ID in `request.firstFrameReferenceId`. Only submission
+uploads it through configured storage. No remote reference URL is accepted.
+
+`submit` returns immediately with a durable, immutable request and job ID. The
+requestId is project-scoped and persistent; repeating it returns the same job,
+including after undo/reload. Changed slot/version with that ID conflicts. New
+candidates require a new requestId. A receipt is saved as soon as submission
+returns. Reload resumes polling/downloading, never a POST without certainty.
+`submission_unknown` means the previous POST may have succeeded without a saved
+receipt; it cannot be resumed as a new submission. Investigate the provider
+before deliberately creating a new paid request. A failed download or interrupted
+poll can resume using the existing receipt. `cancel` stops local tracking only.
+A queued job cancelled before submission can be resumed into the queue.
+
+The job service uses a project runner (two concurrent jobs by default) and a
+durable journal, outside document/history. Closing Studio pauses processing;
+reopening that project resumes work. Moving/deleting a slot, undoing an edit or
+switching projects never redirects a result into another project. The service
+supports same-origin, same-browser tab coordination; it is not a remote worker
+or cross-device queue. Changing a job's channel endpoint/key blocks tracking
+until the original configuration is restored. Reference/result files and the
+journal stay local to the browser; document JSON alone is not a portable backup
+of their bytes or execution records.
+
+After `get` reports a downloaded result, `registerResult` takes
+`{jobId,expectedRevision}`. `adopt` additionally takes `{slotId,intentVersion}`.
+Adoption checks the **current** slot position and revision; it does not reuse the
+position captured at submission. A later prompt/input/duration edit changes the
+intent version and rejects old candidates unless `acceptEarlierIntent:true` is
+explicit. Pure moves do not change it. Overlap/locked-track/deleted-slot failures
+leave both document and history unchanged. Candidates remain accessible in jobs.
+
+Default adoption trims a long result to the target, preserving the full original
+asset. A short result fails; `fit:'sourceDuration'` explicitly changes the timeline
+length to its available duration at the clip's current speed. There is no silent
+slowdown or loop. Subsequent candidates replace the **same clip ID** while keeping
+transforms, effects, keyframes, volume and speed. `replaceClipSource` has the same
+preservation rule; its default sourceInUs is zero. Removing a generation intent
+keeps any adopted clip. Removing its clip removes that attached intent.
+
+Unresolved active slots appear as `FrameGraph.pendingGenerationIds`; export of
+such frames fails with a clear message. Adopt a result, remove the intent, or
+mute its track before exporting that range. Muted/out-of-range slots do not
+block export. Preview shows an unresolved-generation badge.
+
+`@velocut/runtime` exposes `configureGeneration(store, adapter)` and
+`generation(store, input)`. Hosts provide durable journal/file storage, channel
+binding, provider submit/poll, capture/probe and cross-runtime locking through
+`GenerationAdapter`. The browser implementation uses IndexedDB, OPFS and Web
+Locks. There are no React dependencies in the job manager. `@velocut/render-sdk`
+provides `VideoGenerator.submit/poll`, `VideoGenPoll` and optional
+`VideoModelCapabilities`; a legacy generate-only provider must add lifecycle
+methods before it can back resumable jobs. MCP exposes `velocut_generation` with
+the same actions and CodeAct exposes `velocut.generation()`.

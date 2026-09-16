@@ -642,6 +642,7 @@ export function PreviewPanel({
             }}
           >
             <canvas ref={canvasRef} className="preview-canvas" />
+            {(state.doc.generationSlots??[]).some(s=>!s.clipId&&s.startUs<=state.playheadUs&&state.playheadUs<s.startUs+s.durationUs&&!state.doc.tracks.find(t=>t.id===s.trackId)?.muted)&&<div className="generation-pending-badge">Pending generation · choose a result to complete this range</div>}
             <div
               className="preview-overlay"
               ref={overlayRef}

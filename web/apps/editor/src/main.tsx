@@ -23,6 +23,7 @@ import { exportSceneModel, type SceneExportOptions, bindSceneAuthoring, importSc
 import { loadSceneManifest, scenePromptDoc } from '@velocut/scene-sdk';
 import { searchWeb } from './services/search';
 import { generateVideoClip, describeVideoGenChannels, sandboxVideoGen, type VideoGenClipOptions } from './services/videogen';
+import {bindGeneration} from './services/generation';
 import { uploadFrame, uploadClip, uploadAsset, sandboxUploads } from './services/upload';
 import { Store } from './state/store';
 import { HistoryTree } from './state/history';
@@ -61,19 +62,21 @@ async function loadHistory(key: string): Promise<HistoryTree | undefined> {
 function makeHistorySaver(key: string): { save: (tree: HistoryTree) => void; flush: () => Promise<void> } {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let latest: HistoryTree | null = null;
+  let writing:Promise<void>=Promise.resolve();
   const write = async () => {
     if (!latest) return;
     // Keep the legacy value intact as a downgrade/recovery copy. New writes use
     // a separate key so an older editor cannot overwrite the compact history.
-    await kvPut(key + ':compact-v1', new TextEncoder().encode(JSON.stringify(latest.serializeCompact()))).catch(() => {});
+    const bytes=new TextEncoder().encode(JSON.stringify(latest.serializeCompact()));
+    writing=writing.catch(()=>{}).then(()=>kvPut(key+':compact-v1',bytes));
+    await writing;
   };
   const flush = async () => {
-    if (!timer) return;
-    clearTimeout(timer);
+    if(timer)clearTimeout(timer);
     timer = null;
     await write();
   };
-  window.addEventListener('pagehide', () => void flush());
+  window.addEventListener('pagehide', () => void flush().catch(()=>{}));
   return {
     flush,
     save: (tree: HistoryTree) => {
@@ -81,7 +84,7 @@ function makeHistorySaver(key: string): { save: (tree: HistoryTree) => void; flu
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
         timer = null;
-        void write();
+        void write().catch(error=>console.warn('[velocut] history save failed',error));
       }, 600);
     },
   };
@@ -209,6 +212,7 @@ async function bootstrap() {
   // spec edits participate in undo/history/sync like any other document state.
   await migrateLegacyMotionSpecs(store);
   await restoreMedia(store, media, storage.mediaDir);
+  const generationRuntime=bindGeneration(store,media,container.resolve(TOKENS.Observer),project.id,storage,async()=>{await collab.flushNow();await historySaver.flush();});
   void container.resolve(TOKENS.Fonts).restore();
   // Remote peers may import assets — re-attach their OPFS media lazily.
   // A change landing while a restore is in flight (scene compiles take real
@@ -285,6 +289,7 @@ async function bootstrap() {
     // USER path; the sandbox RPC below is the restricted one.
     videoGen: (o: VideoGenClipOptions) => generateVideoClip(store, media, o),
     videoGenChannels: () => describeVideoGenChannels(),
+    generation:(o:unknown)=>generationRuntime.execute(o),
     // Conditioning uploads (frame PNG / isolated-clip mp4 → the configured
     // store). Host path returns the real URL alongside the upload:// handle.
     uploadFrame: (o: { timeUs: number; name?: string }) => uploadFrame(store, container.resolve(TOKENS.Observer), o),
@@ -337,6 +342,7 @@ async function bootstrap() {
           // only as upload:// handles (endpoint/key resolve from host config).
           videoGen: sandboxVideoGen(store, media),
           videoGenChannels: () => describeVideoGenChannels(),
+          generation:(o:unknown)=>generationRuntime.execute(o),
           ...sandboxUploads(store, media, container.resolve(TOKENS.Observer)),
         },
         code,

@@ -136,12 +136,13 @@ export class Exporter {
     // ---- video ----
     const offscreen = new OffscreenCanvas(width, height);
     const renderer = new Renderer();
-    await renderer.init(offscreen);
-
     const videoEncoder = new VideoEncoder({
       output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
       error: (e) => console.error('[velocut] video encode error', e),
     });
+    let pendingFrames:Promise<{fg:FrameGraph;frames:Map<string,VideoFrame>}>|undefined,currentFrames:Map<string,VideoFrame>|undefined,finished=false,rendererDisposed=false;
+    try {
+    await renderer.init(offscreen);
     videoEncoder.configure({
       codec: picked.codec,
       width,
@@ -161,6 +162,7 @@ export class Exporter {
     // the render+encode of frame n.
     const gather = async (t: number): Promise<{ fg: FrameGraph; frames: Map<string, VideoFrame> }> => {
       const fg = evaluate(t);
+      if(fg.pendingGenerationIds?.length)throw Error(`Unresolved generation slots: ${fg.pendingGenerationIds.join(', ')}. Adopt a result, mute its track or remove the intent before exporting this range.`);
       const frames = new Map<string, VideoFrame>();
       // Every source frame this output frame needs: each top-level layer PLUS
       // each cross-clip transition's nested outgoing (`from`) layer. A transition
@@ -172,7 +174,7 @@ export class Exporter {
         const from = layer.transition?.from;
         if (from?.assetId) need.push({ clipId: from.clipId, assetId: from.assetId, sourceTimeUs: from.sourceTimeUs, from: true });
       }
-      for (const n of need) {
+      try { for (const n of need) {
         if (frames.has(n.clipId)) continue; // de-dupe (one decoder per asset, serial)
         // Outgoing side uses a dedicated decoder so a same-asset transition
         // doesn't thrash the single export decoder between two source positions.
@@ -181,20 +183,20 @@ export class Exporter {
           : await this.media.exactFrame(n.assetId, n.sourceTimeUs);
         if (f) frames.set(n.clipId, f);
       }
+      } catch(error) { frames.forEach(frame=>frame.close()); throw error; }
       return { fg, frames };
     };
 
-    let nextFrames = gather(0);
+    let nextFrames = gather(0);pendingFrames=nextFrames;void nextFrames.catch(()=>{});
     for (let n = 0; n < totalFrames; n++) {
       if (signal?.aborted) {
-        (await nextFrames).frames.forEach((f) => f.close());
-        this.media.releaseExactFromDecoders();
         throw new DOMException('aborted', 'AbortError');
       }
       const t = Math.round(n * frameDurUs);
       const { fg, frames } = await nextFrames;
+      pendingFrames=undefined;currentFrames=frames;
       // Prefetch the next frame's source frames while we render/encode this one.
-      if (n + 1 < totalFrames) nextFrames = gather(Math.round((n + 1) * frameDurUs));
+      if (n + 1 < totalFrames) {nextFrames = gather(Math.round((n + 1) * frameDurUs));pendingFrames=nextFrames;void nextFrames.catch(()=>{});}
 
       renderer.render(fg, this.media, (clipId) => frames.get(clipId) ?? null);
       await renderer.workDone();
@@ -203,6 +205,7 @@ export class Exporter {
       videoEncoder.encode(vf, { keyFrame: n % keyint === 0 });
       vf.close();
       for (const f of frames.values()) f.close();
+      currentFrames=undefined;
 
       // Backpressure: don't let the encode queue run away.
       while (videoEncoder.encodeQueueSize > 8) await new Promise((r) => setTimeout(r, 0));
@@ -211,6 +214,7 @@ export class Exporter {
     await videoEncoder.flush();
     videoEncoder.close();
     renderer.dispose();
+    rendererDisposed=true;
     this.media.releaseExactFromDecoders(); // free the transition outgoing-side decoders
 
     // ---- audio ----
@@ -223,10 +227,18 @@ export class Exporter {
       await stream.writable.close();
       // A File backed by the OPFS entry — downloading it streams from disk, so
       // the output bytes never re-materialize on the JS heap.
-      return await stream.handle.getFile();
+      const file=await stream.handle.getFile();finished=true;return file;
     }
     const { buffer } = muxer.target as ArrayBufferTarget;
-    return new Blob([buffer], { type: 'video/mp4' });
+    finished=true;return new Blob([buffer], { type: 'video/mp4' });
+    } finally {
+      currentFrames?.forEach(f=>f.close());
+      if(pendingFrames)try{(await pendingFrames).frames.forEach(f=>f.close());}catch{/* Original failure is reported by the export. */}
+      if(videoEncoder.state!=='closed')videoEncoder.close();
+      if(!rendererDisposed)renderer.dispose();
+      this.media.releaseExactFromDecoders();
+      if(!finished&&stream)await stream.writable.abort().catch(()=>{});
+    }
   }
 
   private async encodeAudio(opts: ExportOptions, muxer: Muxer<ArrayBufferTarget>, durationUs: TimeUs) {

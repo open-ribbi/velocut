@@ -70,3 +70,15 @@ Optional modules also have explicit subpath exports: `/transcribe`, `/tts`,
 `/upload`, `/videogen`, `/effects` and `/motionspec`. Missing optional model
 libraries affect only the corresponding inference feature. No provider key or
 model download is needed to composite and export existing media.
+
+## Video provider lifecycle
+
+`createVideoGen(kind, config)` retains `generate(request)` for legacy consumers.
+Resumable hosts use optional `submit(request) -> {taskId}` followed by
+`poll(taskId, signal) -> VideoGenPoll`. The built-in task-api provider implements
+both. `VideoGenTransportError` distinguishes known rejected submissions from
+uncertain acceptance, and retryable polling failures from blocked ones. Store
+receipts before polling; never implement recovery by blindly repeating submit.
+`VideoModelCapabilities` describes optional durations/ratios/resolutions/image
+and audio constraints. Channel configuration supplies these metadata; they are
+not inferred from model names. Provider credentials belong to the host.

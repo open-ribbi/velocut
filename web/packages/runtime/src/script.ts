@@ -77,6 +77,7 @@ export interface ScriptApi {
   /** Discover configured video-gen channels: [{id, label, models, defaultModel}]
    *  — no endpoints, no keys. */
   videoGenChannels(): unknown;
+  generation(opts:unknown):Promise<unknown>;
   /** Render the composite at a time and upload it to the user-configured
    *  store. Returns an OPAQUE {handle: 'upload://…'} usable in videoGen
    *  reference fields — the real URL never crosses into the sandbox. */
@@ -118,6 +119,7 @@ const RPC_METHODS = [
   'jobs',
   'videoGen',
   'videoGenChannels',
+  'generation',
   'uploadFrame',
   'uploadClip',
   'uploadAsset',

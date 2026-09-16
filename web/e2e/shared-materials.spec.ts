@@ -108,9 +108,9 @@ test('shared material pixels and GLB match inline materials; compact history res
     await v.collab.flushNow();return {assetId:made.assetId,maxDifference,exported,nodes:v.store.getHistory().all().length};
   },{sdkUrl,geometry:tileGeometry()});
   expect(r.maxDifference).toBeLessThanOrEqual(2);expect(r.exported).toMatchObject({color:'ff3300',roughness:.38,metalness:.12,side:2});
-  // Let the trailing history saver finish, then inspect storage, not live objects.
-  await page.waitForTimeout(800);
-  const packed=await page.evaluate(async()=>{const db=await new Promise<IDBDatabase>(resolve=>{const r=indexedDB.open('velocut');r.onsuccess=()=>resolve(r.result)});const key=(localStorage.getItem('velocut.project')==='default'?'history':'history:'+localStorage.getItem('velocut.project'))+':compact-v1';const bytes=await new Promise<Uint8Array>(resolve=>{const r=db.transaction('kv').objectStore('kv').get(key);r.onsuccess=()=>resolve(r.result)});db.close();const h=JSON.parse(new TextDecoder().decode(bytes));return {encoding:h.historyEncoding,nodes:h.nodes.length,specs:h.specs.length};});
+  // Observe durable history completion; a fixed delay can race a busy browser.
+  let packed:any;
+  await expect.poll(async()=>{packed=await page.evaluate(async()=>{const db=await new Promise<IDBDatabase>(resolve=>{const r=indexedDB.open('velocut');r.onsuccess=()=>resolve(r.result)});const key=(localStorage.getItem('velocut.project')==='default'?'history':'history:'+localStorage.getItem('velocut.project'))+':compact-v1';const bytes=await new Promise<Uint8Array>(resolve=>{const r=db.transaction('kv').objectStore('kv').get(key);r.onsuccess=()=>resolve(r.result)});db.close();if(!bytes)return null;const h=JSON.parse(new TextDecoder().decode(bytes));return {encoding:h.historyEncoding,nodes:h.nodes.length,specs:h.specs.length};});return packed?.nodes;}).toBe(r.nodes);
   expect(packed.encoding).toBe('spec-table-v1');expect(packed.nodes).toBe(r.nodes);
   await page.reload();await page.waitForFunction(()=>(window as any).velocut?.doc().assets.length>0);
   expect(await page.evaluate(()=>(window as any).velocut.store.getHistory().all().length)).toBe(r.nodes);

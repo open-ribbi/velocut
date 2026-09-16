@@ -12,6 +12,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct FrameGraph {
+    #[serde(default,skip_serializing_if="Vec::is_empty")]
+    pub pending_generation_ids:Vec<String>,
     pub time_us: TimeUs,
     pub width: u32,
     pub height: u32,
@@ -249,6 +251,7 @@ pub fn evaluate(doc: &Document, time_us: TimeUs) -> FrameGraph {
     }
 
     FrameGraph {
+        pending_generation_ids:doc.generation_slots.iter().filter(|s|s.clip_id.is_none()&&s.start_us<=time_us&&time_us<s.start_us+s.duration_us&&!doc.find_track(&s.track_id).map(|t|t.muted).unwrap_or(false)).map(|s|s.id.clone()).collect(),
         time_us,
         width: doc.width,
         height: doc.height,

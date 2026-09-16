@@ -87,6 +87,7 @@ Edits are attributed in the branching history. Inspect a change, undo it, or ret
 | Area | Capabilities |
 | --- | --- |
 | Video editing | Multiple tracks, split/trim, snapping, speed changes, track controls and transitions |
+| Video generation (unreleased source) | Draw a timeline range, text or first-frame generation, durable provider jobs, preview and adopt candidates; atomic SDK/MCP/CodeAct APIs |
 | Titles and motion | Editable text, captions, transform keyframes, effects and declarative motion graphics |
 | 3D directing | Geometry, assemblies, GLB models, characters, materials, lights, physics and cameras |
 | Audio | Mixed playback, volume keyframes and optional transcription/narration providers |
@@ -95,6 +96,20 @@ Edits are attributed in the branching history. Inspect a change, undo it, or ret
 | Local projects | Per-project storage, persisted history and same-origin multi-tab synchronization |
 
 The built-in **Assistant** is a separate, optional integration. Configure an Anthropic-compatible provider there to use it. Browser-local Whisper/VITS and cloud generation services have their own dependencies or credentials; they are not required for editing or Codex. Development-only cloud relays are not included in the portable server. See the [security and data-flow notes](SECURITY.md).
+
+### Generate into a timeline range (unreleased source)
+
+Choose **Draw generation range** in the timeline and drag a video interval, or use
+**Set range…** in a small panel. Enter a prompt, choose a configured video channel
+and model, then generate. Preview the result and **Use for slot** to place it in
+one undo step. You can continue editing while a job runs, retain several
+candidates, or keep a result only in assets. Reloading the original project
+resumes saved provider tasks without resubmission. First-frame conditioning uses
+an imported image or captured frame and your configured upload storage.
+
+Video generation uses your provider account and its credits. Model durations and
+other constraints are configured per channel; the editor explains trimming and
+requires an explicit choice for short results. See the [atomic generation API](docs/integrations/atomic-api.md#timeline-video-generation).
 
 ## Use the SDKs
 
