@@ -106,6 +106,11 @@ pub struct GenerationRequest {
     #[serde(default,skip_serializing_if="Option::is_none")] pub resolution:Option<String>,
     #[serde(default,skip_serializing_if="Option::is_none")] pub generate_audio:Option<bool>,
     #[serde(default,skip_serializing_if="Option::is_none")] pub first_frame_reference_id:Option<String>,
+    #[serde(default,skip_serializing_if="Option::is_none")] pub last_frame_reference_id:Option<String>,
+    #[serde(default,skip_serializing_if="Option::is_none")] pub reference_image_ids:Option<Vec<String>>,
+    #[serde(default,skip_serializing_if="Option::is_none")] pub reference_video_ids:Option<Vec<String>>,
+    #[serde(default,skip_serializing_if="Option::is_none")] pub reference_audio_ids:Option<Vec<String>>,
+    #[serde(default,skip_serializing_if="Option::is_none")] pub parameters:Option<std::collections::BTreeMap<String,serde_json::Value>>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all="camelCase")]

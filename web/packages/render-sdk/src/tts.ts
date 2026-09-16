@@ -163,14 +163,15 @@ export class MmsTextToSpeech implements TextToSpeech {
 export class MiniMaxTextToSpeech implements TextToSpeech {
   private ctx:AudioContext|null=null;
   private provider:ConfiguredProvider;
-  private model:string;
-  constructor(config?:{endpoint?:string;apiKey?:string;groupId?:string;model?:string;voice?:string}){
-    const {apiKey,...values}=config??{};
+  private model:string;private options:Record<string,string|number|boolean>={};
+  constructor(config?:{endpoint?:string;apiKey?:string;groupId?:string;model?:string;voice?:string;baseUrl?:string;speed?:number;volume?:number;pitch?:number;emotion?:string;languageBoost?:string}){
+    const {apiKey,speed,volume,pitch,emotion,languageBoost,...values}=config??{};
+    this.options=Object.fromEntries(Object.entries({speed,volume,pitch,emotion,languageBoost}).filter(([,v])=>v!==undefined)) as Record<string,string|number|boolean>;
     this.model=values.model??'speech-2.8-hd';
     this.provider=new ProviderRegistry().register(minimaxProvider).create({id:'minimax',provider:'minimax',config:Object.fromEntries(Object.entries(values).filter(([,v])=>v!==undefined)),...(apiKey?{credentials:{apiKey:{store:'host',key:'minimax'}}}:{})},{resolveCredential:async()=>apiKey});
   }
   async synthesize(text:string,opts?:SynthOptions):Promise<SynthResult>{
-    const result=await this.provider.execute({capability:'audio.synthesize',model:this.model,input:{text,...(opts?.voice?{voice:opts.voice}:{}),...(opts?.speed!==undefined?{speed:opts.speed}:{})}});
+    const result=await this.provider.execute({capability:'audio.synthesize',model:this.model,input:{...this.options,text,...(opts?.voice?{voice:opts.voice}:{}),...(opts?.speed!==undefined?{speed:opts.speed}:{})}});
     const output=result.outputs[0];if(output?.kind!=='audio'||output.source.kind!=='bytes')throw Error('MiniMax returned no encoded audio');
     this.ctx??=new AudioContext();const buffer=await this.ctx.decodeAudioData(new Uint8Array(output.source.bytes).buffer);
     return {samples:buffer.getChannelData(0).slice(),sampleRate:buffer.sampleRate};

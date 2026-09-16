@@ -1,23 +1,32 @@
 # @velocut/provider-minimax
 
-Velocut's existing MiniMax T2A HTTP adapter, independently packaged. Depends only
-on `@velocut/provider-sdk`. It returns encoded MP3 bytes and never constructs an
-AudioContext, decodes audio, stores a file or edits a timeline.
+MiniMax is a model vendor, not a speech-only protocol. This package exports three
+native API adapters using the common Provider contracts:
 
-Register `minimaxProvider` with `ProviderRegistry`. Configure optional endpoint,
-groupId, model and voice; put an API key in the declared `apiKey` credential slot.
-For the existing Studio development proxy, credentials may be injected by that
-proxy, so this slot is optional. A production host must provide a working endpoint
-and authentication. No proxy is installed by this package.
+| Export / provider ID | Capability | Routes |
+| --- | --- | --- |
+| `minimaxProvider` / `minimax` | Speech synthesis | `/v1/t2a_v2` |
+| `minimaxVideoProvider` / `minimax-video` | Hailuo video generation | `/v1/video_generation`, `/v1/query/video_generation`, `/v1/files/retrieve` |
+| `minimaxMusicProvider` / `minimax-music` | Song generation | `/v1/music_generation` |
 
-The `audio.synthesize` request has `{text, voice?, speed?}` and an explicitly
-selected configured model. Model/service input checks run before credentials or
-network access. `execute` performs one request; malformed hex audio, nonzero
-service status and HTTP errors fail visibly. No automatic retry, fallback or
-remote cancellation is implied. Existing `MiniMaxTextToSpeech` in render-sdk
-uses this adapter, then decodes the bytes in its browser audio layer.
+All accept user-owned credentials and configured API addresses. New channels use
+`baseUrl`; speech keeps the previous `endpoint` option for compatibility. Root
+URLs and a trailing `/v1` are accepted. The speech compatibility wrapper keeps its
+old development-proxy default when neither is supplied. Nothing installs a proxy
+or reads a global account for you.
 
-Defaults retain the existing Studio behavior (`speech-2.8-hd`, MP3/32 kHz,
-`male-qn-jingying`). Model availability remains a service/account concern.
-Wire reference: [MiniMax HTTP speech API](https://platform.minimax.io/docs/api-reference/speech-t2a-http).
-This source/local package is not yet published to npm.
+Speech returns encoded audio with voice, speed, volume, pitch, emotion and language
+controls. Music accepts prompt, lyrics, sample rate, bitrate and watermark. Video
+returns an asynchronous receipt, polls its status and resolves the existing file's
+download URL. Audio decoding and file persistence stay in the host.
+
+MiniMax-H3 in the referenced evo-backend implementation uses a separate task-gateway
+protocol. Configure the **MiniMax H3 · Task API** preset for that route; it is
+implemented by provider-task-api and is distinct from the native Hailuo endpoint.
+A model name alone does not determine a service's request protocol.
+
+Reference: [MiniMax HTTP speech](https://platform.minimax.io/docs/api-reference/speech-t2a-http),
+[official video guide](https://github.com/MiniMax-AI/skills/blob/main/skills/frontend-dev/references/minimax-video-guide.md),
+[MiniMax music](https://platform.minimax.io/docs/api-reference/music-generation).
+No live provider account has been exercised by automated tests. This package is
+in source/local builds and has not yet been published to npm.

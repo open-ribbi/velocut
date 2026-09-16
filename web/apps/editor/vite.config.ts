@@ -87,6 +87,7 @@ export default defineConfig(({ command }) => ({
   plugins: [react(), videoGenProxy()],
   resolve: {
     alias: [
+      {find:/^@velocut\/provider-sdk\/catalog$/,replacement:fileURLToPath(new URL('../../packages/provider-sdk/src/catalog.ts',import.meta.url))},
       {find:/^@velocut\/provider-sdk\/video$/,replacement:fileURLToPath(new URL('../../packages/provider-sdk/src/video.ts',import.meta.url))},
       ...['provider-sdk','provider-task-api','provider-minimax'].map(name=>({find:new RegExp('^@velocut/'+name+'$'),replacement:fileURLToPath(new URL('../../packages/'+name+'/src/index.ts',import.meta.url))})),
       // The editor and runtime must read the same live scene SDK. Restrict the

@@ -55,20 +55,23 @@ try {
     import assert from 'node:assert/strict';
     import {ProviderRegistry} from '@velocut/provider-sdk';
     import {asVideoGenerator} from '@velocut/provider-sdk/video';
-    import {taskApiProvider} from '@velocut/provider-task-api';
-    import {minimaxProvider} from '@velocut/provider-minimax';
+    import {taskApiProvider,arkVideoProvider} from '@velocut/provider-task-api';
+    import {minimaxProvider,minimaxVideoProvider,minimaxMusicProvider} from '@velocut/provider-minimax';
+    import {modelPreset,parameterDefaults} from '@velocut/provider-sdk/catalog';
     import {exampleProvider} from './consumer-provider/dist/index.js';
-    const registry=new ProviderRegistry().register(exampleProvider).register(taskApiProvider).register(minimaxProvider);
+    const registry=new ProviderRegistry().register(exampleProvider).register(taskApiProvider).register(minimaxProvider).register(arkVideoProvider).register(minimaxVideoProvider).register(minimaxMusicProvider);
     let posts=0,reads=0;
     const provider=registry.create({id:'external',provider:'example-video',config:{endpoint:'https://external.invalid'},credentials:{apiKey:{store:'host',key:'test'}}},{resolveCredential:async()=>{reads++;return 'test-key'},fetch:async(url,init)=>{
       if(init?.method==='POST'){posts++;return Response.json({id:'external-task',region:'west'})}
       assert.match(String(url),/region=west/);return Response.json({status:'done',url:'https://cdn.invalid/video.mp4'});
     }});
-    assert.equal(registry.list().length,3);assert.equal(provider.describe().models[0].id,'example-1');assert.equal(reads,0);
+    assert.equal(registry.list().length,6);assert.equal(modelPreset('seedance-2').model,'seedance-2.0');assert.equal(parameterDefaults({presetId:'minimax-h3'}).resolution,'2K');assert.equal(provider.describe().models[0].id,'example-1');assert.equal(reads,0);
     const video=asVideoGenerator(provider),receipt=await video.submit({model:'example-1',prompt:'Independent provider'});
     assert.equal(receipt.handle.region,'west');const done=await video.poll(receipt.taskId,undefined,JSON.parse(JSON.stringify(receipt.handle)));assert.equal(done.state,'succeeded');assert.equal(done.result.videoUrl,'https://cdn.invalid/video.mp4');assert.equal(posts,1);
     const speech=registry.create({id:'audio',provider:'minimax',config:{endpoint:'https://speech.invalid',model:'test-speech'}},{resolveCredential:async()=>undefined,fetch:async()=>Response.json({data:{audio:'494433'}})});
     const audio=await speech.execute({capability:'audio.synthesize',model:'test-speech',input:{text:'Hello'}});assert.equal(audio.outputs[0].source.kind,'bytes');assert.equal(globalThis.AudioContext,undefined);
+    const native=registry.create({id:'native',provider:'minimax-video',config:{baseUrl:'https://native.invalid/v1',modelSettings:{presetId:'hailuo-2.3'}},credentials:{apiKey:{store:'test',key:'native'}}},{resolveCredential:async()=> 'fake',fetch:async(url,init)=>{if(init?.method==='POST'){assert.equal(String(url),'https://native.invalid/v1/video_generation');return Response.json({task_id:'native-task'})}return Response.json(String(url).includes('/query/')?{status:'Success',file_id:'native-file'}:{file:{download_url:'https://cdn.invalid/native.mp4'}})}});
+    const task=await native.submit({capability:'video.generate',model:'MiniMax-Hailuo-2.3',input:{prompt:'Lake',durationS:6,resolution:'1080P'}}),polled=await native.poll(task);assert.equal(polled.state,'ready');assert.equal((await native.collect(polled.receipt)).outputs[0].kind,'video');
     console.log('independent providers ok');
   `);
   assert.match(providersOutput,/independent providers ok/);
@@ -105,7 +108,7 @@ try {
       {id:'slot',command:ops.addGenerationSlot({trackId:ref('track','trackId'),startUs:0,durationUs:1000000,request:{channel:'mock',model:'mock',prompt:'Packed generation'}})}
     ]});
     assert.ok(made.ok);const slotId=made.data.results.slot.slotId;
-    assert.deepEqual(store.evaluate(0).pendingGenerationIds,[slotId]);assert.equal(CURRENT_FORMAT_VERSION,3);
+    assert.deepEqual(store.evaluate(0).pendingGenerationIds,[slotId]);assert.equal(CURRENT_FORMAT_VERSION,4);
     assert.ok(api.capabilities({name:'generation'}).data.inputSchema);
     let ledger=null,posts=0,mutex=Promise.resolve();
     const manager=configureGeneration(store,{
@@ -473,6 +476,7 @@ window.probe=(async()=>{
       'resource-probe-register-duplicate',
       'generation-slots-durable-jobs-and-adoption',
       'independent-provider-package-and-encoded-speech',
+      'configured-model-catalog-and-native-video',
       'shared-geometry-instances',
       'geometry-resource-and-incremental-transform',
       'surface-local-invalidation-and-atomic-repair',

@@ -65,3 +65,11 @@ shapes rather than dropping extra candidates.
 See the [integration guide](../../../docs/integrations/providers.md) and the
 [independent package example](../../../examples/provider-example). These new
 packages are in source/local builds and have not yet been published to npm.
+
+
+The `/catalog` subpath exports editable model presets, parameter controls/defaults
+and validation helpers. These are model/service metadata, not credentials or a
+universal wire protocol. Studio uses the same metadata for configuration forms,
+per-generation controls and host-side preflight. Built-in protocols remain
+explicitly selected; a new model ID on a compatible protocol requires only
+configuration, while a different protocol still requires an adapter.

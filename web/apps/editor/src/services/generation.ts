@@ -1,6 +1,7 @@
+import {videoProvider,resolveVideoRequest,validateConfiguredVideo,parameterDefaults} from './model-config';
 import {configureGeneration,atomicRuntime,type GenerationAdapter,type GenerationLedger,type GenerationJob} from '@velocut/runtime';
 import {ops,ref,type AtomicOperation} from '@velocut/protocol';
-import {createVideoGen,createUploader,type MediaLibrary,type Observer} from '@velocut/render-sdk';
+import {createUploader,type MediaLibrary,type Observer} from '@velocut/render-sdk';
 import {kvGet,kvPut,loadMedia,saveMedia} from '@velocut/collab-sdk';
 import type {Store} from '../state/store';
 import {loadVideoGenConfig} from './videogen';
@@ -10,14 +11,15 @@ import type {ProjectStorage} from './projects';
 export function bindGeneration(store:Store,media:MediaLibrary,observer:Observer,projectId:string,storage:ProjectStorage,flushDocument?:()=>Promise<void>){
   const key=`generation:${projectId}`,channel=new BroadcastChannel(`velocut-generation-${projectId}`);
   const configured=(id:string)=>{const c=loadVideoGenConfig().channels.find(c=>c.id===id);if(!c||!c.apiKey)throw Error('Configure the generation channel and API key in Agent settings');const u=new URL(c.baseUrl);if(!['http:','https:'].includes(u.protocol)||u.username||u.password)throw Error('Channel needs an HTTP(S) endpoint and a separate API key');return c;};
-  const provider=(job:GenerationJob)=>{const c=configured(job.request.channel),p=createVideoGen(c.kind,{baseUrl:c.baseUrl,apiKey:c.apiKey});if(!p.submit||!p.poll)throw Error('Provider must implement submit/poll to support resumable generation');return p;};
+  const provider=(job:GenerationJob)=>{const c=configured(job.request.channel),p=videoProvider(c,job.request.model);if(!p.submit||!p.poll)throw Error('Provider must implement submit/poll to support resumable generation');return p;};
   const sanitize=(e:unknown,id:string)=>{let message=e instanceof Error?e.message:String(e);const c=loadVideoGenConfig().channels.find(c=>c.id===id);if(c?.apiKey)message=message.split(c.apiKey).join('[redacted]');if(e instanceof Error){e.message=message;return e;}return Error(message);};
   const png=async(bitmap:ImageBitmap)=>{try{const scale=Math.min(1,1920/Math.max(bitmap.width,bitmap.height));const canvas=new OffscreenCanvas(Math.max(1,Math.round(bitmap.width*scale)),Math.max(1,Math.round(bitmap.height*scale)));canvas.getContext('2d')!.drawImage(bitmap,0,0,canvas.width,canvas.height);return await canvas.convertToBlob({type:'image/png'});}finally{bitmap.close();}};
   const adapter:GenerationAdapter={
     projectId,
+    resolveRequest:resolveVideoRequest,validateRequest:validateConfiguredVideo,
     flushDocument,
-    channels:()=>loadVideoGenConfig().channels.map(({id,label,models,defaultModel,capabilities})=>({id,label,models,defaultModel,capabilities})),
-    binding:async id=>{const c=configured(id),p=createVideoGen(c.kind,{baseUrl:c.baseUrl,apiKey:c.apiKey});if(!p.submit||!p.poll)throw Error('Provider must implement submit/poll to support resumable generation');const bytes=new TextEncoder().encode(JSON.stringify([c.id,c.kind,c.baseUrl.replace(/\/+$/,''),c.apiKey]));return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),b=>b.toString(16).padStart(2,'0')).join('');},
+    channels:()=>loadVideoGenConfig().channels.map(({id,label,models,defaultModel,capabilities,modelSettings})=>({id,label,models,defaultModel,capabilities,modelSettings})),
+    binding:async(id,request)=>{const c=configured(id),p=videoProvider(c,request?.model??c.defaultModel??c.models[0]);if(!p.submit||!p.poll)throw Error('Provider must implement submit/poll to support resumable generation');const bytes=new TextEncoder().encode(JSON.stringify([c.id,c.kind,c.baseUrl.replace(/\/+$/,''),c.apiKey,...(request&&c.modelSettings?.[request.model]?.presetId?['preset:'+c.modelSettings[request.model].presetId]:[])]));return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),b=>b.toString(16).padStart(2,'0')).join('');},
     read:async()=>{const bytes=await kvGet(key);return bytes?JSON.parse(new TextDecoder().decode(bytes)) as GenerationLedger:null;},
     write:async value=>{await kvPut(key,new TextEncoder().encode(JSON.stringify(value)));channel.postMessage('changed');},
     lock:async work=>await navigator.locks.request(`${key}:ledger`,work),
@@ -26,10 +28,10 @@ export function bindGeneration(store:Store,media:MediaLibrary,observer:Observer,
     prepareReference:async(ref,signal)=>{
       const file=await loadMedia(ref.src,storage.mediaDir);if(!file)throw Error('Reference file is missing from this project');
       const cfg=loadUploadConfig();if(!cfg)throw Error('Configure Upload storage in Agent settings for image-to-video');
-      signal.throwIfAborted();const result=await createUploader(cfg.kind,cfg.config).upload(file,{name:ref.name,contentType:'image/png'});signal.throwIfAborted();
+      signal.throwIfAborted();const result=await createUploader(cfg.kind,cfg.config).upload(file,{name:ref.name,contentType:file.type||'application/octet-stream'});signal.throwIfAborted();
       const url=new URL(result.url);if(!['http:','https:'].includes(url.protocol))throw Error('Upload storage returned an invalid reference URL');return result.url;
     },
-    submit:async(job,firstFrameUrl,signal)=>{try{return await provider(job).submit!({model:job.request.model,prompt:job.request.prompt,durationS:job.providerDurationS,ratio:job.request.ratio,resolution:job.request.resolution,generateAudio:job.request.generateAudio,firstFrameUrl,requestId:job.requestId,signal});}catch(e){throw sanitize(e,job.request.channel);}},
+    submit:async(job,firstFrameUrl,signal,urls={})=>{try{return await provider(job).submit!({model:job.request.model,prompt:job.request.prompt,durationS:job.providerDurationS,ratio:job.request.ratio,resolution:job.request.resolution,generateAudio:job.request.generateAudio,firstFrameUrl,lastFrameUrl:job.request.lastFrameReferenceId?urls[job.request.lastFrameReferenceId]:undefined,referenceImageUrls:job.request.referenceImageIds?.map(id=>urls[id]),referenceVideoUrls:job.request.referenceVideoIds?.map(id=>urls[id]),referenceAudioUrls:job.request.referenceAudioIds?.map(id=>urls[id]),parameters:job.request.parameters,requestId:job.requestId,signal});}catch(e){throw sanitize(e,job.request.channel);}},
     poll:async(job,signal,handle)=>{try{return await provider(job).poll!(job.providerTaskId!,signal,handle);}catch(e){throw sanitize(e,job.request.channel);}},
     download:async(job,result,signal)=>{
       const filename=`generation-${job.id}.mp4`,src=`opfs://${filename}`;
@@ -51,9 +53,10 @@ export function bindGeneration(store:Store,media:MediaLibrary,observer:Observer,
       const doc=store.getState().doc;
       if(input.kind==='asset'){
         if(Object.keys(input).some(k=>!['kind','assetId'].includes(k)))throw Error('Invalid image reference fields');
-        const asset=doc.assets.find(a=>a.id===input.assetId);if(!asset||asset.kind!=='image'||!asset.src.startsWith('opfs://'))throw Error('Use an imported image asset, or capture its timeline frame');
+        const asset=doc.assets.find(a=>a.id===input.assetId);if(!asset||!asset.src.startsWith('opfs://'))throw Error('Use an imported project asset');
         const file=await loadMedia(asset.src,storage.mediaDir);if(!file)throw Error('Image asset is not in project storage');signal?.throwIfAborted();
-        return {blob:await png(await createImageBitmap(file)),name:asset.name+'.png',provenance:{kind:'asset',assetId:asset.id}};
+        if(asset.kind!=='image')return {blob:file,name:file.name,kind:asset.kind,provenance:{kind:'asset',assetId:asset.id,durationUs:asset.durationUs}};
+        return {blob:await png(await createImageBitmap(file)),name:asset.name+'.png',kind:'image',provenance:{kind:'asset',assetId:asset.id}};
       }
       if(input.kind!=='timeline'||Object.keys(input).some(k=>!['kind','timeUs','clipId'].includes(k))||!Number.isSafeInteger(input.timeUs)||(input.timeUs as number)<0)throw Error('Invalid timeline reference');
       const fg=store.evaluate(input.timeUs as number);if(fg.pendingGenerationIds?.length)throw Error('This frame contains unresolved generation; choose a completed frame');
@@ -62,7 +65,7 @@ export function bindGeneration(store:Store,media:MediaLibrary,observer:Observer,
       const captured=await observer.grab({kind:'graph',fg},1920);if(!captured)throw Error('Frame capture failed');if(signal?.aborted){captured.bitmap.close();signal.throwIfAborted();}
       return {blob:await png(captured.bitmap),name:'timeline-frame.png',provenance:{kind:'timeline',timeUs:input.timeUs,...(input.clipId?{clipId:input.clipId}:{composite:true})}};
     },
-    saveReference:(id,blob)=>saveMedia(new File([blob],`generation-${id}.png`,{type:'image/png'}),storage.mediaDir),
+    saveReference:(id,blob,name)=>saveMedia(new File([blob],`generation-${id}.${name?.split('.').pop()?.replace(/[^a-zA-Z0-9]/g,'')||'png'}`,{type:blob.type||'image/png'}),storage.mediaDir),
     referenceBlob:async ref=>{const file=await loadMedia(ref.src,storage.mediaDir);if(!file)throw Error('Reference file is missing');return file;},
     // The document's existing restoreMedia subscription attaches new assets.
     // Starting a second probe here would race it and retain duplicate decoders.
@@ -79,7 +82,8 @@ export async function createGenerationSlot(store:Store,atUs:number,durationUs:nu
   const gcd=(a:number,b:number):number=>b?gcd(b,a%b):a;const d=gcd(doc.width,doc.height);
   const operations:AtomicOperation[]=[];
   if(!trackId)operations.push({id:'track',command:ops.addTrack({kind:'video',name:'Generated'})});
-  operations.push({id:'slot',command:ops.addGenerationSlot({trackId:trackId??ref('track','trackId'),startUs:atUs,durationUs,request:{channel:channel?.id??'',model:channel?.defaultModel??channel?.models[0]??'',prompt:'',ratio:`${doc.width/d}:${doc.height/d}`}})});
+  const model=channel?.defaultModel??channel?.models[0]??'',defaults=parameterDefaults(channel?.modelSettings?.[model]);
+  operations.push({id:'slot',command:ops.addGenerationSlot({trackId:trackId??ref('track','trackId'),startUs:atUs,durationUs,request:{channel:channel?.id??'',model,prompt:'',...(Object.keys(defaults).some(k=>!['ratio','resolution','generateAudio'].includes(k))?{parameters:Object.fromEntries(Object.entries(defaults).filter(([k])=>!['ratio','resolution','generateAudio'].includes(k)))}:{}),...(channel?.kind==='minimax-video'?{}:{ratio:typeof defaults.ratio==='string'?defaults.ratio:`${doc.width/d}:${doc.height/d}`}),...(typeof defaults.resolution==='string'?{resolution:defaults.resolution}:{}),...(typeof defaults.generateAudio==='boolean'?{generateAudio:defaults.generateAudio}:{})}})});
   const r=await api.transaction({action:'commit',runtimeId:api.runtimeId,expectedRevision:store.getState().revision,requestId:'slot-'+crypto.randomUUID(),operations});
   if(!r.ok)throw Error(r.error.message);return (r.data as {results:{slot:{slotId:string}}}).results.slot.slotId;
 }

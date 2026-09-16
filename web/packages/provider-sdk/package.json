@@ -12,6 +12,10 @@
     "./video": {
       "types": "./dist/video.d.ts",
       "import": "./dist/video.js"
+    },
+    "./catalog": {
+      "types": "./dist/catalog.d.ts",
+      "import": "./dist/catalog.js"
     }
   },
   "types": "./dist/index.d.ts",

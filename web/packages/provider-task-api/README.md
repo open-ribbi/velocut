@@ -22,3 +22,20 @@ has no assumed remote cancel, pricing or idempotency header support.
 `TaskApiVideoGen` preserves the old render-sdk API through the same implementation.
 The render-sdk root and `/videogen` subpath re-export it for existing consumers.
 This source/local package is not yet published to npm.
+
+
+## Model configuration and Ark
+
+`modelSettings` selects a preset and optional additional scalar parameter fields.
+The task API adapter forwards validated `parameters` into `params`, resolves
+first/last frames and image/video/audio references, and accepts documented wrapped
+responses (`data.task_id`/`data.id`, `data.result.url`). A Base URL ending in
+`/api/v1` is normalized without duplicating the route. Presets use the actual
+service model IDs from the referenced evo-backend mapping; users can edit those
+IDs for aliases on compatible gateways.
+
+`arkVideoProvider` is a separate registered protocol (`ark-video`) for
+`/contents/generations/tasks` under the supplied Ark API base, usually ending in
+`/api/v3`. It maps references into typed content with explicit media roles and
+returns the completed content's video URL. It does not assume the task-gateway
+request/response shape. The protocol selector in Studio includes both adapters.

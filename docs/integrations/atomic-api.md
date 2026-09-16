@@ -1294,8 +1294,8 @@ validation also passes. This source change has not been published to npm.
 
 Generation is split between undoable document commands and persistent external
 jobs. These additions are in source and local builds, not the published 0.0.1.
-The document format is now **3**; versions 1/2 migrate forward. Older writers
-must reject format 3 rather than silently discard generation slots.
+The document format is now **4**; versions 1/2/3 migrate forward. Older writers
+must reject format 4 rather than silently discard generation slots.
 
 | Operation | Responsibility |
 | --- | --- |
@@ -1398,3 +1398,23 @@ provides `VideoGenerator.submit/poll`, `VideoGenPoll` and optional
 `VideoModelCapabilities`; a legacy generate-only provider must add lifecycle
 methods before it can back resumable jobs. MCP exposes `velocut_generation` with
 the same actions and CodeAct exposes `velocut.generation()`.
+
+
+### Configured model parameters and reference roles
+
+Generation requests additionally accept scalar `parameters`, `lastFrameReferenceId`,
+`referenceImageIds`, `referenceVideoIds` and `referenceAudioIds`. Values must match
+configured model fields; endpoint/token/raw-reference-URL controls are excluded.
+The host applies model defaults, validates parameter types, durations and supported
+reference combinations before queuing paid work. Changed parameters or ordered
+references change intentVersion. These values survive Rust/TS editing, undo and
+reload in document format 4.
+
+`captureReference({source:{kind:'asset',assetId},expectedRevision})` can snapshot
+imported image, audio or video files; references expose their media kind. Frame
+capture remains PNG. All referenced IDs must belong to the project and match
+individual input roles, including when an ID appears in several roles. Upload
+uses the captured media type and only occurs when generation is submitted.
+`generation({action:'capabilities'})` now includes non-secret model settings so
+Agents can discover parameter defaults and field definitions. Human configuration
+is available through the toolbar's Model settings dialog.

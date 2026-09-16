@@ -10,3 +10,9 @@ export function createVideoGen(kindId:string,config:VideoGenEndpointConfig):Vide
   const kind=kinds.get(kindId);if(!kind)throw Error(`unknown video-gen provider kind: ${kindId} (have: ${[...kinds.keys()].join(', ')})`);return kind.create(config);
 }
 registerVideoGenProvider({id:'task-api',label:'Async task API (submit → poll relays)',create:config=>new TaskApiVideoGen(config)});
+
+import {ProviderRegistry} from '@velocut/provider-sdk';
+import {asVideoGenerator} from '@velocut/provider-sdk/video';
+import {arkVideoProvider} from '@velocut/provider-task-api';
+import {minimaxVideoProvider} from '@velocut/provider-minimax';
+for(const definition of [arkVideoProvider,minimaxVideoProvider])registerVideoGenProvider({id:definition.id,label:definition.label,create:config=>asVideoGenerator(new ProviderRegistry().register(definition).create({id:definition.id,provider:definition.id,config:{baseUrl:config.baseUrl,...(config.modelSettings?{modelSettings:config.modelSettings as any}:{})},credentials:{apiKey:{store:'host',key:'selected-channel'}}},{resolveCredential:async()=>config.apiKey}))});

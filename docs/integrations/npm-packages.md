@@ -8,8 +8,8 @@ published. Build/test commands never publish to the registry.
 | Package | Environment | Public responsibility |
 | --- | --- | --- |
 | `@velocut/provider-sdk` | Node/browser | Host-neutral provider/model/channel/lifecycle contracts (unreleased) |
-| `@velocut/provider-task-api` | Node/browser | Video task API transport (unreleased) |
-| `@velocut/provider-minimax` | Node/browser | MiniMax encoded speech transport (unreleased) |
+| `@velocut/provider-task-api` | Node/browser | Task API / Ark video transports (unreleased) |
+| `@velocut/provider-minimax` | Node/browser | MiniMax video / speech / music transports (unreleased) |
 | `@velocut/protocol` | Node/browser | Document and command contract, validation, bridge compatibility |
 | `@velocut/core-ts` | Node/browser | Pure timeline engine and evaluation; no GPU required |
 | `@velocut/render-sdk` | Browser | WebGPU, WebCodecs, workers, audio, export, observation |

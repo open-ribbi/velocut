@@ -1,3 +1,4 @@
+import {modelPreset,parameterDefaults,type ModelSettings} from '@velocut/provider-sdk/catalog';
 // services/videogen.ts — AI video generation: channel configuration + the
 // generate-and-land pipeline.
 //
@@ -31,6 +32,7 @@ export interface VideoGenChannel {
   models: string[];
   defaultModel?: string;
   capabilities?:Record<string,VideoModelCapabilities>;
+  modelSettings?:Record<string,ModelSettings>;
 }
 
 export interface VideoGenConfig {
@@ -68,7 +70,8 @@ export function loadVideoGenConfig(): VideoGenConfig {
             ...c,
             kind: c.kind || 'task-api',
             models: Array.isArray(c.models) ? c.models.filter((m) => typeof m === 'string') : [],
-            capabilities,
+            modelSettings:c.modelSettings,
+            capabilities:Object.fromEntries([...new Set([...Object.keys(c.modelSettings??{}),...Object.keys(capabilities??{})])].map(id=>[id,{...modelPreset(c.modelSettings?.[id]?.presetId)?.capabilities,...c.modelSettings?.[id]?.capabilities,...capabilities?.[id]}])),
           });}),
       };
     }
@@ -79,7 +82,7 @@ export function loadVideoGenConfig(): VideoGenConfig {
 }
 
 export function saveVideoGenConfig(cfg: VideoGenConfig): void {
-  localStorage.setItem(STORAGE, JSON.stringify(cfg));
+  localStorage.setItem(STORAGE, JSON.stringify(cfg));window.dispatchEvent(new Event('velocut-models-changed'));
 }
 
 /** The channel surface safe to show an agent/script: no URLs, no keys. */
@@ -124,6 +127,8 @@ export interface VideoGenClipOptions {
   lastFrameUrl?: string;
   referenceImageUrls?: string[];
   referenceVideoUrls?: string[];
+  referenceAudioUrls?:string[];
+  parameters?:Record<string,string|number|boolean>;
   /** Timeline placement (defaults to appending on the Generated track). */
   atUs?: number;
   trackId?: string;
@@ -132,7 +137,7 @@ export interface VideoGenClipOptions {
   signal?: AbortSignal;
 }
 
-const REF_FIELDS = ['firstFrameUrl', 'lastFrameUrl', 'referenceImageUrls', 'referenceVideoUrls'] as const;
+const REF_FIELDS = ['firstFrameUrl', 'lastFrameUrl', 'referenceImageUrls', 'referenceVideoUrls','referenceAudioUrls'] as const;
 
 /** The sandbox-restricted videoGen entry (ScriptApi.videoGen): channel id +
  *  model + prompt, and reference media ONLY as upload:// handles minted by
@@ -206,7 +211,7 @@ export async function generateVideoClip(store: Store, media: MediaLibrary, opts:
 
   let gen;
   try {
-    gen = createVideoGen(ch.kind, { baseUrl: ch.baseUrl, apiKey: ch.apiKey });
+    gen = createVideoGen(ch.kind, { baseUrl: ch.baseUrl, apiKey: ch.apiKey,modelSettings:ch.modelSettings?.[model] });
   } catch (e) {
     const kinds = videoGenProviders().map((k) => k.id).join(', ');
     return { ok: false, message: `videoGen: ${e instanceof Error ? e.message : String(e)} (registered kinds: ${kinds})` };
@@ -221,25 +226,28 @@ export async function generateVideoClip(store: Store, media: MediaLibrary, opts:
     if (!real) throw new Error(`videoGen: unknown upload handle '${v}' — handles come from uploadFrame/uploadClip in THIS session`);
     return real;
   };
-  let refs: Pick<VideoGenRequest, 'firstFrameUrl' | 'lastFrameUrl' | 'referenceImageUrls' | 'referenceVideoUrls'>;
+  let refs: Pick<VideoGenRequest, 'firstFrameUrl' | 'lastFrameUrl' | 'referenceImageUrls' | 'referenceVideoUrls' | 'referenceAudioUrls'>;
   try {
     refs = {
       firstFrameUrl: opts.firstFrameUrl && deref(opts.firstFrameUrl),
       lastFrameUrl: opts.lastFrameUrl && deref(opts.lastFrameUrl),
       referenceImageUrls: opts.referenceImageUrls?.map(deref),
       referenceVideoUrls: opts.referenceVideoUrls?.map(deref),
+      referenceAudioUrls:opts.referenceAudioUrls?.map(deref),
     };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : String(e) };
   }
 
+  const {ratio,resolution,generateAudio,...parameters}=parameterDefaults(ch.modelSettings?.[model]);
   const req: VideoGenRequest = {
     model,
     prompt: opts.prompt,
     durationS: opts.durationS,
-    resolution: opts.resolution,
-    ratio: opts.ratio,
-    generateAudio: opts.generateAudio,
+    resolution: opts.resolution??(typeof resolution==='string'?resolution:undefined),
+    ratio: opts.ratio??(typeof ratio==='string'?ratio:undefined),
+    generateAudio: opts.generateAudio??(typeof generateAudio==='boolean'?generateAudio:undefined),
+    parameters:{...parameters,...opts.parameters},
     ...refs,
     onStatus: opts.onStatus,
     signal: opts.signal,

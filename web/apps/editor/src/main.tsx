@@ -1,3 +1,4 @@
+import {narrationConfig} from './services/model-config';
 import { atomicRuntime } from '@velocut/runtime';
 import { ops, ref } from '@velocut/protocol';
 import type { PreviewSessionOptions } from '@velocut/render-sdk';
@@ -172,6 +173,7 @@ async function bootstrap() {
       TOKENS.Tts,
       () =>
         new ConfigurableTts((): TtsConfig => {
+          const selected=narrationConfig();if(selected)return selected;
           let config: Record<string, unknown> | undefined;
           try {
             config = JSON.parse(localStorage.getItem('velocut.ttsConfig') || 'null') ?? undefined;

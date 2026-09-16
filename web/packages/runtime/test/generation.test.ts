@@ -104,7 +104,7 @@ test('crash recovery preserves an unknown submission even without a saved receip
   const b=backend();const seeded=fixture(b);await seeded.manager.ready;seeded.manager.dispose();await sleep(20);
   const now=Date.now();b.ledger={version:1,projectId:'project',references:[],jobs:[{id:'gen_lost',requestId:'lost',slotId:seeded.slotId,intentVersion:1,projectId:'project',request,targetDurationUs:6e6,providerDurationS:10,state:'submitting',binding:'project:test',createdAt:now,updatedAt:now,submissionStartedAt:0}]};
   const next=fixture(b);t.after(()=>next.manager.dispose());await until(next.manager,'gen_lost',j=>j.state==='submission_unknown');
-  assert.equal((await next.manager.execute({action:'resume',jobId:'gen_lost'})).ok,false);assert.equal(b.submits,0);assert.equal(b.ledger!.version,2);
+  assert.equal((await next.manager.execute({action:'resume',jobId:'gen_lost'})).ok,false);assert.equal(b.submits,0);assert.equal(b.ledger!.version,3);
   assert.equal(ok(await next.manager.execute({action:'submit',slotId:next.slotId,intentVersion:1,requestId:'lost'})).job.id,'gen_lost');
 });
 
@@ -137,4 +137,10 @@ test('opaque provider handles persist across reload and stay outside public job 
   const f=fixture(b);t.after(()=>f.manager.dispose());const job=await submit(f);await until(f.manager,job.id,j=>!!j.providerTaskId);await sleep(25);assert.ok(!JSON.stringify(ok(await f.manager.execute({action:'get',jobId:job.id}))).includes('private-checkpoint'));f.manager.dispose();
   assert.equal(b.ledger!.jobs[0].providerHandle?.region,'west');const restored=fixture(b);t.after(()=>restored.manager.dispose());b.ready=true;
   const complete=await until(restored.manager,job.id,j=>j.state==='succeeded');assert.equal(b.submits,1);assert.equal(complete.providerHandle,undefined);assert.ok(!JSON.stringify(complete).includes('private-checkpoint'));
+});
+
+test('reference roles are validated before submission, including one reference reused with an incompatible role',async t=>{
+ const b=backend(),base=b.adapter.bind(b);b.adapter=(project='project')=>{const a=base(project);a.capture=async()=>({blob:new Blob(['video']),name:'clip.mp4',kind:'video',provenance:{kind:'asset'}});return a;};
+ const f=fixture(b);t.after(()=>f.manager.dispose());const ref=ok(await f.manager.execute({action:'captureReference',source:{kind:'asset',assetId:'source'},expectedRevision:f.store.getState().revision})).reference;
+ ok(f.store.dispatch({type:'updateGenerationSlot',slotId:f.slotId,request:{...request,firstFrameReferenceId:ref.id,referenceVideoIds:[ref.id]}}));const attempted=await f.manager.execute({action:'submit',slotId:f.slotId,intentVersion:2,requestId:'wrong-role'});assert.equal(attempted.ok,false);assert.match(attempted.message!,/media kind/);assert.equal(b.submits,0);
 });

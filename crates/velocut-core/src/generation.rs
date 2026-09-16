@@ -2,10 +2,39 @@ use crate::command::{apply_inner, CmdError, CmdResult, EditCommand, Event};
 use crate::model::*;
 
 fn request_ok(r: &GenerationRequest) -> bool {
-    r.first_frame_reference_id
-        .as_ref()
-        .map(|s| !s.is_empty())
-        .unwrap_or(true)
+    [&r.first_frame_reference_id, &r.last_frame_reference_id]
+        .iter()
+        .all(|v| v.as_ref().map(|s| !s.is_empty()).unwrap_or(true))
+        && [
+            &r.reference_image_ids,
+            &r.reference_video_ids,
+            &r.reference_audio_ids,
+        ]
+        .iter()
+        .all(|v| {
+            v.as_ref()
+                .map(|ids| ids.iter().all(|s| !s.is_empty()))
+                .unwrap_or(true)
+        })
+        && r.parameters
+            .as_ref()
+            .map(|values| {
+                values
+                    .values()
+                    .all(|v| v.is_string() || v.is_boolean() || v.is_number())
+            })
+            .unwrap_or(true)
+}
+fn request_equal(a: &GenerationRequest, b: &GenerationRequest) -> bool {
+    let normalize = |r: &GenerationRequest| {
+        let mut v = r.clone();
+        v.parameters.get_or_insert_with(Default::default);
+        v.reference_image_ids.get_or_insert_with(Vec::new);
+        v.reference_video_ids.get_or_insert_with(Vec::new);
+        v.reference_audio_ids.get_or_insert_with(Vec::new);
+        v
+    };
+    normalize(a) == normalize(b)
 }
 fn overlap(t: &Track, start: TimeUs, duration: TimeUs, ignore: Option<&str>) -> bool {
     t.clips.iter().any(|c| {
@@ -160,7 +189,10 @@ fn run(doc: &mut Document, cmd: &EditCommand) -> CmdResult {
                 doc.tracks[ti].clips.sort_by_key(|c| c.start_us);
             }
             if duration != s.duration_us
-                || request.as_ref().map(|r| r != &s.request).unwrap_or(false)
+                || request
+                    .as_ref()
+                    .map(|r| !request_equal(r, &s.request))
+                    .unwrap_or(false)
             {
                 s.intent_version += 1;
             }

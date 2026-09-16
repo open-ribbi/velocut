@@ -97,6 +97,20 @@ Edits are attributed in the branching history. Inspect a change, undo it, or ret
 
 The built-in **Assistant** is a separate, optional integration. Configure an Anthropic-compatible provider there to use it. Browser-local Whisper/VITS and cloud generation services have their own dependencies or credentials; they are not required for editing or Codex. Development-only cloud relays are not included in the portable server. See the [security and data-flow notes](SECURITY.md).
 
+### Configure your own models (unreleased source)
+
+Open **Model settings** in the toolbar, choose a protocol/model preset, and enter
+your own **Base URL** and **API Token**. Model IDs, default parameters and custom
+scalar controls are editable. Presets cover Task API MiniMax H3 and Seedance,
+Ark content tasks, and native MiniMax video, speech and music. Compatible services
+need configuration only; a different HTTP protocol needs an adapter.
+
+Video channels feed the timeline generation panel. Speech and music can be
+previewed in the model dialog, recovered from saved generation history and kept
+in assets. Reference storage settings are available there too. Configuration
+checks are local; generation uses the selected service's credits. See the
+[model configuration guide](docs/integrations/providers.md#configure-models-in-studio).
+
 ### Generate into a timeline range (unreleased source)
 
 Choose **Draw generation range** in the timeline and drag a video interval, or use
@@ -118,8 +132,8 @@ The editor and its integrations share a monorepo. The published release contains
 | Package | Purpose |
 | --- | --- |
 | [`@velocut/provider-sdk`](web/packages/provider-sdk) | Provider/model/channel contracts, credential references and lifecycle APIs (unreleased) |
-| [`@velocut/provider-task-api`](web/packages/provider-task-api) | Standalone video task API adapter (unreleased) |
-| [`@velocut/provider-minimax`](web/packages/provider-minimax) | Standalone MiniMax speech adapter; encoded audio, no browser decoder (unreleased) |
+| [`@velocut/provider-task-api`](web/packages/provider-task-api) | Task API and Ark video adapters (unreleased) |
+| [`@velocut/provider-minimax`](web/packages/provider-minimax) | MiniMax video, speech and music adapters (unreleased) |
 | [`@velocut/protocol`](web/packages/protocol) | Document types, commands, validation and protocol compatibility |
 | [`@velocut/core-ts`](web/packages/core-ts) | Pure timeline editing, evaluation and engine history |
 | [`@velocut/render-sdk`](web/packages/render-sdk) | WebGPU composition, media workers, audio and export; includes a Vite helper |

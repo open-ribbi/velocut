@@ -1,0 +1,100 @@
+{
+  "name": "Model parameters and reference roles persist and participate in generation intent identity",
+  "steps": [
+    {
+      "apply": {
+        "type": "addTrack",
+        "kind": "video"
+      }
+    },
+    {
+      "apply": {
+        "type": "addGenerationSlot",
+        "trackId": "track_1",
+        "startUs": 0,
+        "durationUs": 1000000,
+        "request": {
+          "channel": "test",
+          "model": "model",
+          "prompt": "test"
+        }
+      }
+    },
+    {
+      "apply": {
+        "type": "updateGenerationSlot",
+        "slotId": "slot_2",
+        "request": {
+          "channel": "test",
+          "model": "model",
+          "prompt": "test",
+          "parameters": {},
+          "referenceImageIds": []
+        }
+      }
+    },
+    {
+      "apply": {
+        "type": "updateGenerationSlot",
+        "slotId": "slot_2",
+        "request": {
+          "channel": "test",
+          "model": "model",
+          "prompt": "test",
+          "parameters": {
+            "seed": 7,
+            "watermark": false
+          },
+          "lastFrameReferenceId": "last",
+          "referenceAudioIds": [
+            "sound"
+          ]
+        }
+      }
+    },
+    {
+      "apply": {
+        "type": "updateGenerationSlot",
+        "slotId": "slot_2",
+        "request": {
+          "channel": "test",
+          "model": "model",
+          "prompt": "test",
+          "parameters": {
+            "watermark": false,
+            "seed": 7
+          },
+          "lastFrameReferenceId": "last",
+          "referenceAudioIds": [
+            "sound"
+          ]
+        }
+      }
+    },
+    {
+      "reload": true
+    }
+  ],
+  "expect": {
+    "generationSlots": [
+      {
+        "id": "slot_2",
+        "intentVersion": 2,
+        "request": {
+          "channel": "test",
+          "model": "model",
+          "prompt": "test",
+          "parameters": {
+            "seed": 7,
+            "watermark": false
+          },
+          "lastFrameReferenceId": "last",
+          "referenceAudioIds": [
+            "sound"
+          ]
+        }
+      }
+    ],
+    "durationUs": 1000000
+  }
+}

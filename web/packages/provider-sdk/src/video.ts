@@ -19,6 +19,8 @@ export interface VideoGenRequest {
   referenceVideoUrls?: string[];
   signal?: AbortSignal;
   requestId?: string;
+  parameters?: Record<string,string|number|boolean>;
+  referenceAudioUrls?:string[];
   /** Progress callback: provider status ('pending'/'processing'/…) + seconds elapsed. */
   onStatus?: (status: string, elapsedS: number) => void;
 }
@@ -57,6 +59,7 @@ export interface VideoGenEndpointConfig {
   /** Overall generation deadline (default 20 min — multi-reference tasks
    *  run well past a t2v's couple of minutes). */
   timeoutMs?: number;
+  modelSettings?:import('./catalog').ModelSettings;
 }
 
 /** A registered protocol implementation — self-describing so the UI/agent can
@@ -77,10 +80,10 @@ export function asVideoGenerator(provider:ConfiguredProvider):VideoGenerator {
   };
   const api:VideoGenerator={
     async submit(req){
-      const urls=new Map<string,string>(),input:JsonObject={prompt:req.prompt};
+      const urls=new Map<string,string>(),input:JsonObject={prompt:req.prompt,...(req.parameters?{parameters:req.parameters}:{})};
       for(const name of ['durationS','ratio','resolution','generateAudio'] as const)if(req[name]!==undefined)input[name]=req[name]!;
       for(const [from,to] of [['firstFrameUrl','firstFrameReferenceId'],['lastFrameUrl','lastFrameReferenceId']] as const)if(req[from]){urls.set(to,req[from]!);input[to]=to;}
-      for(const [from,to] of [['referenceImageUrls','referenceImageIds'],['referenceVideoUrls','referenceVideoIds']] as const)if(req[from]?.length)input[to]=req[from]!.map((url,i)=>{const id=to+'_'+i;urls.set(id,url);return id;});
+      for(const [from,to] of [['referenceImageUrls','referenceImageIds'],['referenceVideoUrls','referenceVideoIds'],['referenceAudioUrls','referenceAudioIds']] as const)if(req[from]?.length)input[to]=req[from]!.map((url,i)=>{const id=to+'_'+i;urls.set(id,url);return id;});
       const receipt=await provider.submit({capability:'video.generate',model:req.model,input},{signal:req.signal,requestId:req.requestId,resources:{urlFor:async id=>{const url=urls.get(id);if(!url)throw Error('Unknown video reference');return url;}}});
       return {taskId:receipt.id,...(receipt.state?{handle:receipt.state}:{})};
     },

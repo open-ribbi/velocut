@@ -1,3 +1,4 @@
+import {ModelManager} from './ModelManager';
 import { Icon } from './primitives/Icon';
 import { Dialog } from './primitives/Dialog';
 import { CodexPanel } from './CodexPanel';
@@ -59,6 +60,7 @@ export function Toolbar({
   onEdit: () => void;
   onDirector: () => void;
 }) {
+  const [modelsOpen,setModelsOpen]=useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const previewRate = useSyncExternalStore(playback.subscribeRate, () => playback.rate);
   const [exportError, setExportError] = useState<string | null>(null);
@@ -152,6 +154,7 @@ export function Toolbar({
 
   return (
     <header className="toolbar">
+      <Dialog open={modelsOpen} title="Media models" onClose={()=>setModelsOpen(false)} className="generation-dialog">{modelsOpen&&<ModelManager store={store} media={media}/>}</Dialog>
       <div className="project-bar">
         <div className="brand">
           <span className="brand-mark" aria-hidden="true">
@@ -176,6 +179,7 @@ export function Toolbar({
           </button>
         </div>
         <span className="spacer" />
+        <button className="icon-button" aria-label="Model settings" title="Media model settings" onClick={()=>setModelsOpen(true)}><Icon name="settings" size={16}/></button>
         {codex && <CodexPanel connection={codex} />}
         <button
           className="primary export-trigger"

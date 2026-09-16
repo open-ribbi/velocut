@@ -11,3 +11,13 @@ test('invalid audio and service errors are failures instead of partial decoded b
     const provider=configured(async()=>Response.json(body));await assert.rejects(()=>provider.execute({capability:'audio.synthesize',model:'test-speech',input:{text:'Hello'}}),(e:any)=>!e.message.includes('secret')&&e.outcome!==undefined);
   }
 });
+
+test('MiniMax native video uses submit/query/file retrieval rather than the speech route',async()=>{
+ const {minimaxVideoProvider}=await import('../dist/index.js');const calls:string[]=[];
+ const provider=new ProviderRegistry().register(minimaxVideoProvider).create({id:'video',provider:'minimax-video',config:{baseUrl:'https://api.invalid/v1',modelSettings:{presetId:'hailuo-2.3'}},credentials:{apiKey:{store:'test',key:'k'}}},{resolveCredential:async()=> 'fake',fetch:async(url,init)=>{calls.push(String(url));if(init?.method==='POST'){assert.equal(JSON.parse(String(init.body)).duration,6);return Response.json({task_id:'v1'});}if(String(url).includes('query'))return Response.json({status:'Success',file_id:'f1'});return Response.json({file:{download_url:'https://cdn.invalid/v1.mp4'}});}});
+ const receipt=await provider.submit({capability:'video.generate',model:'MiniMax-Hailuo-2.3',input:{prompt:'Lake',durationS:6,resolution:'1080P'}});const poll=await provider.poll(receipt);assert.equal(poll.state,'ready');assert.equal((await provider.collect(poll.receipt!)).outputs[0].kind,'video');assert.deepEqual(calls,['https://api.invalid/v1/video_generation','https://api.invalid/v1/query/video_generation?task_id=v1','https://api.invalid/v1/files/retrieve?file_id=f1']);
+});
+test('MiniMax music maps lyrics and audio parameters to its own endpoint',async()=>{
+ const {minimaxMusicProvider}=await import('../dist/index.js');const provider=new ProviderRegistry().register(minimaxMusicProvider).create({id:'music',provider:'minimax-music',config:{baseUrl:'https://api.invalid'},credentials:{apiKey:{store:'test',key:'k'}}},{resolveCredential:async()=> 'fake',fetch:async(url,init)=>{assert.equal(String(url),'https://api.invalid/v1/music_generation');const b=JSON.parse(String(init?.body));assert.equal(b.lyrics,'[Verse] Hello');assert.equal(b.audio_setting.sample_rate,44100);return Response.json({data:{audio:'494433'}});}});
+ const out=await provider.execute({capability:'audio.generate',model:'music-2.5',input:{prompt:'Jazz',lyrics:'[Verse] Hello',sampleRate:44100}});assert.equal(out.outputs[0].source.kind,'bytes');
+});

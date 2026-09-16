@@ -1,3 +1,4 @@
+import {ModelSettings as VideoGenSettings} from './ModelSettings';
 import { atomicRuntime } from '@velocut/runtime';
 import { Icon } from './primitives/Icon';
 import { directorSession, type DirectorSessionOptions } from '../services/director-session';
@@ -54,14 +55,8 @@ import {
   type LlmConfig,
 } from '../services/llm';
 import {
-  loadVideoGenConfig,
-  parseVideoCapabilities,
-  saveVideoGenConfig,
-  testVideoGenChannel,
   describeVideoGenChannels,
   sandboxVideoGen,
-  type VideoGenChannel,
-  type VideoGenConfig,
 } from '../services/videogen';
 import {
   loadUploadConfig,
@@ -72,7 +67,7 @@ import {
 } from '../services/upload';
 import { importMediaFiles } from '../services/import';
 import { onAgentReference, referenceToken } from '../services/reference';
-import { videoGenProviders, uploaderKinds } from '@velocut/render-sdk';
+import { uploaderKinds } from '@velocut/render-sdk';
 import { useFloatingDock } from './useDraggable';
 
 interface ChatItem {
@@ -741,233 +736,7 @@ export function AgentConsole({
  *  but plural: each CHANNEL is an endpoint + key + model list speaking one of
  *  the registered protocol kinds (render-sdk registry). Channels are what the
  *  agent names; endpoints/keys never leave this browser's localStorage. */
-export function VideoGenSettings() {
-  const [capabilityError,setCapabilityError]=useState<string|null>(null);
-  const [cfg, setCfg] = useState<VideoGenConfig>(loadVideoGenConfig);
-  const [draft, setDraft] = useState<VideoGenChannel | null>(null);
-  const [editingId, setEditingId] = useState<string | null>(null); // null = adding
-  const [keyDraft, setKeyDraft] = useState('');
-  const [test, setTest] = useState<{
-    busy: boolean;
-    ok?: boolean;
-    message?: string;
-  }>({ busy: false });
-  const kinds = videoGenProviders();
-
-  const persist = (channels: VideoGenChannel[]) => {
-    const next = { channels };
-    saveVideoGenConfig(next);
-    setCfg(next);
-  };
-  const closeEditor = () => {
-    setCapabilityError(null);
-    setDraft(null);
-    setEditingId(null);
-    setKeyDraft('');
-    setTest({ busy: false });
-  };
-  const finalDraft = (): VideoGenChannel | null => {
-    if (!draft) return null;
-    const models = draft.models.map((m) => m.trim()).filter(Boolean);
-    return {
-      ...draft,
-      id: draft.id.trim(),
-      baseUrl: draft.baseUrl.trim().replace(/\/+$/, ''),
-      apiKey: keyDraft.trim() || draft.apiKey,
-      models,
-      defaultModel:
-        draft.defaultModel && models.includes(draft.defaultModel) ? draft.defaultModel : models[0],
-    };
-  };
-
-  if (draft) {
-    const d = finalDraft()!;
-    const idTaken = editingId !== d.id && cfg.channels.some((c) => c.id === d.id);
-    const valid = Boolean(d.id && d.baseUrl && d.apiKey && d.models.length && !idTaken&&!capabilityError);
-    return (
-      <div className="videogen-settings">
-        <h4>{editingId ? `Edit channel — ${editingId}` : 'Add video generation channel'}</h4>
-        <label className="llm-row">
-          <span>Channel id</span>
-          <input
-            value={draft.id}
-            placeholder="my-relay (what the agent names)"
-            onChange={(e) => setDraft({ ...draft, id: e.target.value })}
-          />
-        </label>
-        {kinds.length > 1 && (
-          <label className="llm-row">
-            <span>Protocol</span>
-            <select
-              value={draft.kind}
-              onChange={(e) => setDraft({ ...draft, kind: e.target.value })}
-            >
-              {kinds.map((k) => (
-                <option key={k.id} value={k.id}>
-                  {k.label}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-        <label className="llm-row">
-          <span>Base URL</span>
-          <input
-            type="url"
-            value={draft.baseUrl}
-            placeholder="https://api.your-provider.example"
-            onChange={(e) => setDraft({ ...draft, baseUrl: e.target.value })}
-          />
-        </label>
-        {import.meta.env.DEV && (
-          <button
-            className="llm-devproxy"
-            title="Channel APIs usually reject browser (CORS) requests from localhost — route through the Vite dev proxy instead"
-            onClick={() => {
-              const host = draft.baseUrl.match(/^https?:\/\/([^/]+)/)?.[1];
-              if (host && !draft.baseUrl.includes('/videogen-proxy/')) {
-                setDraft({
-                  ...draft,
-                  baseUrl: `${location.origin}/videogen-proxy/${host}`,
-                });
-              }
-            }}
-          >
-            Use local dev proxy (CORS relay)
-          </button>
-        )}
-        <label className="llm-row">
-          <span>API key</span>
-          <input
-            type="password"
-            value={keyDraft}
-            placeholder={
-              draft.apiKey ? '•••••••• (saved — type to replace)' : 'the key your provider issued'
-            }
-            onChange={(e) => setKeyDraft(e.target.value)}
-          />
-        </label>
-        <label className="llm-row">
-          <span>Models</span>
-          <input
-            value={draft.models.join(', ')}
-            placeholder="model ids, comma-separated (as your provider names them)"
-            onChange={(e) =>
-              setDraft({
-                ...draft,
-                models: e.target.value.split(',').map((s) => s.trim()),
-              })
-            }
-          />
-        </label>
-        {d.models.length > 1 && (
-          <label className="llm-row">
-            <span>Default model</span>
-            <select
-              value={d.defaultModel}
-              onChange={(e) => setDraft({ ...draft, defaultModel: e.target.value })}
-            >
-              {d.models.map((m) => (
-                <option key={m}>{m}</option>
-              ))}
-            </select>
-          </label>
-        )}
-        {idTaken && (
-          <div className="llm-test llm-test-fail">A channel with id '{d.id}' already exists.</div>
-        )}
-        <details><summary>Model capability overrides</summary><p className="empty-hint">Optional provider-documented constraints, keyed by model ID. Unknown fields stay unspecified.</p>
-          <textarea className="scene-json" aria-label="Model capabilities JSON" defaultValue={JSON.stringify(draft.capabilities??{},null,2)} placeholder={'{"model-id":{"durationsS":[5,10],"imageToVideo":true}}'} onChange={e=>{try{const capabilities=parseVideoCapabilities(JSON.parse(e.target.value));setDraft({...draft,capabilities});setCapabilityError(null);}catch(error){setCapabilityError(error instanceof Error?error.message:String(error));}}}/>
-          {capabilityError&&<p className="scene-error">{capabilityError}</p>}
-        </details>
-        <div className="llm-actions">
-          <button
-            disabled={!d.baseUrl || !d.apiKey || test.busy}
-            onClick={async () => {
-              setTest({ busy: true });
-              const r = await testVideoGenChannel(d);
-              setTest({ busy: false, ...r });
-            }}
-          >
-            {test.busy ? 'Testing…' : 'Test connection'}
-          </button>
-          <button
-            className="primary"
-            disabled={!valid}
-            onClick={() => {
-              persist(
-                editingId
-                  ? cfg.channels.map((c) => (c.id === editingId ? d : c))
-                  : [...cfg.channels, d],
-              );
-              closeEditor();
-            }}
-          >
-            {editingId ? 'Save channel' : 'Add channel'}
-          </button>
-          <button onClick={closeEditor}>Cancel</button>
-        </div>
-        {test.message && (
-          <div className={`llm-test ${test.ok ? 'llm-test-ok' : 'llm-test-fail'}`}>
-            {test.message}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  return (
-    <div className="videogen-settings">
-      <h4>Video generation channels</h4>
-      <p>
-        BYOK channels for AI video generation (velocut.videoGen / the agent). A channel is an
-        endpoint + key + model list; keys stay in this browser. Generation costs the channel's
-        credits.
-      </p>
-      {cfg.channels.map((c) => (
-        <div className="llm-row videogen-channel" key={c.id}>
-          <span>
-            <b>{c.id}</b>
-            {c.label ? ` — ${c.label}` : ''}
-          </span>
-          <span className="videogen-models">{c.models.join(', ') || 'no models'}</span>
-          <button
-            onClick={() => {
-              setCapabilityError(null);
-              setDraft({ ...c });
-              setEditingId(c.id);
-            }}
-          >
-            Edit
-          </button>
-          <button
-            title={`Remove channel ${c.id}`}
-            onClick={() => persist(cfg.channels.filter((x) => x.id !== c.id))}
-          >
-            ×
-          </button>
-        </div>
-      ))}
-      <div className="llm-actions">
-        <button
-          onClick={() => {
-            setCapabilityError(null);
-            setDraft({
-              id: '',
-              kind: kinds[0]?.id ?? 'task-api',
-              baseUrl: '',
-              apiKey: '',
-              models: [],
-            });
-            setEditingId(null);
-          }}
-        >
-          + Add channel
-        </button>
-      </div>
-    </div>
-  );
-}
+export {ModelSettings as VideoGenSettings} from './ModelSettings';
 
 /** Per-kind field descriptors for the upload storage form. Secrets are never
  *  echoed back (blank = keep the saved value), same rule as the LLM key. */
@@ -1015,7 +784,7 @@ const UPLOAD_SECRETS = ['secretAccessKey', 'authToken'];
 /** Upload storage settings — where conditioning media (frames / previz clips)
  *  gets uploaded so video-gen providers can fetch it. One store serves every
  *  channel. Unconfigured = the capability doesn't exist. */
-function UploadSettings() {
+export function UploadSettings() {
   const kinds = uploaderKinds();
   const [saved, setSaved] = useState<UploadConfig | null>(loadUploadConfig);
   const [draft, setDraft] = useState<UploadConfig | null>(null);

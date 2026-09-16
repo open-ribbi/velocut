@@ -18,8 +18,9 @@ import type { VDocument } from './types.ts';
  *  register a migration below.
  *  v2: Asset.spec — procedural specs (motion/scene) live in the document. Older
  *  builds would silently DROP specs from a v2 doc, so they must refuse it.
- *  v3: optional generation slots, protected from older writers. */
-export const CURRENT_FORMAT_VERSION = 3;
+ *  v3: optional generation slots, protected from older writers.
+ *  v4: model parameters and multimodal reference roles. */
+export const CURRENT_FORMAT_VERSION = 4;
 
 /** Persisted data written before versioning existed has no formatVersion field;
  *  it is, by definition, the first shape. This baseline is FIXED at 1 forever
@@ -42,6 +43,8 @@ const MIGRATIONS: Record<number, Migration> = {
   [1]: (doc) => doc,
   // Optional generation slots must not be silently dropped by older writers.
   [2]: (doc) => doc,
+  // Model parameters and multimodal reference roles must survive older writers.
+  [3]: (doc) => doc,
 };
 
 export type MigrateResult =

@@ -72,16 +72,23 @@ Read [atomic API reference](references/atomic-api.md#timeline-video-generation)
 for exact commands and the asynchronous job contract. Use `velocut_generation`
 or `velocut.generation()` in a script; legacy `videoGen` is unavailable in MCP.
 
-- Query `generationSlots` and discover configured channels with `capabilities`.
+- Query `generationSlots` and discover configured channels, model defaults and
+  parameter definitions with `capabilities`.
   Create/update/remove slots with ordinary commands and `ops`/`ref`; these edits
   do not submit a paid job. `plan` reports target and provider durations.
-- For image-to-video, `captureReference` snapshots a project image or timeline
-  frame. Supply the returned `reference.id` in `firstFrameReferenceId`. Capture
-  is local; submission uploads this snapshot to the user's configured storage.
+- `captureReference` snapshots an imported project image/video/audio or timeline
+  frame. Use IDs in `firstFrameReferenceId`, `lastFrameReferenceId` or the ordered
+  `referenceImageIds`/`referenceVideoIds`/`referenceAudioIds` arrays. Respect the
+  chosen preset's media roles and combinations. Capture is local; submission
+  uploads the selected snapshots through configured storage.
+- Supply additional model controls through scalar `parameters`, using the fields
+  returned by discovery. Model names do not identify an API protocol: MiniMax H3
+  through Task API and native MiniMax video/speech/music use different routes.
 - `submit` uses provider credits. Use it within the user's authorized generation
   request, with the current `intentVersion` and a stable `requestId`. Do not put
   endpoints, keys or remote reference URLs into a tool call. If unconfigured,
-  direct the user to Generation channel settings and Upload storage settings.
+  direct the user to the toolbar’s Model settings: select a protocol/model, enter
+  their Base URL/API Token, and configure Reference media storage when needed.
 - Inspect `get`/`list` to follow the job. Reloads keep receipts; never submit a
   new request merely because polling or a tool timed out. An uncertain submission
   has no safe automatic resubmit. `cancel` stops local tracking; it does not
