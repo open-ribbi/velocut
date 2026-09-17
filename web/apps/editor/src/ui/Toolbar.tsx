@@ -1,4 +1,4 @@
-import brandMark from '../../../../../plugins/velocut/assets/logo.svg';
+import brandMark from '../../../../../plugins/velocut/assets/icon-mascot.png';
 import {ModelManager} from './ModelManager';
 import { Icon } from './primitives/Icon';
 import { Dialog } from './primitives/Dialog';

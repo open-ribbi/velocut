@@ -276,6 +276,7 @@ label {
   color: var(--subtle);
 }
 .brand-mark {
+  border-radius: 6px;
   width: 28px;
   height: 28px;
   display: block;

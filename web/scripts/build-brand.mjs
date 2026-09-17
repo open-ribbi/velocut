@@ -1,15 +1,15 @@
-/** The SVG is the source of truth. Export the PNG sizes required by plugin install surfaces. */
+/** Export display sizes from the generated mascot master without changing its artwork. */
 import {chromium} from '@playwright/test';
 import {readFile,cp} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 const assets=new URL('../../plugins/velocut/assets/',import.meta.url);
-const svg=await readFile(new URL('logo.svg',assets),'utf8');
+const master=await readFile(new URL('../../docs/brand/mascot-source.png',import.meta.url));
 const browser=await chromium.launch({headless:true});
 try {
   const page=await browser.newPage({deviceScaleFactor:1});
-  for(const [name,size] of [['logo.png',512],['icon.png',64]]){
+  for(const [name,size] of [['logo-mascot.png',512],['icon-mascot.png',64]]){
     await page.setViewportSize({width:size,height:size});
-    await page.setContent(`<body style="margin:0;background:transparent"><img width="${size}" height="${size}" src="data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}">`);
+    await page.setContent(`<body style="margin:0;background:transparent"><img width="${size}" height="${size}" src="data:image/png;base64,${master.toString('base64')}">`);
     await page.locator('img').evaluate(image=>image.decode());
     await page.screenshot({path:fileURLToPath(new URL(name,assets)),omitBackground:true});
   }

@@ -18,10 +18,10 @@
       "Interactive",
       "Write"
     ],
-    "brandColor": "#E6B774",
-    "composerIcon": "./assets/icon.png",
-    "logo": "./assets/logo.png",
-    "logoDark": "./assets/logo.png",
+    "brandColor": "#D7FF00",
+    "composerIcon": "./assets/icon-mascot.png",
+    "logo": "./assets/logo-mascot.png",
+    "logoDark": "./assets/logo-mascot.png",
     "screenshots": [
       "./assets/editor.png",
       "./assets/director.png"

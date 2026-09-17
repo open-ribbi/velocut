@@ -1,0 +1,9 @@
+# Velocut mascot logo
+
+Generated with the built-in `image_gen` tool from the user-supplied reference.
+`reference.png` preserves the original reference; `mascot-source.png` is the
+unmodified generated output. The display assets are resized exports only.
+
+## Generation prompt
+
+Use case: logo-brand. Create a finished app icon for Velocut, using the attached logo as the character identity reference. Preserve the very distinctive abstract frog-like head silhouette, electric lime/chartreuse upper face, pale cream lower sweeping cheek, two large oval black eye areas with small ivory highlights, and the few tiny nose dots. This is the same character, not a generic cartoon frog. Add one minimal rounded lime hand emerging at the lower-right side of the character, visibly gripping the handle of ONE open pair of editing scissors. Scissors should sit diagonally upward to the right alongside the face without obscuring the eyes: two clean ivory blades, small simple pivot, two recognisable rounded handle loops. The gesture should feel confident, friendly and mischievous. Maintain a compact unified silhouette for a professional video-editing app brand. Use flat vector-like filled shapes with smooth bold curves, immaculate edges, no texture, no gradients, no 3D or lighting effects, no unnecessary outlines, no text, no wordmark. Palette strictly electric lime approximately #D7FF00, warm ivory approximately #F5FBC7 and black. One single centered logo filling about 82 percent of a square canvas with generous even safe padding. Solid pure black background, matching the original reference; no rounded tile mockup, no border, no shadows, no extra props, no presentation sheet. Make the scissors clearly legible when reduced to 32 pixels and integrate them with the original character rather than pasting a generic scissors badge on top. Deliver a high-resolution square PNG suitable for direct use as the app logo.
