@@ -6,7 +6,7 @@ compiler. Node.js 22.6+ and a browser with WebGPU/WebCodecs are required.
 Start Studio from npm:
 
 ```sh
-npx @velocut/cli@0.0.1 studio
+npx @velocut/cli@0.0.2 studio
 ```
 
 For an unpublished local release, install its `.tgz`, then run
@@ -19,8 +19,8 @@ For an unpublished local release, install its `.tgz`, then run
 - `--version` prints the package version.
 
 The server binds to loopback only. It serves bundled assets, proper MIME types,
-byte ranges and COOP/COEP headers; it does not serve your filesystem or proxy
-remote URLs. Ctrl+C stops it. A busy port is reported, not silently changed:
+byte ranges and COOP/COEP headers; it does not serve arbitrary filesystem paths or arbitrary caller-provided URLs.
+The model host executes configured services and streams their recorded outputs. Ctrl+C stops it. A busy port is reported, not silently changed:
 projects live in browser IndexedDB/OPFS, scoped to the browser profile, hostname
 and port. Use the same printed origin to reopen them. Do not clear site storage
 without exporting anything you need.

@@ -1,13 +1,12 @@
 # Independent SDKs, Studio and MCP
 
-The monorepo publishes seven public packages at version 0.0.1. Start the editor
-with `npx @velocut/cli@0.0.1 studio`, or install individual SDKs with npm.
-Current source additionally builds the shared Provider SDK, for eight public
-packages. This addition is not yet published. Build/test commands never publish to the registry.
+The current coordinated release candidate is **0.0.2**, containing eight public
+packages. The last published npm release is 0.0.1 until the explicit publish step
+is completed. Build/test/archive commands never publish to the registry.
 
 | Package | Environment | Public responsibility |
 | --- | --- | --- |
-| `@velocut/provider-sdk` | Node/browser | Host-neutral provider/model/channel/lifecycle contracts (unreleased) |
+| `@velocut/provider-sdk` | Node/browser | Host-neutral provider/model/channel/lifecycle contracts (new in 0.0.2) |
 | `@velocut/protocol` | Node/browser | Document and command contract, validation, bridge compatibility |
 | `@velocut/core-ts` | Node/browser | Pure timeline engine and evaluation; no GPU required |
 | `@velocut/render-sdk` | Browser | WebGPU, WebCodecs, workers, audio, export, observation |
@@ -35,8 +34,8 @@ npm run pack:release
 
 The generated `artifacts/` directory (repository root) contains:
 
-- Ten `.tgz` npm packages in current source and `manifest.json` with versions and SHA-256 hashes.
-- `velocut-0.0.1/`: a relocatable standalone distribution. Run
+- Eight `.tgz` npm packages and `manifest.json` with versions and SHA-256 hashes.
+- `velocut-0.0.2/`: a relocatable standalone distribution. Run
   `node start-studio.mjs` there. Its `studio/` includes the prebuilt UI, scene
   assets and bundled browser dependencies; npm install is unnecessary.
 - The same standalone directory is a Codex marketplace with
@@ -50,8 +49,9 @@ versions locally. `npm run test:distribution` demonstrates this outside the
 checkout and rejects workspace symlinks.
 
 For users who only need the product, the CLI tarball has no npm runtime
-dependencies. The MCP package bundles its executable dependencies; it still
-requires a running editor and a browser pairing. Neither includes Node itself.
+dependencies. The MCP package bundles its MCP runtime and has an exact-version dependency on
+the CLI. Its first connect starts or reuses the prebuilt editor; the returned URL
+completes browser pairing. Neither package includes Node itself.
 
 ## Integrate the SDKs
 
@@ -101,6 +101,7 @@ npm run build:release
 npm -w @velocut/cli test
 npm run pack:release
 npm run test:distribution
+npm run archive:release          # macOS/Linux; system tar and zip
 npm test
 npm run e2e
 ```
@@ -125,8 +126,24 @@ npm run publish:release -- --execute
 
 Publishing requires ownership of the `@velocut` namespace and npm authentication
 (or a configured trusted CI publisher). Neither is assumed or stored in this
-repository. The script refuses to publish bytes that differ from the verified
-artifacts and publishes in dependency order. On GitHub Actions it requests
+repository. The script validates every package before the first registry write, rejects a
+dirty/stale source checkout or bytes that differ from verified artifacts, and
+publishes in dependency order (CLI before MCP). On GitHub Actions it requests
 provenance, which requires the corresponding OIDC permissions. Registry writes
 are not transactional: if a later package fails, inspect the published versions
 before retrying. Never overwrite/reuse a published version for different bytes.
+
+## Prepare 0.0.2 for publication
+
+Commit release documentation and code, then build, pack and independently verify
+that commit. `npm run archive:release` produces `velocut-standalone.zip`,
+`velocut-standalone.tar.gz`, curated `release-notes.md`, `SHA256SUMS.txt`, and the
+exact upload list `release-files.txt`. Stale tarballs from other versions are not
+included. The tag workflow creates the same assets on Ubuntu after all three
+platform jobs pass.
+
+Before the public release, restore npm authentication (`npm login` if needed), run
+the publishing dry-run, then explicitly publish the eight packages. Confirm every
+version is available in the registry before exposing the matching Git marketplace
+tag. Push the release commit/tag and review the draft GitHub release created by
+CI. Creating a tag or a draft is separate from publishing that release.

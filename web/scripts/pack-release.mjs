@@ -32,6 +32,7 @@ for (const name of names) {
   manifest.packages.push({
     name: pkg.name,
     version: pkg.version,
+    dependencies: Object.fromEntries(Object.entries(pkg.dependencies??{}).filter(([name])=>name.startsWith('@velocut/'))),
     file: result.filename,
     sha256: createHash('sha256').update(bytes).digest('hex'),
     size: bytes.length,

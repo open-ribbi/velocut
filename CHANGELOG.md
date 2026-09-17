@@ -7,6 +7,31 @@ are published.
 
 ## [Unreleased]
 
+### 0.0.2 release candidate
+
+- Git-based Codex plugin distribution with pinned npm MCP/CLI versions and automatic
+  prebuilt Studio startup, reuse, idle shutdown and bundled guide discovery.
+- Declarative YAML/JSON media model configuration and shared preset execution;
+  eight public packages, with the unreleased vendor provider packages removed.
+- Timeline-native video generation, durable job recovery, reference media and
+  explicit result adoption; document format 5 and generation ledger format 4.
+- Atomic capability discovery, dependent transactions, media resource jobs and
+  complete clip duplication.
+- Shared scene resources, materials and animation channels; spatial anchors,
+  surface bindings and repairs; collision shapes and physical joints.
+- Memory deduplication, incremental instance updates, removal of fixed scene
+  byte/count ceilings, and stalled preview clock recovery.
+- Reference-based mascot/scissors branding and self-contained plugin artwork.
+
+See [the prepared 0.0.2 release notes](docs/releases/v0.0.2.md). This candidate has
+not been published by the build or preparation scripts.
+
+## [0.0.1] — 2026-09-10
+
+First npm distribution of the seven public editor/SDK/MCP packages, alongside
+portable Studio and its Codex marketplace. Includes GLB import/export, CodeAct
+batch authoring, preview speed controls and clip multi-selection/references.
+
 ### Added
 - **Scene Director**: agent-driven 3D character & scene animation
   (`@velocut/scene-sdk`). Declarative SceneSpec v1 (characters with preset
