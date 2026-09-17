@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 const web = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const out = resolve(web, '../artifacts');
-const names = ['provider-sdk', 'provider-task-api', 'provider-minimax', 'protocol', 'core-ts', 'render-sdk', 'scene-sdk', 'runtime', 'mcp', 'cli'];
+const names = ['provider-sdk', 'protocol', 'core-ts', 'render-sdk', 'scene-sdk', 'runtime', 'mcp', 'cli'];
 await mkdir(out, { recursive: true });
 const manifest = {
   sourceCommit: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: web, encoding: 'utf8' }).trim(),

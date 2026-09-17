@@ -1,15 +1,8 @@
+import {builtinTemplates} from '@velocut/provider-sdk/presets';
 import type {ModelSpec} from '@velocut/provider-sdk/declarative';
 /** Bundled examples are ordinary definitions; imported models follow exactly the same path. */
 export const MODEL_TEMPLATES:ModelSpec[]=[{
  version:1,id:'custom-video',label:'Custom video · async JSON',capability:'video.generate',timeline:{prompt:'prompt',duration:'duration'},
  inputSchema:{type:'object',required:['prompt'],additionalProperties:false,properties:{prompt:{type:'string',minLength:1},duration:{type:'number',exclusiveMinimum:0},camera:{type:'object',properties:{movement:{type:'string'},strength:{type:'number',minimum:0,maximum:1}}}}},
  execution:{type:'async-http',submit:{method:'POST',path:'/tasks',body:{$input:''}},receipt:{id:'$.data.task_id'},poll:{method:'GET',path:'/tasks/{receipt.id}',status:'$.data.status',states:{running:['queued','processing'],succeeded:['completed'],failed:['failed','cancelled']}},outputs:[{kind:'video',url:'$.data.video_url'}]},
-},{
- version:1,id:'minimax-hailuo-2-3',label:'MiniMax Hailuo 2.3',capability:'video.generate',timeline:{prompt:'prompt',duration:'duration'},
- inputSchema:{type:'object',required:['prompt','duration','resolution'],additionalProperties:false,properties:{prompt:{type:'string',minLength:1},duration:{type:'integer',enum:[6,10]},resolution:{type:'string',enum:['768P','1080P'],default:'768P'},prompt_optimizer:{type:'boolean',default:true}},allOf:[{if:{properties:{resolution:{const:'1080P'}},required:['resolution']},then:{properties:{duration:{const:6}}}}]},
- execution:{type:'async-http',submit:{method:'POST',path:'/v1/video_generation',body:{model:{$connection:'remoteModel'},prompt:{$input:'prompt'},duration:{$input:'duration'},resolution:{$input:'resolution'},prompt_optimizer:{$input:'prompt_optimizer'}}},receipt:{id:'$.task_id'},poll:{method:'GET',path:'/v1/query/video_generation',query:{task_id:{$receipt:'id'}},status:'$.status',states:{running:['Preparing','Queueing','Processing'],succeeded:['Success'],failed:['Fail','Failed','Cancelled']},receipt:{fileId:'$.file_id'}},collect:{method:'GET',path:'/v1/files/retrieve',query:{file_id:{$receipt:'fileId'}}},outputs:[{kind:'video',url:'$.file.download_url'}]},
-},{
- version:1,id:'minimax-speech',label:'MiniMax speech · synchronous audio',capability:'audio.synthesize',
- inputSchema:{type:'object',required:['text','voice_setting'],additionalProperties:false,properties:{text:{type:'string',minLength:1},voice_setting:{type:'object',required:['voice_id'],additionalProperties:false,properties:{voice_id:{type:'string',minLength:1},speed:{type:'number',minimum:.5,maximum:2,default:1},pitch:{type:'integer',minimum:-12,maximum:12}}},audio_setting:{type:'object',default:{format:'mp3',sample_rate:32000},properties:{format:{enum:['mp3']},sample_rate:{enum:[16000,24000,32000,44100]}}}}},
- execution:{type:'sync-http',submit:{method:'POST',path:'/v1/t2a_v2',body:{model:{$connection:'remoteModel'},text:{$input:'text'},voice_setting:{$input:'voice_setting'},audio_setting:{$input:'audio_setting'},stream:false},error:{path:'$.base_resp.status_code',success:0,message:'$.base_resp.status_msg'}},outputs:[{kind:'audio',hex:'$.data.audio',mimeType:'audio/mpeg'}]},
-}];
+},...builtinTemplates()];

@@ -20,6 +20,10 @@
     "./declarative": {
       "types": "./dist/declarative.d.ts",
       "import": "./dist/declarative.js"
+    },
+    "./presets": {
+      "types": "./dist/presets.d.ts",
+      "import": "./dist/presets.js"
     }
   },
   "types": "./dist/index.d.ts",

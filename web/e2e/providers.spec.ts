@@ -1,4 +1,4 @@
-import {test,expect} from '@playwright/test';
+import {test,expect} from './test-fixtures';
 import {build} from 'esbuild';
 import {readFileSync} from 'node:fs';import {resolve} from 'node:path';
 const providerSdk='/@fs'+resolve('packages/provider-sdk/src/index.ts'),videoSdk='/@fs'+resolve('packages/provider-sdk/src/video.ts'),renderSdk='/@fs'+resolve('packages/render-sdk/src/index.ts');

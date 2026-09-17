@@ -8,7 +8,9 @@ Codex can create the same definition using `velocut_models` from API documentati
 
 Definitions are data: the executor never branches on a vendor/model name. Each definition
 owns its input schema, constraints, request mapping and output mapping. UI controls and
-agent discovery use that schema. Existing browser-configured channels remain supported.
+agent discovery use that schema. Existing browser-configured channels remain supported through the same executor.
+Built-in model definitions are exported by `@velocut/provider-sdk/presets`; there
+are no separate vendor transport packages.
 
 ## Configuration example
 
@@ -82,12 +84,15 @@ Body and query mappings are JSON-shaped templates:
 | `{$connection: remoteModel}` | Connection's remote model ID (credentials are unavailable here) |
 | `{$receipt: fileId}` | A persisted, explicitly mapped receipt field |
 | `{$requestId: true}` | Host's request ID; only send if the service documents idempotency |
+| `{$merge: [...]}` | Merge objects in order, omitting absent optional values |
+| `{$concat: [...]}` | Concatenate arrays, omitting absent optional arrays |
 | `{$map: {items: ..., value: ...}}` | Map an array; `$item` reads each element |
 | `{$if: {value: ..., equals: ..., then: ..., else: ...}}` | Conditional value/omission; without equals, tests presence excluding null/false |
 | `{$media: {id: ..., kind: image}}` | Resolve a project reference through configured media transport |
 
 Response paths support `$`, dotted properties and numeric array indices, not arbitrary
-JSONPath scripts, filters or recursive queries. Relative request paths stay on the configured
+JSONPath scripts, filters or recursive queries. A selector can be an ordered
+array of paths to handle wrapped/unwrapped responses; the first non-null value wins. Relative request paths stay on the configured
 Base URL. `{receipt.id}` path components are URL-encoded. Query maps handle query encoding.
 Constant request headers are limited to Accept/Content-Type. Authentication is `bearer`
 (default), `header` with a name and optional prefix, or `none`.
@@ -106,8 +111,11 @@ provider-specific multipart/file-ID upload handshakes are not implemented by thi
   Unknown states stop tracking with an error. An uncertain submission never auto-retries.
 - Optional `collect`: a successful poll can map extra receipt fields (such as `fileId`),
   followed by a separate result request. Only mapped fields are persisted, not full responses.
-- A request can declare `error: {path, success, message?}` for a service error inside HTTP 200.
+- A request can declare `error: {path, success, message?, optional?}` for a service
+  error inside HTTP 200, `errorMessage` for HTTP error details, and `responseSchema`
+  to validate the response. Missing required receipts fail without re-submitting.
 - Outputs support `url`, `hex`, `base64`, or `bytes: true` with request `response: bytes`.
+  `metadata` maps optional output fields, and execution `usage` maps billing metadata.
   `each` maps an output array; optional `data` returns structured data. Output media kinds are
   video, audio and image. The provider SDK exposes the complete result; the timeline consumer
   currently accepts exactly one video URL and rejects incompatible results explicitly.

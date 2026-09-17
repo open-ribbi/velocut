@@ -1,4 +1,4 @@
-import {test,expect} from '@playwright/test';
+import {test,expect} from './test-fixtures';
 import {mkdtemp,rm} from 'node:fs/promises';
 import {readFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -6,6 +6,7 @@ import {join,resolve} from 'node:path';
 import {Client} from '@modelcontextprotocol/client';
 import {StdioClientTransport} from '@modelcontextprotocol/client/stdio';
 import {createModelHost} from '../packages/cli/src/models.mjs';
+import {builtinTemplates} from '../packages/provider-sdk/dist/presets.js';
 
 test('Codex configures an unknown model, nested input reaches HTTP, and a pinned task survives YAML edits and reload',async({page},info)=>{
  const directory=await mkdtemp(join(tmpdir(),'velocut-declarative-e2e-'));let ready=false;const calls:any[]=[];
@@ -33,12 +34,29 @@ test('Codex configures an unknown model, nested input reaches HTTP, and a pinned
  }finally{await client.close();await rm(directory,{recursive:true,force:true});}
 });
 
+test('a bundled H3 YAML template uploads typed project references only when its task is submitted',async({page})=>{
+ const directory=await mkdtemp(join(tmpdir(),'velocut-typed-reference-'));let submitted:any,uploads=0;
+ const host=createModelHost({directory,fetch:async(_url:string,init:any)=>{if(init.method==='POST'){submitted=JSON.parse(init.body);return Response.json({data:{task_id:'one'}});}return Response.json({data:{status:'completed',result:{url:'https://cdn.invalid/result.mp4'}}});}});
+ await host.execute({action:'upsert',definition:builtinTemplates().find(s=>s.id==='minimax-h3')});await host.execute({action:'connections',connection:{id:'reference-model',modelId:'minimax-h3',baseUrl:'https://service.invalid',remoteModel:'minimax-h3'}});await host.execute({action:'setCredential',id:'reference-model',token:'fixture'});
+ await page.route('**/__velocut/models',async route=>{try{await route.fulfill({json:{ok:true,data:await host.execute(route.request().postDataJSON())}});}catch(e){await route.fulfill({status:400,json:{ok:false,error:(e as Error).message}});}});
+ await page.route('**/__typed-upload',async route=>{uploads++;await route.fulfill({json:{url:'https://files.invalid/frame.png'}});});
+ await page.route('**/__velocut/models/download/*',route=>route.fulfill({contentType:'video/mp4',body:readFileSync(resolve('e2e/fixtures/red-tone.mp4'))}));
+ await page.addInitScript(()=>localStorage.setItem('velocut.upload',JSON.stringify({kind:'relay',config:{endpoint:location.origin+'/__typed-upload'}})));
+ try{
+  await page.goto('/');await page.waitForFunction(()=>(window as any).velocut?.generation);
+  const slotId=await page.evaluate(async()=>{const v=(window as any).velocut;await v.apply({type:'addTrack',kind:'text'});await v.apply({type:'addTextClip',trackId:'track_1',startUs:0,durationUs:1e6,text:{content:'Reference'}});const r=await v.generation({action:'captureReference',source:{kind:'timeline',timeUs:0},expectedRevision:v.store.getState().revision});if(!r.ok)throw Error(r.message);await v.apply({type:'addTrack',kind:'video'});const trackId=v.doc().tracks.find((t:any)=>t.kind==='video').id;await v.apply({type:'addGenerationSlot',trackId,startUs:0,durationUs:1e6,request:{channel:'reference-model',model:'minimax-h3',prompt:'',input:{prompt:'Lake',firstFrameReferenceId:{$mediaRef:r.reference.id,kind:'image'}}}});return v.doc().generationSlots[0].id;});
+  expect(uploads).toBe(0);const queued=await page.evaluate(slotId=>(window as any).velocut.generation({action:'submit',slotId,intentVersion:1,requestId:'typed-reference'}),slotId);expect(queued.ok,JSON.stringify(queued)).toBe(true);
+  await expect.poll(()=>submitted).toBeTruthy();expect(uploads).toBe(1);expect(submitted.params.image_url).toBe('https://files.invalid/frame.png');expect(submitted.params.first_frame_image).toBeUndefined();
+  await expect.poll(async()=>{const r=await page.evaluate(id=>(window as any).velocut.generation({action:'get',jobId:id}),queued.job.id);return r.job.state;}).toBe('succeeded');
+ }finally{await rm(directory,{recursive:true,force:true});}
+});
+
 test('YAML import configures a synchronous audio model and generates from its nested schema',async({page})=>{
  const directory=await mkdtemp(join(tmpdir(),'velocut-audio-definition-'));let body:any;
  const wav=Buffer.alloc(44+1600);wav.write('RIFF');wav.writeUInt32LE(wav.length-8,4);wav.write('WAVEfmt ',8);wav.writeUInt32LE(16,16);wav.writeUInt16LE(1,20);wav.writeUInt16LE(1,22);wav.writeUInt32LE(8000,24);wav.writeUInt32LE(16000,28);wav.writeUInt16LE(2,32);wav.writeUInt16LE(16,34);wav.write('data',36);wav.writeUInt32LE(1600,40);
  const host=createModelHost({directory,fetch:async(_url:string,init:any)=>{body=JSON.parse(init.body);return Response.json({data:{audio:wav.toString('hex')},base_resp:{status_code:0}});}});
  await page.route('**/__velocut/models',async route=>{try{const data=await host.execute(route.request().postDataJSON());await route.fulfill({contentType:'application/json',body:JSON.stringify({ok:true,data},(_k,v)=>v instanceof Uint8Array?{$bytes:Buffer.from(v).toString('base64')}:v)});}catch(e){await route.fulfill({status:400,json:{ok:false,error:(e as Error).message}});}});
  try{
- await page.goto('/');await page.waitForFunction(()=>(window as any).velocut?.modelConfiguration);await page.getByRole('button',{name:'Model settings',exact:true}).click();await page.getByLabel('Model definition template').selectOption('minimax-speech');await page.getByRole('button',{name:'Validate definition',exact:true}).click();await expect(page.getByRole('status')).toContainText('No service request');expect(body).toBeUndefined();await page.getByRole('button',{name:'Save definition',exact:true}).click();await expect(page.getByRole('status')).toContainText('saved');await page.getByRole('button',{name:'Connect',exact:true}).click();await page.getByLabel('Declarative Base URL').fill('https://audio.invalid');await page.getByLabel('Declarative remote model').fill('custom-speech-id');await page.getByLabel('Declarative API Token').fill('audio-token');await page.getByRole('button',{name:'Save connection',exact:true}).click();await expect(page.getByRole('status')).toContainText('Connection saved');await page.getByLabel('Audio channel',{exact:true}).selectOption('minimax-speech-connection');await page.getByLabel('Audio input text',{exact:true}).fill('Hello');await page.getByLabel('Audio input voice_setting voice_id',{exact:true}).fill('user-voice');await page.getByLabel('Audio input voice_setting speed',{exact:true}).fill('1.2');await page.getByRole('button',{name:'Generate audio',exact:true}).click();await expect(page.locator('audio')).toBeVisible();expect(body.model).toBe('custom-speech-id');expect(body.voice_setting).toEqual({voice_id:'user-voice',speed:1.2});await page.getByRole('button',{name:'Keep audio in assets',exact:true}).click();await expect.poll(()=>page.evaluate(()=>(window as any).velocut.doc().assets.filter((a:any)=>a.kind==='audio').length)).toBe(1);
+ await page.goto('/');await page.waitForFunction(()=>(window as any).velocut?.modelConfiguration);await page.getByRole('button',{name:'Model settings',exact:true}).click();await page.getByLabel('Model definition template').selectOption('speech-2.8-hd');await page.getByRole('button',{name:'Validate definition',exact:true}).click();await expect(page.getByRole('status')).toContainText('No service request');expect(body).toBeUndefined();await page.getByRole('button',{name:'Save definition',exact:true}).click();await expect(page.getByRole('status')).toContainText('saved');await page.getByRole('button',{name:'Connect',exact:true}).click();await page.getByLabel('Declarative Base URL').fill('https://audio.invalid');await page.getByLabel('Declarative remote model').fill('custom-speech-id');await page.getByLabel('Declarative API Token').fill('audio-token');await page.getByRole('button',{name:'Save connection',exact:true}).click();await expect(page.getByRole('status')).toContainText('Connection saved');await page.getByLabel('Audio channel',{exact:true}).selectOption('speech-2.8-hd-connection');await page.getByLabel('Audio input text',{exact:true}).fill('Hello');await page.getByLabel('Audio input Voice ID',{exact:true}).fill('user-voice');await page.getByLabel('Audio input Speaking speed',{exact:true}).fill('1.2');await page.getByRole('button',{name:'Generate audio',exact:true}).click();await expect(page.locator('audio')).toBeVisible();expect(body.model).toBe('custom-speech-id');expect(body.voice_setting).toEqual({voice_id:'user-voice',speed:1.2});await page.getByRole('button',{name:'Keep audio in assets',exact:true}).click();await expect.poll(()=>page.evaluate(()=>(window as any).velocut.doc().assets.filter((a:any)=>a.kind==='audio').length)).toBe(1);
  }finally{await rm(directory,{recursive:true,force:true});}
 });

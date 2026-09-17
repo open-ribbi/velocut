@@ -55,22 +55,21 @@ try {
     import assert from 'node:assert/strict';
     import {ProviderRegistry} from '@velocut/provider-sdk';
     import {asVideoGenerator} from '@velocut/provider-sdk/video';
-    import {taskApiProvider,arkVideoProvider} from '@velocut/provider-task-api';
-    import {minimaxProvider,minimaxVideoProvider,minimaxMusicProvider} from '@velocut/provider-minimax';
+    import {configurePresetModel,builtinTemplates} from '@velocut/provider-sdk/presets';
     import {modelPreset,parameterDefaults} from '@velocut/provider-sdk/catalog';
     import {exampleProvider} from './consumer-provider/dist/index.js';
-    const registry=new ProviderRegistry().register(exampleProvider).register(taskApiProvider).register(minimaxProvider).register(arkVideoProvider).register(minimaxVideoProvider).register(minimaxMusicProvider);
+    const registry=new ProviderRegistry().register(exampleProvider);
     let posts=0,reads=0;
     const provider=registry.create({id:'external',provider:'example-video',config:{endpoint:'https://external.invalid'},credentials:{apiKey:{store:'host',key:'test'}}},{resolveCredential:async()=>{reads++;return 'test-key'},fetch:async(url,init)=>{
       if(init?.method==='POST'){posts++;return Response.json({id:'external-task',region:'west'})}
       assert.match(String(url),/region=west/);return Response.json({status:'done',url:'https://cdn.invalid/video.mp4'});
     }});
-    assert.equal(registry.list().length,6);assert.equal(modelPreset('seedance-2').model,'seedance-2.0');assert.equal(parameterDefaults({presetId:'minimax-h3'}).resolution,'2K');assert.equal(provider.describe().models[0].id,'example-1');assert.equal(reads,0);
+    assert.equal(registry.list().length,1);assert.equal(builtinTemplates().length,10);assert.equal(modelPreset('seedance-2').model,'seedance-2.0');assert.equal(parameterDefaults({presetId:'minimax-h3'}).resolution,'2K');assert.equal(provider.describe().models[0].id,'example-1');assert.equal(reads,0);
     const video=asVideoGenerator(provider),receipt=await video.submit({model:'example-1',prompt:'Independent provider'});
     assert.equal(receipt.handle.region,'west');const done=await video.poll(receipt.taskId,undefined,JSON.parse(JSON.stringify(receipt.handle)));assert.equal(done.state,'succeeded');assert.equal(done.result.videoUrl,'https://cdn.invalid/video.mp4');assert.equal(posts,1);
-    const speech=registry.create({id:'audio',provider:'minimax',config:{endpoint:'https://speech.invalid',model:'test-speech'}},{resolveCredential:async()=>undefined,fetch:async()=>Response.json({data:{audio:'494433'}})});
+    const speech=configurePresetModel('minimax-speech','test-speech',{baseUrl:'https://speech.invalid',anonymous:true},{resolveCredential:async()=>undefined,fetch:async()=>Response.json({data:{audio:'494433'}})});
     const audio=await speech.execute({capability:'audio.synthesize',model:'test-speech',input:{text:'Hello'}});assert.equal(audio.outputs[0].source.kind,'bytes');assert.equal(globalThis.AudioContext,undefined);
-    const native=registry.create({id:'native',provider:'minimax-video',config:{baseUrl:'https://native.invalid/v1',modelSettings:{presetId:'hailuo-2.3'}},credentials:{apiKey:{store:'test',key:'native'}}},{resolveCredential:async()=> 'fake',fetch:async(url,init)=>{if(init?.method==='POST'){assert.equal(String(url),'https://native.invalid/v1/video_generation');return Response.json({task_id:'native-task'})}return Response.json(String(url).includes('/query/')?{status:'Success',file_id:'native-file'}:{file:{download_url:'https://cdn.invalid/native.mp4'}})}});
+    const native=configurePresetModel('minimax-video','MiniMax-Hailuo-2.3',{baseUrl:'https://native.invalid/v1',apiKey:'fake',modelSettings:{presetId:'hailuo-2.3'}},{resolveCredential:async()=> 'fake',fetch:async(url,init)=>{if(init?.method==='POST'){assert.equal(String(url),'https://native.invalid/v1/video_generation');return Response.json({task_id:'native-task'})}return Response.json(String(url).includes('/query/')?{status:'Success',file_id:'native-file'}:{file:{download_url:'https://cdn.invalid/native.mp4'}})}});
     const task=await native.submit({capability:'video.generate',model:'MiniMax-Hailuo-2.3',input:{prompt:'Lake',durationS:6,resolution:'1080P'}}),polled=await native.poll(task);assert.equal(polled.state,'ready');assert.equal((await native.collect(polled.receipt)).outputs[0].kind,'video');
     console.log('independent providers ok');
   `);
@@ -465,8 +464,10 @@ window.probe=(async()=>{
   devServer = await vite.createServer({root:workspace,configFile:resolve(workspace,'vite.config.mjs'),server:{port:devPort,strictPort:true,host:'127.0.0.1',headers:{'Cross-Origin-Opener-Policy':'same-origin','Cross-Origin-Embedder-Policy':'require-corp'}}});
   await devServer.listen();
   const devPage = await browser.newPage();
+  const devErrors=[];devPage.on('pageerror',error=>devErrors.push(error.message));devPage.on('console',message=>{if(message.type()==='error')devErrors.push(message.text());});
   await devPage.goto(devServer.resolvedUrls.local[0]);
   console.log('Verifying development SDK render probe');
+  await devPage.waitForFunction(()=>!!window.probe,{},{timeout:15000}).catch(()=>{throw Error('Development consumer did not start: '+devErrors.join(' | '));});
   const devResult = await devPage.evaluate(()=>Promise.race([window.probe,new Promise(resolve=>setTimeout(()=>resolve({ok:false,error:'Dev GPU/worker probe exceeded 45 seconds'}),45_000))]));
   assert.equal(devResult?.ok,true,JSON.stringify(devResult));
   await devPage.evaluate(()=>window.cleanup());

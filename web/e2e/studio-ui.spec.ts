@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page } from './test-fixtures';
 
 async function boot(page: Page, width: number, height: number) {
   await page.setViewportSize({ width, height });

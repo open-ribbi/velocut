@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './test-fixtures';
 import { modelFixture } from '../packages/scene-sdk/test/glb-fixture';
 
 const bytes = Buffer.from(modelFixture());

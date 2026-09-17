@@ -11,7 +11,12 @@ export function velocutVite() {
         'Cross-Origin-Embedder-Policy': 'require-corp',
       };
       return {
-        optimizeDeps: { exclude: ['@velocut/render-sdk', '@velocut/scene-sdk', '@velocut/runtime'] },
+        optimizeDeps: {
+          exclude: ['@velocut/render-sdk', '@velocut/scene-sdk', '@velocut/runtime'],
+          // Excluded ESM SDKs import the schema compiler through provider-sdk.
+          // Prebundle its nested CommonJS entry instead of serving it as raw ESM.
+          include: ['@velocut/provider-sdk > ajv'],
+        },
         server: { headers },
         preview: { headers },
       };

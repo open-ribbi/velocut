@@ -1,4 +1,4 @@
-import {test,expect,type Page} from '@playwright/test';
+import {test,expect,type Page} from './test-fixtures';
 import {readFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {Client} from '@modelcontextprotocol/client';

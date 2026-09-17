@@ -48,9 +48,7 @@
     "mp4box": "^0.5.2",
     "@webgpu/types": "^0.1.71",
     "gsap": "^3.15.0",
-    "@velocut/provider-sdk": "0.0.1",
-    "@velocut/provider-task-api": "0.0.1",
-    "@velocut/provider-minimax": "0.0.1"
+    "@velocut/provider-sdk": "0.0.1"
   },
   "files": [
     "dist",

@@ -1,5 +1,5 @@
-import {ProviderRegistry,type ConfiguredProvider} from '@velocut/provider-sdk';
-import {minimaxProvider} from '@velocut/provider-minimax';
+import type {ConfiguredProvider} from '@velocut/provider-sdk';
+import {configurePresetModel} from '@velocut/provider-sdk/presets';
 // tts.ts — text → speech (the first GENERATIVE primitive), pluggable + configurable.
 //
 // Architecture (mirrors the effect registry's "register once, everyone reads"):
@@ -168,7 +168,7 @@ export class MiniMaxTextToSpeech implements TextToSpeech {
     const {apiKey,speed,volume,pitch,emotion,languageBoost,...values}=config??{};
     this.options=Object.fromEntries(Object.entries({speed,volume,pitch,emotion,languageBoost}).filter(([,v])=>v!==undefined)) as Record<string,string|number|boolean>;
     this.model=values.model??'speech-2.8-hd';
-    this.provider=new ProviderRegistry().register(minimaxProvider).create({id:'minimax',provider:'minimax',config:Object.fromEntries(Object.entries(values).filter(([,v])=>v!==undefined)),...(apiKey?{credentials:{apiKey:{store:'host',key:'minimax'}}}:{})},{resolveCredential:async()=>apiKey});
+    this.provider=configurePresetModel('minimax-speech',this.model,{baseUrl:values.baseUrl??'https://api.minimax.io',endpoint:values.endpoint??(!values.baseUrl?'/minimax-proxy/v1/t2a_v2':undefined),groupId:values.groupId,apiKey,anonymous:!apiKey,modelSettings:{presetId:'speech-2.8-hd',...(values.voice?{defaults:{voice:values.voice}}:{})}});
   }
   async synthesize(text:string,opts?:SynthOptions):Promise<SynthResult>{
     const result=await this.provider.execute({capability:'audio.synthesize',model:this.model,input:{...this.options,text,...(opts?.voice?{voice:opts.voice}:{}),...(opts?.speed!==undefined?{speed:opts.speed}:{})}});

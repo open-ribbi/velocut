@@ -99,11 +99,12 @@ The built-in **Assistant** is a separate, optional integration. Configure an Ant
 
 ### Configure your own models (unreleased source)
 
-Open **Model settings** in the toolbar, choose a protocol/model preset, and enter
-your own **Base URL** and **API Token**. Model IDs, default parameters and custom
-scalar controls are editable. Presets cover Task API MiniMax H3 and Seedance,
-Ark content tasks, and native MiniMax video, speech and music. Compatible services
-need configuration only; a different HTTP protocol needs an adapter.
+Open **Model settings** in the toolbar. Import a YAML/JSON model definition or ask
+Codex to configure one from API documentation, then enter your **Base URL** and
+**API Token**. Templates cover Task API MiniMax H3 and Seedance, Ark content tasks,
+and native MiniMax video, speech and music. All templates use the same declarative
+executor as custom models; no per-model npm packages or source edits are required.
+Existing channel settings continue to work through these shared definitions.
 
 Video channels feed the timeline generation panel. Speech and music can be
 previewed in the model dialog, recovered from saved generation history and kept
@@ -127,13 +128,11 @@ requires an explicit choice for short results. See the [atomic generation API](d
 
 ## Use the SDKs
 
-The editor and its integrations share a monorepo. The published release contains seven packages; current source adds three independent Provider packages. Packages ship JavaScript and, for the SDKs, TypeScript declarations. GPU rendering remains a browser capability; an npm package does not imply a headless Node renderer.
+The editor and its integrations share a monorepo. The published release contains seven packages; current source adds the shared Provider SDK, for eight public build packages. Packages ship JavaScript and, for the SDKs, TypeScript declarations. GPU rendering remains a browser capability; an npm package does not imply a headless Node renderer.
 
 | Package | Purpose |
 | --- | --- |
 | [`@velocut/provider-sdk`](web/packages/provider-sdk) | Provider/model/channel contracts, credential references and lifecycle APIs (unreleased) |
-| [`@velocut/provider-task-api`](web/packages/provider-task-api) | Task API and Ark video adapters (unreleased) |
-| [`@velocut/provider-minimax`](web/packages/provider-minimax) | MiniMax video, speech and music adapters (unreleased) |
 | [`@velocut/protocol`](web/packages/protocol) | Document types, commands, validation and protocol compatibility |
 | [`@velocut/core-ts`](web/packages/core-ts) | Pure timeline editing, evaluation and engine history |
 | [`@velocut/render-sdk`](web/packages/render-sdk) | WebGPU composition, media workers, audio and export; includes a Vite helper |

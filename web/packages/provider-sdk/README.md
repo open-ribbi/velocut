@@ -8,12 +8,15 @@ Uses standard JavaScript, fetch, AbortSignal and Uint8Array in Node or browsers.
 
 ```ts
 import {ProviderRegistry} from '@velocut/provider-sdk';
-import {taskApiProvider} from '@velocut/provider-task-api';
+import {declarativeProvider} from '@velocut/provider-sdk/declarative';
+import {builtinModelSpec} from '@velocut/provider-sdk/presets';
 
-const registry = new ProviderRegistry().register(taskApiProvider);
+const definition=declarativeProvider(builtinModelSpec('task-api','your-model'));
+
+const registry = new ProviderRegistry().register(definition);
 const channel = registry.create({
-  id: 'my-video', provider: 'task-api',
-  config: {baseUrl: 'https://your-service.example', models: ['your-model']},
+  id: 'my-video', provider: definition.id,
+  config: {baseUrl: 'https://your-service.example', remoteModel: 'your-model'},
   credentials: {apiKey: {store: 'host', key: 'video-key'}},
 }, {
   resolveCredential: async ref => myCredentialStore.get(ref.store, ref.key),
@@ -24,8 +27,8 @@ channel.supports(request); // pure model/service validation
 const receipt = await channel.submit(request, {requestId:'shot-001'});
 // Persist the complete receipt privately, with the original channel configuration.
 const status = await channel.poll(receipt);
-if (status.state === 'ready') {
-  const result = await channel.collect(status.receipt ?? receipt);
+if (status.state === 'ready' || status.state === 'succeeded') {
+  const result = status.state === 'succeeded' ? status.result : await channel.collect(status.receipt ?? receipt);
   // The host chooses how to save, probe, register or place result.outputs.
 }
 ```
@@ -37,9 +40,9 @@ supported by its service. They do not provide cross-call deduplication alone.
 
 `ProviderDefinition` supplies metadata/config schema, declared credential slots
 and a factory. `ModelDefinition` supplies input schema plus a pure validator;
-`supports` adds service-specific restrictions. Schemas are discovery metadata,
-not a hidden generic schema interpreter: providers implement config validation in
-`create`, model checks in `validate` and service restrictions in `supports`.
+`supports` adds service-specific restrictions. Hand-written providers implement
+these checks themselves. Declarative models validate their JSON Schema with Ajv
+and execute the same data mappings whether bundled or imported from YAML.
 
 `execute` handles immediate results. `submit/poll/collect` handle asynchronous
 jobs. Optional `cancel` returns accepted/confirmed/unsupported/too-late; only
@@ -65,8 +68,7 @@ current single-URL video timeline; it deliberately rejects unsupported output
 shapes rather than dropping extra candidates.
 
 See the [integration guide](../../../docs/integrations/providers.md) and the
-[independent package example](../../../examples/provider-example). These new
-packages are in source/local builds and have not yet been published to npm.
+[independent package example](../../../examples/provider-example). This package is in source/local builds and has not yet been published to npm.
 
 
 The `/catalog` subpath exports editable model presets, parameter controls/defaults
@@ -75,3 +77,9 @@ universal wire protocol. Studio uses the same metadata for configuration forms,
 per-generation controls and host-side preflight. Built-in protocols remain
 explicitly selected; a new model ID on a compatible protocol requires only
 configuration, while a different protocol still requires an adapter.
+
+The `/presets` subpath exports `builtinModelSpec`, `builtinTemplates` and
+`configurePresetModel`. Built-ins are data recipes, not independent transports.
+Schemas, HTTP paths, field mappings and result selectors are exported as ordinary
+model definitions; the existing render-sdk constructors are thin compatibility
+wrappers around the same interpreter.

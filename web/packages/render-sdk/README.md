@@ -73,11 +73,12 @@ model download is needed to composite and export existing media.
 
 ## Provider compatibility
 
-Video HTTP transport now lives in `@velocut/provider-task-api`; MiniMax speech
-transport lives in `@velocut/provider-minimax`. Both depend on the host-neutral
-`@velocut/provider-sdk`. Existing render-sdk exports delegate to those packages.
-Only browser waveform decoding remains in `MiniMaxTextToSpeech`. New Provider
-authors should import provider-sdk directly; see the [Provider guide](../../../docs/integrations/providers.md).
+Video and cloud-speech calls use the shared declarative executor and preset
+definitions in `@velocut/provider-sdk`. Existing render-sdk exports remain as thin
+compatibility wrappers; they no longer own HTTP request/response implementations.
+Browser waveform decoding remains in `MiniMaxTextToSpeech`. New model integrations
+can use YAML/JSON definitions; SDK hosts can also implement Provider contracts.
+See the [Provider guide](../../../docs/integrations/providers.md).
 
 ## Video provider lifecycle
 

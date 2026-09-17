@@ -2,14 +2,12 @@
 
 The monorepo publishes seven public packages at version 0.0.1. Start the editor
 with `npx @velocut/cli@0.0.1 studio`, or install individual SDKs with npm.
-Current source additionally builds three Provider packages; these are not yet
-published. Build/test commands never publish to the registry.
+Current source additionally builds the shared Provider SDK, for eight public
+packages. This addition is not yet published. Build/test commands never publish to the registry.
 
 | Package | Environment | Public responsibility |
 | --- | --- | --- |
 | `@velocut/provider-sdk` | Node/browser | Host-neutral provider/model/channel/lifecycle contracts (unreleased) |
-| `@velocut/provider-task-api` | Node/browser | Task API / Ark video transports (unreleased) |
-| `@velocut/provider-minimax` | Node/browser | MiniMax video / speech / music transports (unreleased) |
 | `@velocut/protocol` | Node/browser | Document and command contract, validation, bridge compatibility |
 | `@velocut/core-ts` | Node/browser | Pure timeline engine and evaluation; no GPU required |
 | `@velocut/render-sdk` | Browser | WebGPU, WebCodecs, workers, audio, export, observation |

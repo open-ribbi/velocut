@@ -12,8 +12,6 @@ require HypiHub, and it does not import Hypit's code or runtime.
 | Package | Responsibility |
 | --- | --- |
 | `@velocut/provider-sdk` | Model schema/validation, capability requests, channel configuration, scoped credential references, provider registry, lifecycle/result/error contracts |
-| `@velocut/provider-task-api` | Task API and Ark async video mapping and HTTP transport |
-| `@velocut/provider-minimax` | Native video, speech and music API transports |
 | `@velocut/runtime` | Durable project jobs, receipts, reference snapshots, retries of tracking, adoption and history |
 | `@velocut/render-sdk` | Rendering, decoding and compatibility wrappers for previous provider exports |
 
@@ -36,8 +34,9 @@ a project document, URL, prompt or agent tool argument.
 Define model schemas and validators independently from wire mapping. A model's
 semantic constraints belong in its `validate`; narrower service limits belong in
 `supports`. Channel addresses, protocol options and credential references are
-host configuration. The SDK exposes schemas as metadata but does not implement a
-general JSON Schema evaluator. Each provider validates its config in its factory.
+host configuration. Low-level custom providers implement their own validators.
+The declarative interpreter executes JSON Schema validation and the configured
+request/response mappings; built-in recipes use exactly the same interpreter.
 
 For immediate operations implement `execute`. For remote jobs implement
 `submit/poll` and, when needed, `collect`. Persist the complete returned receipt
@@ -91,9 +90,10 @@ wrapper. Direct Provider consumers can run speech transport in Node.
 
 ## Runtime recovery and boundaries
 
-The generation journal upgrades from versions 1/2 to 3 without re-submitting jobs.
+The generation journal upgrades from versions 1/2/3 to 4 without re-submitting jobs.
 Version 2 protected private provider handles; version 3 keeps older executors from
 claiming new jobs whose model parameters and reference roles they cannot preserve.
+Version 4 adds complete declarative inputs and pinned model definition revisions.
 Generation jobs retain `providerHandle` privately in the project ledger and pass
 it back to the original adapter after reload. Agent get/list responses and edit
 history exclude that opaque state. Existing endpoint/key binding checks, request
@@ -106,8 +106,8 @@ cancellation, a pricing endpoint or an idempotency header. Other providers can
 implement those documented service features via the public contracts. Pricing
 responses preserve their source and data; the SDK invents no estimate.
 
-All provider verification uses injected mock transports. The source builds ten
-public package tarballs, including these three new packages. The published 0.0.1
+All provider verification uses injected mock transports. The source builds eight
+public package tarballs, including the shared Provider SDK. The published 0.0.1
 release still contains the earlier seven packages until an explicit new release.
 
 ## Configure models in Studio
@@ -139,8 +139,7 @@ The parameter inventory was checked against evo-backend commit `58be2808`, in
 its video tools, `common/seedance2hm`, `common/seedance`, and MiniMax audio tools.
 Only public model/request definitions informed the implementation. Velocut has
 no dependency on that backend, its deployment, accounts, billing or secrets.
-Native MiniMax route behavior is also documented in the links in provider-minimax's
-README. This is not a claim that every evo-backend tool/protocol is implemented.
+This is not a claim that every evo-backend tool/protocol is implemented.
 
 Known presets expose parameter controls and supported video lengths/resolutions.
 Advanced settings let users add validated scalar controls (text, number, boolean
@@ -173,8 +172,9 @@ retried; their outcome remains visible. Audio generation does not insert a clip.
 Video model configuration drives the existing SDK/MCP/CodeAct generation actions;
 this increment does not add a generic paid audio execution tool to the MCP host.
 
-Document format 4 preserves model parameters and reference roles; formats 1–3
-migrate forward. The engine feature probe prevents an old WASM binary from silently
-dropping these fields. The model configuration and tokens remain in browser-local
-settings, outside the document and returned Agent channel metadata. Private job
+Document format 5 preserves full model inputs, configuration revisions, parameters
+and reference roles; formats 1–4 migrate forward. The engine feature probe prevents an old WASM binary from silently
+dropping these fields. Legacy channel settings remain browser-local. Declarative definitions and tokens
+use the local Studio model host; neither stores credentials in the document or
+returned Agent channel metadata. Private job
 receipts continue to be excluded from public job get/list results.

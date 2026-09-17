@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './test-fixtures';
 import { resolve } from 'node:path';
 const sdkUrl = '/@fs' + resolve('packages/scene-sdk/src/index.ts');
 

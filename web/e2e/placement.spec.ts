@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './test-fixtures';
 
 test('distribution measures world bounds under transformed parents and preserves animation', async ({ page }) => {
   await page.goto('/'); await page.waitForFunction(() => (window as any).velocut?.sceneArrange);

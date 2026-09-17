@@ -108,7 +108,7 @@ test('task-api: submit rejection carries the endpoint detail message', async () 
 
 test('task-api: completed without video_url is a loud error, not a silent empty clip', async () => {
   scriptFetch([{ body: { task_id: 't-4' } }, { body: { id: 't-4', status: 'completed', result: {} } }]);
-  await assert.rejects(() => gen().generate({ model: 'm', prompt: 'p' }), /no video_url/);
+  await assert.rejects(() => gen().generate({ model: 'm', prompt: 'p' }), /Output URL/);
 });
 
 test('task-api: overall deadline aborts an endless pending task', async () => {

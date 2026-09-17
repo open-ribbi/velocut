@@ -1,4 +1,4 @@
-import {test,expect,type Page} from '@playwright/test';import {readFileSync} from 'node:fs';import {resolve} from 'node:path';
+import {test,expect,type Page} from './test-fixtures';import {readFileSync} from 'node:fs';import {resolve} from 'node:path';
 async function addModel(page:Page,preset:string,id:string,base:string){
  await page.getByRole('button',{name:'Model settings',exact:true}).click();const dialog=page.getByRole('dialog',{name:'Media models',exact:true});await dialog.getByRole('button',{name:'+ Add channel',exact:true}).click();await dialog.getByLabel('Model preset',{exact:true}).selectOption(preset);await dialog.getByLabel('Channel name',{exact:true}).fill(id);await dialog.getByLabel('Model Base URL',{exact:true}).fill(base);await dialog.getByLabel('Model API Token',{exact:true}).fill('user-token-fixture');return dialog;
 }

@@ -1,6 +1,6 @@
 // End-to-end smoke: boot → import → edit → persist → multi-project. One
 // journey per test so IndexedDB/OPFS state stays inside one browser context.
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page } from './test-fixtures';
 
 // An 8x8 red PNG (ffmpeg-generated; decodes everywhere).
 const RED_PNG = Buffer.from(

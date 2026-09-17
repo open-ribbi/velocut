@@ -1,4 +1,4 @@
-import {test,expect} from '@playwright/test';
+import {test,expect} from './test-fixtures';
 import {resolve} from 'node:path';
 import {writeFile} from 'node:fs/promises';
 import {Client} from '@modelcontextprotocol/client';

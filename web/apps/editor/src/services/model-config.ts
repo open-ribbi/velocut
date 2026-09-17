@@ -3,9 +3,10 @@ import type {Store} from '../state/store';
 import type {MediaLibrary} from '@velocut/render-sdk';
 import {kvGet,kvPut,saveMedia,loadMedia} from '@velocut/collab-sdk';
 import {activeProject,activeStorage} from './projects';
-import {ProviderRegistry,type JsonObject} from '@velocut/provider-sdk';
-import {MODEL_PRESETS,modelPreset,parameterDefaults,parameterFields,validateParameters,validateVideoModel} from '@velocut/provider-sdk/catalog';
-import {minimaxProvider,minimaxMusicProvider} from '@velocut/provider-minimax';
+import type {JsonObject} from '@velocut/provider-sdk';
+import {BUILTIN_PROTOCOLS,builtinModelSpec,configurePresetModel} from '@velocut/provider-sdk/presets';
+import {modelInput} from '@velocut/provider-sdk/declarative';
+import {MODEL_PRESETS,modelPreset,parameterDefaults,parameterFields,validateParameters} from '@velocut/provider-sdk/catalog';
 import type {GenerationRequest} from '@velocut/protocol';
 import {createVideoGen,videoGenProviders} from '@velocut/render-sdk';
 import {loadVideoGenConfig,saveVideoGenConfig,type VideoGenChannel} from './videogen';
@@ -28,7 +29,11 @@ export function resolveVideoRequest(request:GenerationRequest):GenerationRequest
  const c=loadVideoGenConfig().channels.find(c=>c.id===request.channel);if(!c)return request;const defaults=parameterDefaults(c.modelSettings?.[request.model]);const {ratio,resolution,generateAudio,...parameters}=defaults;
  return {...(typeof ratio==='string'?{ratio}:{}),...(typeof resolution==='string'?{resolution}:{}),...(typeof generateAudio==='boolean'?{generateAudio}:{}),...request,...(Object.keys(parameters).length||request.parameters?{parameters:{...parameters,...request.parameters}}:{})};
 }
-export function validateConfiguredVideo(request:GenerationRequest,durationS:number){if(loadVideoGenConfig().channels.find(c=>c.id===request.channel)?.kind==='declarative-http')return;const c=loadVideoGenConfig().channels.find(c=>c.id===request.channel);if(!c)throw Error('Unknown model channel');validateVideoModel(c.modelSettings?.[request.model]?{...c.modelSettings[request.model],...(c.capabilities?.[request.model]?{capabilities:c.capabilities[request.model]}:{})}:undefined,{...request,durationS} as unknown as JsonObject);if(c.kind==='minimax-video'&&(request.ratio||request.generateAudio===true||request.lastFrameReferenceId||request.referenceImageIds?.length||request.referenceVideoIds?.length||request.referenceAudioIds?.length))throw Error('MiniMax Video API supports prompt, duration, resolution and a first frame; select a Task API preset for H3 multimodal generation');}
+export function validateConfiguredVideo(request:GenerationRequest,durationS:number){
+ const c=loadVideoGenConfig().channels.find(c=>c.id===request.channel);if(!c)throw Error('Unknown model channel');if(c.kind==='declarative-http'||!BUILTIN_PROTOCOLS[c.kind])return;
+ const {channel:_channel,model:_model,modelRevision:_revision,input:_input,...values}=request;
+ modelInput(builtinModelSpec(c.kind,request.model,{...c.modelSettings?.[request.model],...(c.capabilities?.[request.model]?{capabilities:c.capabilities[request.model]}:{})}),{...values,durationS});
+}
 export interface AudioGenerationRecord {id:string;channelId:string;model:string;state:'submitting'|'succeeded'|'unknown'|'failed';createdAt:number;src?:string;error?:string}
 export async function audioGenerationRecords():Promise<AudioGenerationRecord[]>{const bytes=await kvGet('audio-generation:'+activeProject().id);return bytes?JSON.parse(new TextDecoder().decode(bytes)):[];}
 export async function audioGenerationFile(record:AudioGenerationRecord){if(!record.src)throw Error('Audio result is not available');const file=await loadMedia(record.src,activeStorage().mediaDir);if(!file)throw Error('Audio file is missing from this project');return file.type?file:new File([file],file.name,{type:'audio/mpeg'});}
@@ -44,15 +49,14 @@ export async function keepGeneratedAudio(store:Store,media:MediaLibrary,file:Fil
 }
 export async function generateConfiguredAudio(channelId:string,model:string,text:string,lyrics:string,parameters:Record<string,string|number|boolean>,signal:AbortSignal,input?:JsonObject):Promise<File>{
  const channel=loadAudioChannels().find(c=>c.id===channelId);if(!channel||!channel.models.includes(model))throw Error('Audio channel/model is not configured');validateChannel(channel);const settings=channel.modelSettings?.[model],values={...parameterDefaults(settings),...parameters};validateParameters(values,parameterFields(settings));
- if(settings?.presetId==='music-2.5'&&(lyrics.length>3500||text.length>2000))throw Error('Music 2.5 supports at most 3500 lyric characters and 2000 prompt characters');
- const music=channel.kind==='minimax-music',definition=music?minimaxMusicProvider:minimaxProvider;
- const provider=new ProviderRegistry().register(definition).create({id:channel.id,provider:definition.id,config:{baseUrl:channel.baseUrl,...(!music?{model}:{})},credentials:{apiKey:{store:'host',key:channel.id}}},{resolveCredential:async()=>channel.apiKey});
+ const music=channel.kind==='minimax-music';
+ const provider=channel.kind==='declarative-audio'?null:configurePresetModel(channel.kind,model,{baseUrl:channel.baseUrl,apiKey:channel.apiKey,modelSettings:settings});
  const projectId=activeProject().id,storage=activeStorage(),key='audio-generation:'+projectId,id=crypto.randomUUID();
  const record:AudioGenerationRecord={id,channelId,model,state:'submitting',createdAt:Date.now()};
  const update=async()=>navigator.locks.request(key,async()=>{const bytes=await kvGet(key),list:AudioGenerationRecord[]=bytes?JSON.parse(new TextDecoder().decode(bytes)):[];const index=list.findIndex(r=>r.id===id);if(index<0)list.push(record);else list[index]=record;await kvPut(key,new TextEncoder().encode(JSON.stringify(list)));window.dispatchEvent(new Event('velocut-audio-generation'));});
  await update();
  try{
-  const result=channel.kind==='declarative-audio'?await executeDeclaredAudio(channelId,input??{},id,signal):await provider.execute({capability:music?'audio.generate':'audio.synthesize',model,input:music?{prompt:text,lyrics,...values}:{text,...values}},{signal,requestId:id});signal.throwIfAborted();const output=result.outputs[0];if(output?.kind!=='audio'||output.source.kind!=='bytes')throw Error('Audio provider returned no encoded audio');
+  const result=channel.kind==='declarative-audio'?await executeDeclaredAudio(channelId,input??{},id,signal):await provider!.execute({capability:music?'audio.generate':'audio.synthesize',model,input:music?{prompt:text,lyrics,...values}:{text,...values}},{signal,requestId:id});signal.throwIfAborted();const output=result.outputs[0];if(output?.kind!=='audio'||output.source.kind!=='bytes')throw Error('Audio provider returned no encoded audio');
   const file=new File([new Uint8Array(output.source.bytes)],`generated-audio-${id}.mp3`,{type:output.mimeType??'audio/mpeg'});record.src=await saveMedia(file,storage.mediaDir);record.state='succeeded';await update();const saved=await loadMedia(record.src,storage.mediaDir);if(!saved)throw Error('Audio file is missing');return saved.type?saved:new File([saved],saved.name,{type:file.type});
  }catch(e){record.state=(e as {outcome?:string}).outcome==='rejected'?'failed':'unknown';record.error=String(e instanceof Error?e.message:e).split(channel.apiKey||'\u0000').join('[redacted]').replace(/https?:\/\/[^\s]+/g,'[provider URL]');await update().catch(()=>{});throw e;}
 
