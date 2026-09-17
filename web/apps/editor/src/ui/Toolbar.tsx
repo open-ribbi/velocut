@@ -1,3 +1,4 @@
+import brandMark from '../../../../../plugins/velocut/assets/logo.svg';
 import {ModelManager} from './ModelManager';
 import { Icon } from './primitives/Icon';
 import { Dialog } from './primitives/Dialog';
@@ -157,11 +158,7 @@ export function Toolbar({
       <Dialog open={modelsOpen} title="Media models" onClose={()=>setModelsOpen(false)} className="generation-dialog">{modelsOpen&&<ModelManager store={store} media={media}/>}</Dialog>
       <div className="project-bar">
         <div className="brand">
-          <span className="brand-mark" aria-hidden="true">
-            <i />
-            <i />
-            <i />
-          </span>
+          <img className="brand-mark" src={brandMark} alt="" aria-hidden="true" />
           <span>
             velocut<small>STUDIO</small>
           </span>

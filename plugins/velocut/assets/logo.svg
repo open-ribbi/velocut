@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 256 256" fill="none">
+  <title>Velocut</title>
+  <desc>A cut in a golden V, representing video editing and motion.</desc>
+  <rect x="1" y="1" width="254" height="254" rx="55" fill="#15221F"/>
+  <rect x="1" y="1" width="254" height="254" rx="55" stroke="#FFFFFF" stroke-opacity=".1" stroke-width="2"/>
+  <path d="M48 65H90L133 157L111 201L48 65Z" fill="#BB8A50"/>
+  <path d="M111 201H148L185 121L144 133L111 201Z" fill="#E6B774"/>
+  <path d="M154 111L195 99L211 65H175L154 111Z" fill="#F6D59F"/>
+</svg>

@@ -10,18 +10,22 @@
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "Velocut",
-    "shortDescription": "Model and direct scenes in your live editor.",
-    "longDescription": "Use Codex to edit timelines, configure media models, create 3D scenes and inspect rendered results. The matching prebuilt Studio starts on first use. Requires Node.js 22.6+ and npm; no source checkout or separate reasoning-model API key.",
+    "shortDescription": "Edit video. Direct the scene.",
+    "longDescription": "Edit timelines, generate media, build editable 3D scenes and inspect rendered results with Codex. The matching prebuilt Studio starts on first use.\n\nTry creating a first cut from your clips, building a scene with warm lighting, or reviewing a camera composition.\n\nRequires Node.js 22.6+ and npm. No source checkout or separate reasoning-model API key.",
     "developerName": "Velocut contributors",
     "category": "Productivity",
     "capabilities": [
       "Interactive",
       "Write"
     ],
-    "defaultPrompt": [
-      "Connect to my local Velocut editor.",
-      "Build a cafe scene with tables and warm lighting.",
-      "Inspect my scene and improve its camera composition."
-    ]
+    "brandColor": "#E6B774",
+    "composerIcon": "./assets/icon.png",
+    "logo": "./assets/logo.png",
+    "logoDark": "./assets/logo.png",
+    "screenshots": [
+      "./assets/editor.png",
+      "./assets/director.png"
+    ],
+    "defaultPrompt": []
   }
 }

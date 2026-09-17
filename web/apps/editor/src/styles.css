@@ -276,32 +276,10 @@ label {
   color: var(--subtle);
 }
 .brand-mark {
-  width: 24px;
-  height: 24px;
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  transform: skew(-14deg);
-}
-.brand-mark i {
+  width: 28px;
+  height: 28px;
   display: block;
-  width: 6px;
-  background: var(--accent);
-  height: 18px;
-  border-radius: 1px;
-}
-.brand-mark i:nth-child(2) {
-  height: 12px;
-  align-self: flex-end;
-  margin-bottom: 3px;
-  opacity: 0.72;
-}
-.brand-mark i:nth-child(3) {
-  height: 7px;
-  align-self: flex-end;
-  margin-bottom: 3px;
-  opacity: 0.42;
+  flex: none;
 }
 .header-divider,
 .divider {
