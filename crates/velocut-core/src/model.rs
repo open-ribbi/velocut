@@ -66,7 +66,12 @@ impl Document {
             .iter()
             .flat_map(|t| t.clips.iter())
             .map(|c| c.end_us())
-            .chain(self.generation_slots.iter().map(|s| s.start_us+s.duration_us)).max()
+            .chain(
+                self.generation_slots
+                    .iter()
+                    .map(|s| s.start_us + s.duration_us),
+            )
+            .max()
             .unwrap_or(0)
     }
 
@@ -99,28 +104,48 @@ impl Document {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all="camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct GenerationRequest {
-    pub channel:String, pub model:String, pub prompt:String,
-    #[serde(default,skip_serializing_if="Option::is_none")] pub input:Option<std::collections::BTreeMap<String,serde_json::Value>>,
-    #[serde(default,skip_serializing_if="Option::is_none")] pub model_revision:Option<String>,
-    #[serde(default,skip_serializing_if="Option::is_none")] pub ratio:Option<String>,
-    #[serde(default,skip_serializing_if="Option::is_none")] pub resolution:Option<String>,
-    #[serde(default,skip_serializing_if="Option::is_none")] pub generate_audio:Option<bool>,
-    #[serde(default,skip_serializing_if="Option::is_none")] pub first_frame_reference_id:Option<String>,
-    #[serde(default,skip_serializing_if="Option::is_none")] pub last_frame_reference_id:Option<String>,
-    #[serde(default,skip_serializing_if="Option::is_none")] pub reference_image_ids:Option<Vec<String>>,
-    #[serde(default,skip_serializing_if="Option::is_none")] pub reference_video_ids:Option<Vec<String>>,
-    #[serde(default,skip_serializing_if="Option::is_none")] pub reference_audio_ids:Option<Vec<String>>,
-    #[serde(default,skip_serializing_if="Option::is_none")] pub parameters:Option<std::collections::BTreeMap<String,serde_json::Value>>,
+    pub channel: String,
+    pub model: String,
+    pub prompt: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input: Option<std::collections::BTreeMap<String, serde_json::Value>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_revision: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ratio: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolution: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub generate_audio: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub first_frame_reference_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_frame_reference_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reference_image_ids: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reference_video_ids: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reference_audio_ids: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parameters: Option<std::collections::BTreeMap<String, serde_json::Value>>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all="camelCase")]
+#[serde(rename_all = "camelCase")]
 pub struct GenerationSlot {
-    pub id:String, pub track_id:String, pub start_us:TimeUs, pub duration_us:TimeUs, pub name:String,
-    pub intent_version:u64, pub request:GenerationRequest,
-    #[serde(default,skip_serializing_if="Option::is_none")] pub clip_id:Option<String>,
-    #[serde(default,skip_serializing_if="Option::is_none")] pub selected_job_id:Option<String>,
+    pub id: String,
+    pub track_id: String,
+    pub start_us: TimeUs,
+    pub duration_us: TimeUs,
+    pub name: String,
+    pub intent_version: u64,
+    pub request: GenerationRequest,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub clip_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selected_job_id: Option<String>,
 }
 
 // ---------------------------------------------------------------------------

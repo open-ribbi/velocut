@@ -17,7 +17,8 @@ test('persisted definitions load without source registration, pin old revisions 
  const restarted=createModelHost({directory,fetch:fetcher});await restarted.execute({action:'poll',connectionId:'channel',revision:saved.revision,receipt});assert.equal(requests.at(-1).url,'https://first.invalid/tasks/task');assert.equal(requests[0].init.headers.authorization,'Bearer private-token');
  await assert.rejects(()=>h.execute({action:'upsert',definition,expectedRevision:saved.revision}),/changed/);
  const connection=(await h.execute({action:'list'})).connections[0];await h.execute({action:'connections',connection:{id:'channel',modelId:'custom',baseUrl:'https://second.invalid'},expectedRevision:connection.revision});assert.equal((await h.execute({action:'list'})).connections[0].credentialConfigured,false);
- assert.equal((await stat(join(directory,'config.json'))).mode&0o777,0o600);
+ // Windows stat exposes DOS permission emulation, not POSIX owner-only mode bits.
+ if(process.platform!=='win32')assert.equal((await stat(join(directory,'config.json'))).mode&0o777,0o600);
  }finally{await rm(directory,{recursive:true,force:true});}
 });
 
