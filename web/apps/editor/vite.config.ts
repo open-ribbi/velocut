@@ -116,6 +116,8 @@ export default defineConfig(({ command }) => ({
     include: [
       'react', 'react-dom', 'react-dom/client', 'react/jsx-runtime',
       '@anthropic-ai/sdk', '@velocut/scene-sdk > @dimforge/rapier3d-compat', '@huggingface/transformers',
+      // With CI discovery disabled, schema compilation still needs CJS-to-ESM conversion.
+      '@velocut/provider-sdk > ajv', 'yaml',
       'aws4fetch', 'gsap', 'mp4-muxer', 'mp4box', 'yjs', 'zod', 'three',
       'three/examples/jsm/controls/OrbitControls.js',
       'three/examples/jsm/controls/TransformControls.js',
