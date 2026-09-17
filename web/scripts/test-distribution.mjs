@@ -75,6 +75,9 @@ try {
     console.log('independent providers ok');
   `);
   assert.match(providersOutput,/independent providers ok/);
+  const declarativeOutput=run(`import assert from 'node:assert/strict';import{parseModelSpec,modelInput}from'@velocut/provider-sdk/declarative';const spec=parseModelSpec({version:1,id:'external',capability:'audio.synthesize',inputSchema:{type:'object',properties:{voice:{type:'object',properties:{speed:{type:'number',default:1}}}}},execution:{type:'sync-http',auth:{type:'none'},submit:{method:'POST',path:'/speak',body:{$input:''}},outputs:[{kind:'audio',base64:'$.audio'}]}});assert.deepEqual(modelInput(spec,{voice:{}}),{voice:{speed:1}});console.log('declarative SDK ok');`);
+  assert.match(declarativeOutput,/declarative SDK ok/);
+
   const resourceOutput = run(`
     import { Store, TsEngineAdapter, atomicRuntime, configureMediaResources } from '@velocut/runtime';
     import { ops, ref } from '@velocut/protocol';
@@ -108,7 +111,7 @@ try {
       {id:'slot',command:ops.addGenerationSlot({trackId:ref('track','trackId'),startUs:0,durationUs:1000000,request:{channel:'mock',model:'mock',prompt:'Packed generation'}})}
     ]});
     assert.ok(made.ok);const slotId=made.data.results.slot.slotId;
-    assert.deepEqual(store.evaluate(0).pendingGenerationIds,[slotId]);assert.equal(CURRENT_FORMAT_VERSION,4);
+    assert.deepEqual(store.evaluate(0).pendingGenerationIds,[slotId]);assert.equal(CURRENT_FORMAT_VERSION,5);
     assert.ok(api.capabilities({name:'generation'}).data.inputSchema);
     let ledger=null,posts=0,mutex=Promise.resolve();
     const manager=configureGeneration(store,{
@@ -241,7 +244,14 @@ try {
   );
   assert.equal(doctor.ok, true);
   const { startStudio } = await import(pathToFileURL(resolve(cliRoot, 'server.mjs')));
+  process.env.VELOCUT_MODEL_HOME=resolve(workspace,'model-configuration');
   studio = await startStudio({ port: 0, open: false });
+  const modelApi=async value=>{const response=await fetch(studio.url+'/__velocut/models',{method:'POST',headers:{origin:studio.url,'content-type':'application/json'},body:JSON.stringify(value)});const result=await response.json();assert.equal(result.ok,true,JSON.stringify(result));return result.data;};
+  const declarativeSpec={version:1,id:'independent-model',capability:'video.generate',inputSchema:{type:'object',properties:{camera:{type:'object',properties:{speeds:{type:'array',items:{type:'number'}}}}}},execution:{type:'async-http',submit:{method:'POST',path:'/tasks',body:{$input:''}},receipt:{id:'$.id'},poll:{method:'GET',path:'/tasks/{receipt.id}',status:'$.status',states:{running:['running'],succeeded:['done'],failed:['failed']}},outputs:[{kind:'video',url:'$.video'}]}};
+  const savedModel=await modelApi({action:'upsert',definition:declarativeSpec});assert.ok(savedModel.revision);
+  await modelApi({action:'connections',connection:{id:'independent-model-channel',modelId:'independent-model',baseUrl:'https://fixture.invalid'}});
+  const previewedModel=await modelApi({action:'preview',connectionId:'independent-model-channel',input:{camera:{speeds:[0.2,1]}}});assert.deepEqual(previewedModel.request.body,{camera:{speeds:[0.2,1]}});
+  assert.match((await modelApi({action:'get',id:'independent-model'})).yaml,/independent-model/);
   const health = await fetch(studio.url + '/__velocut/health');
   assert.equal((await health.json()).bridgeProtocol, 2);
   const index = await fetch(studio.url);

@@ -16,6 +16,7 @@ fn request_ok(r: &GenerationRequest) -> bool {
                 .map(|ids| ids.iter().all(|s| !s.is_empty()))
                 .unwrap_or(true)
         })
+        && r.model_revision.as_ref().map(|v| !v.is_empty()).unwrap_or(true)
         && r.parameters
             .as_ref()
             .map(|values| {

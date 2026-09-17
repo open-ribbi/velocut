@@ -2764,3 +2764,16 @@ button.danger-button {
 .timeline-heading small.selection-count { display: inline; color: var(--accent); }
 
 .model-settings {display:flex;flex-direction:column;gap:12px;min-width:0}.model-settings label,.model-audio label{display:block;min-width:0}.model-settings input,.model-settings select,.model-settings textarea,.model-audio input,.model-audio select,.model-audio textarea{width:100%;box-sizing:border-box;min-width:0}.model-channel{display:flex;gap:8px;align-items:center}.model-channel>div{flex:1;min-width:0;overflow-wrap:anywhere}.model-channel small{display:block;color:var(--muted)}.model-audio{display:flex;flex-direction:column;gap:12px;border-top:1px solid var(--line);padding-top:16px;margin-top:16px}.model-audio audio{width:100%}.generation-reference-list{display:flex;flex-wrap:wrap;gap:6px}.generation-reference-list label{display:flex;align-items:center;gap:4px}
+
+/* Declarative schemas and model setup also fit the Codex side panel. */
+.declarative-models .model-channel { flex-wrap: wrap; gap: 8px; align-items: flex-start; }
+.declarative-models .model-channel > div:first-child { flex: 1 0 100%; min-width: 0; }
+.declarative-models .model-channel > button { flex: 1 1 auto; }
+.declarative-models .dialog-actions { flex-wrap: wrap; }
+.declarative-models .dialog-actions > label { flex: 1 1 100%; min-width: 0; }
+.declarative-models input[type=file] { width: 100%; }
+.schema-fields { display: grid; gap: 10px; min-width: 0; }
+.schema-fields label { display: grid; gap: 5px; min-width: 0; }
+.schema-fields fieldset { margin: 0; min-width: 0; padding: 10px; border: 1px solid var(--border, #333); border-radius: 8px; }
+.schema-fields input, .schema-fields select, .schema-fields textarea { width: 100%; min-width: 0; box-sizing: border-box; }
+.schema-fields small { color: var(--text-muted, #aaa); }

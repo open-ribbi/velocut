@@ -87,6 +87,7 @@ await writeFile(
 );
 console.log(out);
 
+await cp(resolve(root, '../../../docs/integrations/declarative-models.md'), resolve(out, 'skills/director/references/declarative-models.md'));
 await cp(resolve(root, '../../../docs/integrations/atomic-api.md'), resolve(out, 'skills/director/references/atomic-api.md'));
 
 const providerGuide=await readFile(resolve(root,'../../../docs/integrations/providers.md'),'utf8');

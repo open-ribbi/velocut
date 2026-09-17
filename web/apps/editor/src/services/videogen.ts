@@ -1,3 +1,4 @@
+import {declarativeChannels} from './declarative-models';
 import {modelPreset,parameterDefaults,type ModelSettings} from '@velocut/provider-sdk/catalog';
 // services/videogen.ts — AI video generation: channel configuration + the
 // generate-and-land pipeline.
@@ -61,7 +62,7 @@ export function loadVideoGenConfig(): VideoGenConfig {
       const parsed = JSON.parse(raw) as Partial<VideoGenConfig>;
       const channels = Array.isArray(parsed.channels) ? parsed.channels : [];
       return {
-        channels: channels
+        channels: [...declarativeChannels(),...channels
           .filter((c): c is VideoGenChannel => Boolean(c && typeof c.id === 'string' && typeof c.baseUrl === 'string'))
           .map((c) => {
             let capabilities:VideoGenChannel["capabilities"];
@@ -72,13 +73,13 @@ export function loadVideoGenConfig(): VideoGenConfig {
             models: Array.isArray(c.models) ? c.models.filter((m) => typeof m === 'string') : [],
             modelSettings:c.modelSettings,
             capabilities:Object.fromEntries([...new Set([...Object.keys(c.modelSettings??{}),...Object.keys(capabilities??{})])].map(id=>[id,{...modelPreset(c.modelSettings?.[id]?.presetId)?.capabilities,...c.modelSettings?.[id]?.capabilities,...capabilities?.[id]}])),
-          });}),
+          });})],
       };
     }
   } catch {
     /* fall through */
   }
-  return { channels: [] };
+  return { channels: declarativeChannels() };
 }
 
 export function saveVideoGenConfig(cfg: VideoGenConfig): void {

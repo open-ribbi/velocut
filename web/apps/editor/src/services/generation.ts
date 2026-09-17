@@ -1,3 +1,5 @@
+import {readPath} from '@velocut/provider-sdk/declarative';
+import {declaredInput,declaredModel,modelBinding,submitDeclared,pollDeclared} from './declarative-models';
 import {videoProvider,resolveVideoRequest,validateConfiguredVideo,parameterDefaults} from './model-config';
 import {configureGeneration,atomicRuntime,type GenerationAdapter,type GenerationLedger,type GenerationJob} from '@velocut/runtime';
 import {ops,ref,type AtomicOperation} from '@velocut/protocol';
@@ -10,16 +12,17 @@ import type {ProjectStorage} from './projects';
 
 export function bindGeneration(store:Store,media:MediaLibrary,observer:Observer,projectId:string,storage:ProjectStorage,flushDocument?:()=>Promise<void>){
   const key=`generation:${projectId}`,channel=new BroadcastChannel(`velocut-generation-${projectId}`);
-  const configured=(id:string)=>{const c=loadVideoGenConfig().channels.find(c=>c.id===id);if(!c||!c.apiKey)throw Error('Configure the generation channel and API key in Agent settings');const u=new URL(c.baseUrl);if(!['http:','https:'].includes(u.protocol)||u.username||u.password)throw Error('Channel needs an HTTP(S) endpoint and a separate API key');return c;};
+  const configured=(id:string)=>{const c=loadVideoGenConfig().channels.find(c=>c.id===id);if(!c||c.kind!=='declarative-http'&&!c.apiKey)throw Error('Configure the generation channel and API key in Agent settings');const u=new URL(c.baseUrl);if(!['http:','https:'].includes(u.protocol)||u.username||u.password)throw Error('Channel needs an HTTP(S) endpoint and a separate API key');return c;};
   const provider=(job:GenerationJob)=>{const c=configured(job.request.channel),p=videoProvider(c,job.request.model);if(!p.submit||!p.poll)throw Error('Provider must implement submit/poll to support resumable generation');return p;};
   const sanitize=(e:unknown,id:string)=>{let message=e instanceof Error?e.message:String(e);const c=loadVideoGenConfig().channels.find(c=>c.id===id);if(c?.apiKey)message=message.split(c.apiKey).join('[redacted]');if(e instanceof Error){e.message=message;return e;}return Error(message);};
   const png=async(bitmap:ImageBitmap)=>{try{const scale=Math.min(1,1920/Math.max(bitmap.width,bitmap.height));const canvas=new OffscreenCanvas(Math.max(1,Math.round(bitmap.width*scale)),Math.max(1,Math.round(bitmap.height*scale)));canvas.getContext('2d')!.drawImage(bitmap,0,0,canvas.width,canvas.height);return await canvas.convertToBlob({type:'image/png'});}finally{bitmap.close();}};
   const adapter:GenerationAdapter={
     projectId,
-    resolveRequest:resolveVideoRequest,validateRequest:validateConfiguredVideo,
+    requestedDuration:request=>{const key=declaredModel(request.channel)?.spec.timeline?.duration,v=key?readPath(request.input,key):undefined;return typeof v==='number'?v:undefined;},
+    resolveRequest:resolveVideoRequest,materializeRequest:(request,durationS)=>declaredModel(request.channel)?{...request,input:declaredInput(request,durationS)}:request,validateRequest:validateConfiguredVideo,
     flushDocument,
-    channels:()=>loadVideoGenConfig().channels.map(({id,label,models,defaultModel,capabilities,modelSettings})=>({id,label,models,defaultModel,capabilities,modelSettings})),
-    binding:async(id,request)=>{const c=configured(id),p=videoProvider(c,request?.model??c.defaultModel??c.models[0]);if(!p.submit||!p.poll)throw Error('Provider must implement submit/poll to support resumable generation');const bytes=new TextEncoder().encode(JSON.stringify([c.id,c.kind,c.baseUrl.replace(/\/+$/,''),c.apiKey,...(request&&c.modelSettings?.[request.model]?.presetId?['preset:'+c.modelSettings[request.model].presetId]:[])]));return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),b=>b.toString(16).padStart(2,'0')).join('');},
+    channels:()=>loadVideoGenConfig().channels.map(({id,label,models,defaultModel,capabilities,modelSettings})=>({id,label,models,defaultModel,capabilities,modelSettings,...(declaredModel(id)?{definitions:[declaredModel(id)]}:{})})),
+    binding:async(id,request)=>{if(request&&declaredModel(id))return modelBinding(request);const c=configured(id),p=videoProvider(c,request?.model??c.defaultModel??c.models[0]);if(!p.submit||!p.poll)throw Error('Provider must implement submit/poll to support resumable generation');const bytes=new TextEncoder().encode(JSON.stringify([c.id,c.kind,c.baseUrl.replace(/\/+$/,''),c.apiKey,...(request&&c.modelSettings?.[request.model]?.presetId?['preset:'+c.modelSettings[request.model].presetId]:[])]));return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),b=>b.toString(16).padStart(2,'0')).join('');},
     read:async()=>{const bytes=await kvGet(key);return bytes?JSON.parse(new TextDecoder().decode(bytes)) as GenerationLedger:null;},
     write:async value=>{await kvPut(key,new TextEncoder().encode(JSON.stringify(value)));channel.postMessage('changed');},
     lock:async work=>await navigator.locks.request(`${key}:ledger`,work),
@@ -31,8 +34,8 @@ export function bindGeneration(store:Store,media:MediaLibrary,observer:Observer,
       signal.throwIfAborted();const result=await createUploader(cfg.kind,cfg.config).upload(file,{name:ref.name,contentType:file.type||'application/octet-stream'});signal.throwIfAborted();
       const url=new URL(result.url);if(!['http:','https:'].includes(url.protocol))throw Error('Upload storage returned an invalid reference URL');return result.url;
     },
-    submit:async(job,firstFrameUrl,signal,urls={})=>{try{return await provider(job).submit!({model:job.request.model,prompt:job.request.prompt,durationS:job.providerDurationS,ratio:job.request.ratio,resolution:job.request.resolution,generateAudio:job.request.generateAudio,firstFrameUrl,lastFrameUrl:job.request.lastFrameReferenceId?urls[job.request.lastFrameReferenceId]:undefined,referenceImageUrls:job.request.referenceImageIds?.map(id=>urls[id]),referenceVideoUrls:job.request.referenceVideoIds?.map(id=>urls[id]),referenceAudioUrls:job.request.referenceAudioIds?.map(id=>urls[id]),parameters:job.request.parameters,requestId:job.requestId,signal});}catch(e){throw sanitize(e,job.request.channel);}},
-    poll:async(job,signal,handle)=>{try{return await provider(job).poll!(job.providerTaskId!,signal,handle);}catch(e){throw sanitize(e,job.request.channel);}},
+    submit:async(job,firstFrameUrl,signal,urls={})=>{try{if(job.request.modelRevision)return submitDeclared(job.request,job.providerDurationS,job.requestId,signal,urls);return await provider(job).submit!({model:job.request.model,prompt:job.request.prompt,durationS:job.providerDurationS,ratio:job.request.ratio,resolution:job.request.resolution,generateAudio:job.request.generateAudio,firstFrameUrl,lastFrameUrl:job.request.lastFrameReferenceId?urls[job.request.lastFrameReferenceId]:undefined,referenceImageUrls:job.request.referenceImageIds?.map(id=>urls[id]),referenceVideoUrls:job.request.referenceVideoIds?.map(id=>urls[id]),referenceAudioUrls:job.request.referenceAudioIds?.map(id=>urls[id]),parameters:job.request.parameters,requestId:job.requestId,signal});}catch(e){throw sanitize(e,job.request.channel);}},
+    poll:async(job,signal,handle)=>{try{if(job.request.modelRevision)return pollDeclared(job.request,job.providerTaskId!,handle,signal);return await provider(job).poll!(job.providerTaskId!,signal,handle);}catch(e){throw sanitize(e,job.request.channel);}},
     download:async(job,result,signal)=>{
       const filename=`generation-${job.id}.mp4`,src=`opfs://${filename}`;
       let file=await loadMedia(src,storage.mediaDir);

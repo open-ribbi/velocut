@@ -1,3 +1,4 @@
+import {createModelHost} from './models.mjs';
 import { createServer } from 'node:http';
 import { readFile, realpath, stat } from 'node:fs/promises';
 import { createReadStream } from 'node:fs';
@@ -68,6 +69,7 @@ export async function startStudio({ port = 5173, open = true } = {}) {
       'Studio bundle is missing or Node.js is older than 22.6. Install the published CLI package or run the repository release build.',
     );
   const publicRoot = await realpath(root);
+  const modelHost=createModelHost();
   let actualPort;
   const server = createServer(async (req, res) => {
     const end = (status, text) => {
@@ -77,6 +79,7 @@ export async function startStudio({ port = 5173, open = true } = {}) {
     try {
       if (![`127.0.0.1:${actualPort}`, `localhost:${actualPort}`].includes(req.headers.host))
         return end(403, 'Invalid host');
+      if (await modelHost.handle(req,res)) return;
       if (!['GET', 'HEAD'].includes(req.method)) return end(405, 'Only GET and HEAD are supported');
       res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
       res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');

@@ -1,5 +1,10 @@
 # Velocut Provider packages (unreleased)
 
+For no-code model integration, use [declarative YAML/JSON models](declarative-models.md).
+Studio and Codex share a local configuration host; installing a model npm package
+is not required. The APIs below remain available to custom SDK hosts and existing channels.
+
+
 Velocut owns this provider architecture. It borrows Hypit's separation of model
 semantics, service adapters and configured endpoints; it does not integrate or
 require HypiHub, and it does not import Hypit's code or runtime.

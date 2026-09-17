@@ -1,3 +1,4 @@
+import {createModelHost} from '../../packages/cli/src/models.mjs';
 import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import { fileURLToPath } from 'node:url';
@@ -84,9 +85,10 @@ function googleKey(): string {
 export default defineConfig(({ command }) => ({
   // Dev may serve local test media. Releases assemble an explicit asset set.
   publicDir: command === 'build' ? false : 'public',
-  plugins: [react(), videoGenProxy()],
+  plugins: [react(), videoGenProxy(), {name:'velocut-model-host',configureServer(server){const host=createModelHost();server.middlewares.use((req,res,next)=>{void host.handle(req,res).then(handled=>{if(!handled)next();}).catch(next);});}}],
   resolve: {
     alias: [
+      {find:/^@velocut\/provider-sdk\/declarative$/,replacement:fileURLToPath(new URL('../../packages/provider-sdk/src/declarative.ts',import.meta.url))},
       {find:/^@velocut\/provider-sdk\/catalog$/,replacement:fileURLToPath(new URL('../../packages/provider-sdk/src/catalog.ts',import.meta.url))},
       {find:/^@velocut\/provider-sdk\/video$/,replacement:fileURLToPath(new URL('../../packages/provider-sdk/src/video.ts',import.meta.url))},
       ...['provider-sdk','provider-task-api','provider-minimax'].map(name=>({find:new RegExp('^@velocut/'+name+'$'),replacement:fileURLToPath(new URL('../../packages/'+name+'/src/index.ts',import.meta.url))})),

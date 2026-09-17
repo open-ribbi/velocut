@@ -104,7 +104,7 @@ test('crash recovery preserves an unknown submission even without a saved receip
   const b=backend();const seeded=fixture(b);await seeded.manager.ready;seeded.manager.dispose();await sleep(20);
   const now=Date.now();b.ledger={version:1,projectId:'project',references:[],jobs:[{id:'gen_lost',requestId:'lost',slotId:seeded.slotId,intentVersion:1,projectId:'project',request,targetDurationUs:6e6,providerDurationS:10,state:'submitting',binding:'project:test',createdAt:now,updatedAt:now,submissionStartedAt:0}]};
   const next=fixture(b);t.after(()=>next.manager.dispose());await until(next.manager,'gen_lost',j=>j.state==='submission_unknown');
-  assert.equal((await next.manager.execute({action:'resume',jobId:'gen_lost'})).ok,false);assert.equal(b.submits,0);assert.equal(b.ledger!.version,3);
+  assert.equal((await next.manager.execute({action:'resume',jobId:'gen_lost'})).ok,false);assert.equal(b.submits,0);assert.equal(b.ledger!.version,4);
   assert.equal(ok(await next.manager.execute({action:'submit',slotId:next.slotId,intentVersion:1,requestId:'lost'})).job.id,'gen_lost');
 });
 

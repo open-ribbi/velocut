@@ -1,7 +1,9 @@
 # @velocut/provider-sdk
 
 Host-neutral contracts for independently packaged audio/video/image model
-providers. No runtime dependencies, React, renderer, filesystem or model SDK.
+providers. The root contracts have no runtime imports of React, renderer, filesystem or model SDK.
+The optional `./declarative` entry uses Ajv and YAML for data-defined model adapters.
+See [declarative model configuration](../../../docs/integrations/declarative-models.md).
 Uses standard JavaScript, fetch, AbortSignal and Uint8Array in Node or browsers.
 
 ```ts

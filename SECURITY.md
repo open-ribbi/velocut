@@ -1,7 +1,8 @@
 # Security & Trust Model
 
-Velocut is a local-first, browser-only app: there is no backend, and your media,
-documents, and history all stay on your machine (OPFS / IndexedDB / localStorage).
+Velocut is local-first: media, documents and history stay in browser storage
+(OPFS / IndexedDB / localStorage). The local Studio CLI also hosts declarative
+model configuration and executes configured media API calls.
 Below are the boundaries you should understand before using the Agent features.
 
 ## Where the API key lives
@@ -30,6 +31,22 @@ Below are the boundaries you should understand before using the Agent features.
   pure CORS relay (channel APIs allowlist origins and reject localhost) — it
   injects nothing. In production the channel endpoint must allow CORS, the same
   contract as a configured LLM gateway.
+
+## Declarative model configuration
+
+The local Studio model host stores definitions and credentials separately from the
+browser and Codex plugin cache, in `~/.velocut/models/config.json` (override with
+`VELOCUT_MODEL_HOME`). This is a local plaintext file created with mode 0600 on
+POSIX, not an OS keychain. Model list/export/preview operations never include tokens.
+The dedicated `velocut_models` tool can edit model definitions and connection
+metadata; it is not exposed to the CodeAct sandbox. Changing a connection endpoint
+clears its existing token. Enter replacement tokens through Studio settings.
+
+Definitions contain JSON Schema, HTTP paths and data mappings, not executable
+scripts. The local API accepts same-origin JSON POSTs. Calls remain bound to the
+configured HTTP(S) origin and do not follow redirects with credentials. Configuration
+validation and request preview make no service requests. Paid generation is separate.
+The generation sandbox still cannot change endpoints or retrieve credentials.
 
 ## The Agent's two levels of execution privilege
 

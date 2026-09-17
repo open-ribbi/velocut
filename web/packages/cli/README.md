@@ -31,3 +31,13 @@ The npm launcher does not include Node itself or a browser. Browser-local
 rendering, import, editing and export work without model credentials. Optional
 cloud search/TTS/dev relays from Vite are not included in this static server;
 provider endpoints must support direct browser requests where applicable.
+
+## Declarative models
+
+Model settings can import YAML/JSON definitions and configure local model connections.
+The included model host loads these without a source checkout or model npm packages.
+Configuration and token storage use `~/.velocut/models/config.json` (local plaintext,
+mode 0600 on POSIX); `VELOCUT_MODEL_HOME` overrides this directory. Tokens are never
+returned to Codex. Definition revisions keep pending jobs on their original mapping.
+The model host sends configured API requests and streams recorded output URLs;
+reference uploads still use the editor media storage transport.

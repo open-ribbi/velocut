@@ -1,5 +1,5 @@
 import type {JsonObject} from '@velocut/provider-sdk';
-import {GenerationRequestSchema,generationReferenceIds,type GenerationRequest,type GenerationSlot,type Command,type Envelope} from '@velocut/protocol';
+import {GenerationRequestSchema,generationInputReferences,generationReferenceIds,type GenerationRequest,type GenerationSlot,type Command,type Envelope} from '@velocut/protocol';
 import type {VideoModelCapabilities,VideoGenResult,VideoGenPoll} from '@velocut/provider-sdk/video';
 import type {Store} from './store';
 
@@ -15,10 +15,12 @@ export interface GenerationJob {
   error?:string;result?:GenerationMedia;cost?:number;
 }
 interface PrivateJob extends GenerationJob {binding:string;providerHandle?:JsonObject;providerResult?:VideoGenResult}
-export interface GenerationLedger {version:1|2|3;projectId:string;jobs:PrivateJob[];references:GenerationReference[]}
+export interface GenerationLedger {version:1|2|3|4;projectId:string;jobs:PrivateJob[];references:GenerationReference[]}
 export interface GenerationAdapter {
   projectId:string;channels():GenerationChannel[];binding(channel:string,request?:GenerationRequest):string|Promise<string>;
   resolveRequest?(request:GenerationRequest):GenerationRequest;
+  requestedDuration?(request:GenerationRequest):number|undefined;
+  materializeRequest?(request:GenerationRequest,durationS:number):GenerationRequest;
   validateRequest?(request:GenerationRequest,durationS:number):void;
   flushDocument?():Promise<void>;
   read():Promise<GenerationLedger|null>;write(value:GenerationLedger):Promise<void>;
@@ -46,7 +48,7 @@ export const GENERATION_SCHEMA={type:'object',required:['action'],properties:{ac
 const id=(v:unknown)=>{if(typeof v!=='string'||!/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/.test(v))throw Error('Invalid identifier');return v;};
 const err=(e:unknown)=>String(e instanceof Error?e.message:e).replace(/https?:\/\/[^\s]+/g,'[provider URL]').slice(0,1000);
 const wait=(ms:number,signal:AbortSignal)=>new Promise<void>(resolve=>{if(signal.aborted)return resolve();const finish=()=>{clearTimeout(timer);signal.removeEventListener('abort',finish);resolve();};const timer=setTimeout(finish,ms);signal.addEventListener('abort',finish,{once:true});});
-const fresh=(projectId:string):GenerationLedger=>({version:3,projectId,jobs:[],references:[]});
+const fresh=(projectId:string):GenerationLedger=>({version:4,projectId,jobs:[],references:[]});
 const publicJob=({binding:_binding,providerResult:_result,providerHandle:_handle,...job}:PrivateJob):GenerationJob=>structuredClone(job);
 
 export class GenerationManager {
@@ -77,24 +79,27 @@ export class GenerationManager {
   getSnapshot=()=>this.snapshot;
   private publish(ledger:GenerationLedger){for(const j of ledger.jobs)if(j.state==='cancelled')this.controllers.get(j.id)?.abort();const signature=JSON.stringify(ledger);if(signature===this.published)return;this.published=signature;this.wake();this.snapshot={jobs:ledger.jobs.map(publicJob),references:structuredClone(ledger.references)};this.listeners.forEach(fn=>fn());}
   private problem(e:unknown){this.snapshot={...this.snapshot,error:err(e)};this.listeners.forEach(fn=>fn());}
-  private async read(){const l=await this.adapter.read();if(l&&l.version!==1&&l.version!==2&&l.version!==3)throw Error('Unsupported generation ledger version');if(l&&!l.projectId&&l.jobs.every(j=>j.projectId===this.adapter.projectId))l.projectId=this.adapter.projectId;if(l&&l.projectId!==this.adapter.projectId)throw Error('Generation ledger belongs to another project');if(l)l.version=3;return l??fresh(this.adapter.projectId);}
+  private async read(){const l=await this.adapter.read();if(l&&l.version!==1&&l.version!==2&&l.version!==3&&l.version!==4)throw Error('Unsupported generation ledger version');if(l&&!l.projectId&&l.jobs.every(j=>j.projectId===this.adapter.projectId))l.projectId=this.adapter.projectId;if(l&&l.projectId!==this.adapter.projectId)throw Error('Generation ledger belongs to another project');if(l)l.version=4;return l??fresh(this.adapter.projectId);}
   async refresh(){this.publish(await this.read());}
   private async mutate<T>(fn:(l:GenerationLedger)=>T|Promise<T>):Promise<T>{return this.adapter.lock(async()=>{const l=await this.read(),result=await fn(l);await this.adapter.write(l);this.publish(l);return result;});}
   private async update(jobId:string,fn:(j:PrivateJob)=>void){return this.mutate(l=>{const j=l.jobs.find(j=>j.id===jobId);if(!j)throw Error('Unknown generation job');fn(j);j.updatedAt=Date.now();return structuredClone(j);});}
   private slot(slotId:string):GenerationSlot{const s=this.store.getState().doc.generationSlots?.find(s=>s.id===slotId);if(!s)throw Error('Generation slot no longer exists');return s;}
   private plan(slot:GenerationSlot){
-    const request=GenerationRequestSchema.parse(this.adapter.resolveRequest?.(slot.request)??slot.request),channel=this.adapter.channels().find(c=>c.id===request.channel);
+    let request=GenerationRequestSchema.parse(this.adapter.resolveRequest?.(slot.request)??slot.request),channel=this.adapter.channels().find(c=>c.id===request.channel);
     if(!channel||!request.model||channel.models.length&&!channel.models.includes(request.model))throw Error('Choose a configured video channel and model');
-    if(!request.prompt.trim())throw Error('Enter a generation prompt');
+    if(!request.input&&!request.prompt.trim())throw Error('Enter a generation prompt');
     const c=channel.capabilities?.[request.model],clip=this.store.getState().doc.tracks.flatMap(t=>t.clips).find(c=>c.id===slot.clipId);
     const required=slot.durationUs*(clip?.speed??1)/1e6;
     if(!Number.isFinite(required)||required<=0)throw Error('Source duration must be finite and positive');
-    let duration=required;
-    if(c?.durationsS){const durations=[...c.durationsS].filter(n=>Number.isFinite(n)&&n>0).sort((a,b)=>a-b);const fit=durations.find(n=>n>=required);if(fit===undefined)throw Error('Target duration exceeds the configured model durations');duration=fit;}
+    const explicitDuration=this.adapter.requestedDuration?.(request);
+    let duration=explicitDuration??required;
+    if(!Number.isFinite(duration)||duration<=0)throw Error('Model source duration must be finite and positive');
+    if(c?.durationsS&&explicitDuration===undefined){const durations=[...c.durationsS].filter(n=>Number.isFinite(n)&&n>0).sort((a,b)=>a-b);const fit=durations.find(n=>n>=required);if(fit===undefined)throw Error('Target duration exceeds the configured model durations');duration=fit;}
     if(c?.ratios&&(!request.ratio||!c.ratios.includes(request.ratio)))throw Error('Choose a supported aspect ratio');
     if(c?.resolutions&&(!request.resolution||!c.resolutions.includes(request.resolution)))throw Error('Choose a supported resolution');
     if(request.firstFrameReferenceId&&c?.imageToVideo===false)throw Error('This model does not support an image first frame');
     if(request.generateAudio&&c?.audio===false)throw Error('This model does not support generated audio');
+    request=GenerationRequestSchema.parse(this.adapter.materializeRequest?.(request,duration)??request);
     this.adapter.validateRequest?.(request,duration);
     return {slotId:slot.id,intentVersion:slot.intentVersion,request:structuredClone(request),targetDurationUs:slot.durationUs,requiredSourceDurationS:required,providerDurationS:duration,capabilitiesKnown:!!c,fit:duration>required?'trim' as const:'exact' as const};
   }
@@ -124,6 +129,7 @@ export class GenerationManager {
           const old=l.jobs.find(j=>j.requestId===p.requestId);if(old){if(old.slotId!==p.slotId||old.intentVersion!==p.intentVersion)throw Error('requestId was used for another generation intent');return publicJob(old);}
           const slot=this.slot(p.slotId);if(slot.intentVersion!==p.intentVersion)throw Error('Generation intent changed');const plan=this.plan(slot);
           for(const [kind,ids] of [['image',[plan.request.firstFrameReferenceId,plan.request.lastFrameReferenceId,...plan.request.referenceImageIds??[]]],['video',plan.request.referenceVideoIds??[]],['audio',plan.request.referenceAudioIds??[]]] as const)for(const id of ids){if(!id)continue;const reference=l.references.find(r=>r.id===id);if(!reference)throw Error('Reference is not in this project');if((reference.kind??'image')!==kind)throw Error('Reference media kind does not match its role');}
+          for(const ref of generationInputReferences(plan.request.input)){const saved=l.references.find(r=>r.id===ref.id);if(!saved||(saved.kind??'image')!==ref.kind)throw Error('Reference is missing or has the wrong media kind');}
           const j:PrivateJob={id:'gen_'+crypto.randomUUID(),requestId:p.requestId,slotId:slot.id,intentVersion:slot.intentVersion,projectId:this.adapter.projectId,request:plan.request,targetDurationUs:slot.durationUs,providerDurationS:plan.providerDurationS,state:'queued',createdAt:Date.now(),updatedAt:Date.now(),binding:await this.adapter.binding(plan.request.channel,plan.request)};
           l.jobs.push(j);return publicJob(j);
         });return {ok:true,job};

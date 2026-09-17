@@ -81,12 +81,21 @@ or `velocut.generation()` in a script; legacy `videoGen` is unavailable in MCP.
   `referenceImageIds`/`referenceVideoIds`/`referenceAudioIds` arrays. Respect the
   chosen preset's media roles and combinations. Capture is local; submission
   uploads the selected snapshots through configured storage.
-- Supply additional model controls through scalar `parameters`, using the fields
+- Declarative models use the full nested `input` object from their discovered
+  `inputSchema`; create slots with `prompt: ""` if the prompt is inside that input.
+  Do not flatten arrays/objects or guess parameter names. Use `velocut_models`
+  list/get to discover definitions, validate to check YAML/JSON, upsert with the
+  current expectedRevision to save it, and connections to configure the service
+  Base URL/model ID. preview compiles a request without contacting the provider.
+  These are configuration operations, separate from paid generation; no npm model
+  installation or source checkout is needed. Tokens are entered only in Model
+  settings. Read [declarative models](references/declarative-models.md) for grammar.
+- Legacy model controls use scalar `parameters`, using the fields
   returned by discovery. Model names do not identify an API protocol: MiniMax H3
   through Task API and native MiniMax video/speech/music use different routes.
 - `submit` uses provider credits. Use it within the user's authorized generation
   request, with the current `intentVersion` and a stable `requestId`. Do not put
-  endpoints, keys or remote reference URLs into a tool call. If unconfigured,
+  endpoints, keys or remote reference URLs into a generation tool call. If unconfigured,
   direct the user to the toolbar’s Model settings: select a protocol/model, enter
   their Base URL/API Token, and configure Reference media storage when needed.
 - Inspect `get`/`list` to follow the job. Reloads keep receipts; never submit a

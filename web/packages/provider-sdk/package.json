@@ -16,6 +16,10 @@
     "./catalog": {
       "types": "./dist/catalog.d.ts",
       "import": "./dist/catalog.js"
+    },
+    "./declarative": {
+      "types": "./dist/declarative.d.ts",
+      "import": "./dist/declarative.js"
     }
   },
   "types": "./dist/index.d.ts",
@@ -38,5 +42,9 @@
     "type": "git",
     "url": "git+https://github.com/open-ribbi/velocut.git",
     "directory": "web/packages/provider-sdk"
+  },
+  "dependencies": {
+    "ajv": "^8.20.0",
+    "yaml": "^2.9.1"
   }
 }

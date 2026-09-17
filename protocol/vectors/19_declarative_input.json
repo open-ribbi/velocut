@@ -1,0 +1,112 @@
+{
+  "name": "Declarative nested input and model revision survive history and compare independent of object key order",
+  "steps": [
+    {
+      "apply": {
+        "type": "addTrack",
+        "kind": "video"
+      }
+    },
+    {
+      "apply": {
+        "type": "addGenerationSlot",
+        "trackId": "track_1",
+        "startUs": 0,
+        "durationUs": 1000000,
+        "request": {
+          "channel": "test",
+          "model": "unknown",
+          "prompt": "",
+          "input": {
+            "camera": {
+              "moves": [
+                "pan",
+                "tilt"
+              ],
+              "enabled": false
+            },
+            "seconds": 6
+          },
+          "modelRevision": "original"
+        }
+      }
+    },
+    {
+      "apply": {
+        "type": "updateGenerationSlot",
+        "slotId": "slot_2",
+        "request": {
+          "channel": "test",
+          "model": "unknown",
+          "prompt": "",
+          "input": {
+            "seconds": 6,
+            "camera": {
+              "enabled": false,
+              "moves": [
+                "pan",
+                "tilt"
+              ]
+            }
+          },
+          "modelRevision": "original"
+        }
+      }
+    },
+    {
+      "apply": {
+        "type": "updateGenerationSlot",
+        "slotId": "slot_2",
+        "request": {
+          "channel": "test",
+          "model": "unknown",
+          "prompt": "",
+          "input": {
+            "camera": {
+              "moves": [
+                "pan",
+                "tilt"
+              ],
+              "enabled": false
+            },
+            "seconds": 10
+          },
+          "modelRevision": "original"
+        }
+      }
+    },
+    {
+      "undo": true
+    },
+    {
+      "redo": true
+    },
+    {
+      "reload": true
+    }
+  ],
+  "expect": {
+    "generationSlots": [
+      {
+        "id": "slot_2",
+        "intentVersion": 2,
+        "request": {
+          "channel": "test",
+          "model": "unknown",
+          "prompt": "",
+          "input": {
+            "camera": {
+              "moves": [
+                "pan",
+                "tilt"
+              ],
+              "enabled": false
+            },
+            "seconds": 10
+          },
+          "modelRevision": "original"
+        }
+      }
+    ]
+  }
+}

@@ -1,3 +1,4 @@
+import {initializeModels,modelConfiguration} from './services/declarative-models';
 import {narrationConfig} from './services/model-config';
 import { atomicRuntime } from '@velocut/runtime';
 import { ops, ref } from '@velocut/protocol';
@@ -214,6 +215,7 @@ async function bootstrap() {
   // spec edits participate in undo/history/sync like any other document state.
   await migrateLegacyMotionSpecs(store);
   await restoreMedia(store, media, storage.mediaDir);
+  await initializeModels();
   const generationRuntime=bindGeneration(store,media,container.resolve(TOKENS.Observer),project.id,storage,async()=>{await collab.flushNow();await historySaver.flush();});
   void container.resolve(TOKENS.Fonts).restore();
   // Remote peers may import assets — re-attach their OPFS media lazily.
@@ -291,6 +293,7 @@ async function bootstrap() {
     // USER path; the sandbox RPC below is the restricted one.
     videoGen: (o: VideoGenClipOptions) => generateVideoClip(store, media, o),
     videoGenChannels: () => describeVideoGenChannels(),
+    modelConfiguration,
     generation:(o:unknown)=>generationRuntime.execute(o),
     // Conditioning uploads (frame PNG / isolated-clip mp4 → the configured
     // store). Host path returns the real URL alongside the upload:// handle.
