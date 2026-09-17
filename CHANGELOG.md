@@ -7,7 +7,7 @@ are published.
 
 ## [Unreleased]
 
-### 0.0.2 release candidate
+## [0.0.2] — 2026-09-17
 
 - Git-based Codex plugin distribution with pinned npm MCP/CLI versions and automatic
   prebuilt Studio startup, reuse, idle shutdown and bundled guide discovery.
@@ -23,8 +23,7 @@ are published.
   byte/count ceilings, and stalled preview clock recovery.
 - Reference-based mascot/scissors branding and self-contained plugin artwork.
 
-See [the prepared 0.0.2 release notes](docs/releases/v0.0.2.md). This candidate has
-not been published by the build or preparation scripts.
+See [the 0.0.2 release notes](docs/releases/v0.0.2.md) for installation and upgrade details.
 
 ## [0.0.1] — 2026-09-10
 

@@ -1,8 +1,7 @@
 # Independent SDKs, Studio and MCP
 
-The current coordinated release candidate is **0.0.2**, containing eight public
-packages. The last published npm release is 0.0.1 until the explicit publish step
-is completed. Build/test/archive commands never publish to the registry.
+The coordinated release is **0.0.2**, containing eight public packages.
+Build/test/archive commands never publish to the registry.
 
 | Package | Environment | Public responsibility |
 | --- | --- | --- |

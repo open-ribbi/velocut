@@ -4,12 +4,12 @@
 
 **A browser studio for editing video and directing 3D scenes with AI.**
 
-[![Release](https://img.shields.io/badge/release-v0.0.1-e6b774)](https://github.com/open-ribbi/velocut/releases/tag/v0.0.1)
+[![Release](https://img.shields.io/badge/release-v0.0.2-e6b774)](https://github.com/open-ribbi/velocut/releases/tag/v0.0.2)
 [![CI](https://github.com/open-ribbi/velocut/actions/workflows/ci.yml/badge.svg)](https://github.com/open-ribbi/velocut/actions/workflows/ci.yml)
 [![Distribution](https://github.com/open-ribbi/velocut/actions/workflows/distribution.yml/badge.svg)](https://github.com/open-ribbi/velocut/actions/workflows/distribution.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-**[Download 0.0.1](https://github.com/open-ribbi/velocut/releases/tag/v0.0.1)** · [Connect Codex](#connect-codex) · [Use the SDKs](#use-the-sdks) · [Contribute](CONTRIBUTING.md)
+**[Download 0.0.2](https://github.com/open-ribbi/velocut/releases/tag/v0.0.2)** · [Connect Codex](#connect-codex) · [Use the SDKs](#use-the-sdks) · [Contribute](CONTRIBUTING.md)
 
 Velocut combines a multitrack video editor, an editable 3D Director and a programmable project runtime. Arrange a shot by hand or ask Codex to build it: both use the same editing services, project document and undo history.
 
@@ -24,12 +24,12 @@ Built by [Ribbi](https://ribbi.ai). Media storage and rendering stay in your bro
 Run the prebuilt editor from npm:
 
 ```sh
-npx @velocut/cli@0.0.1 studio
+npx @velocut/cli@0.0.2 studio
 ```
 
 Or use the portable download:
 
-Download the **[portable ZIP](https://github.com/open-ribbi/velocut/releases/download/v0.0.1/velocut-standalone.zip)** or **[TAR.GZ](https://github.com/open-ribbi/velocut/releases/download/v0.0.1/velocut-standalone.tar.gz)**, extract it, then run inside the `velocut-0.0.1` directory:
+Download the **[portable ZIP](https://github.com/open-ribbi/velocut/releases/download/v0.0.2/velocut-standalone.zip)** or **[TAR.GZ](https://github.com/open-ribbi/velocut/releases/download/v0.0.2/velocut-standalone.tar.gz)**, extract it, then run inside the `velocut-0.0.2` directory:
 
 ```sh
 node start-studio.mjs
@@ -40,15 +40,13 @@ Studio opens in your browser. Keep the terminal running while you work. The port
 - **Node.js 22.6+** and **Chrome/Edge with WebGPU and WebCodecs** are required. Safari and Firefox are not currently supported by the full editor.
 - Projects live in browser IndexedDB/OPFS. Reuse the same browser profile, hostname and port to reopen them.
 - Manual editing and the Codex integration need no additional model API key.
-- The release includes [SHA-256 checksums](https://github.com/open-ribbi/velocut/releases/download/v0.0.1/SHA256SUMS.txt). The seven `@velocut` packages are also available from npm at version 0.0.1.
+- The release includes [SHA-256 checksums](https://github.com/open-ribbi/velocut/releases/download/v0.0.2/SHA256SUMS.txt). The eight `@velocut` packages are also available from npm at version 0.0.2.
 
 ## Connect Codex
 
-The Git marketplace entry targets the next runtime release, **0.0.2**. Publish
-that matching npm release before using this installation route; building this
-repository does not publish it.
+Install the **0.0.2** plugin directly from the Git marketplace:
 
-1. In Codex, choose **Add plugin marketplace**, with source `open-ribbi/velocut`.
+1. In Codex, choose **Add plugin marketplace**, with source `open-ribbi/velocut` and Git ref `v0.0.2`.
 2. Optionally use sparse paths `.agents/plugins` and `plugins/velocut` (one per line).
 3. Install **Velocut**, start a new task, and ask Codex to open Velocut.
 4. The plugin runs the pinned npm MCP package. On first connect it starts or reuses
@@ -57,7 +55,7 @@ repository does not publish it.
 Node.js 22.6+ and npm are required. No source checkout, build command or terminal
 session is needed for the Git plugin. MCP and CLI versions are pinned together.
 A portable release also supports automatic startup using its bundled Studio,
-without npm downloads. The published 0.0.1 release uses the older manual launcher.
+without npm downloads.
 
 Try a request such as:
 
@@ -97,7 +95,7 @@ Edits are attributed in the branching history. Inspect a change, undo it, or ret
 | Area | Capabilities |
 | --- | --- |
 | Video editing | Multiple tracks, split/trim, snapping, speed changes, track controls and transitions |
-| Video generation (unreleased source) | Draw a timeline range, text or first-frame generation, durable provider jobs, preview and adopt candidates; atomic SDK/MCP/CodeAct APIs |
+| Video generation | Draw a timeline range, text or first-frame generation, durable provider jobs, preview and adopt candidates; atomic SDK/MCP/CodeAct APIs |
 | Titles and motion | Editable text, captions, transform keyframes, effects and declarative motion graphics |
 | 3D directing | Geometry, assemblies, GLB models, characters, materials, lights, physics and cameras |
 | Audio | Mixed playback, volume keyframes and optional transcription/narration providers |
@@ -107,7 +105,7 @@ Edits are attributed in the branching history. Inspect a change, undo it, or ret
 
 The built-in **Assistant** is a separate, optional integration. Configure an Anthropic-compatible provider there to use it. Browser-local Whisper/VITS and cloud generation services have their own dependencies or credentials; they are not required for editing or Codex. Development-only cloud relays are not included in the portable server. See the [security and data-flow notes](SECURITY.md).
 
-### Configure your own models (unreleased source)
+### Configure your own models
 
 Open **Model settings** in the toolbar. Import a YAML/JSON model definition or ask
 Codex to configure one from API documentation, then enter your **Base URL** and
@@ -122,7 +120,7 @@ in assets. Reference storage settings are available there too. Configuration
 checks are local; generation uses the selected service's credits. See the
 [model configuration guide](docs/integrations/providers.md#configure-models-in-studio).
 
-### Generate into a timeline range (unreleased source)
+### Generate into a timeline range
 
 Choose **Draw generation range** in the timeline and drag a video interval, or use
 **Set range…** in a small panel. Enter a prompt, choose a configured video channel
@@ -138,11 +136,11 @@ requires an explicit choice for short results. See the [atomic generation API](d
 
 ## Use the SDKs
 
-The editor and its integrations share a monorepo. The published release contains seven packages; current source adds the shared Provider SDK, for eight public build packages. Packages ship JavaScript and, for the SDKs, TypeScript declarations. GPU rendering remains a browser capability; an npm package does not imply a headless Node renderer.
+The editor and its integrations share a monorepo. Release 0.0.2 contains eight public packages, including the shared Provider SDK. Packages ship JavaScript and, for the SDKs, TypeScript declarations. GPU rendering remains a browser capability; an npm package does not imply a headless Node renderer.
 
 | Package | Purpose |
 | --- | --- |
-| [`@velocut/provider-sdk`](web/packages/provider-sdk) | Provider/model/channel contracts, credential references and lifecycle APIs (unreleased) |
+| [`@velocut/provider-sdk`](web/packages/provider-sdk) | Provider/model/channel contracts, credential references and lifecycle APIs |
 | [`@velocut/protocol`](web/packages/protocol) | Document types, commands, validation and protocol compatibility |
 | [`@velocut/core-ts`](web/packages/core-ts) | Pure timeline editing, evaluation and engine history |
 | [`@velocut/render-sdk`](web/packages/render-sdk) | WebGPU composition, media workers, audio and export; includes a Vite helper |
@@ -151,7 +149,7 @@ The editor and its integrations share a monorepo. The published release contains
 | [`@velocut/mcp`](web/packages/mcp) | Generic MCP server used by the Codex plugin and other clients |
 | [`@velocut/cli`](web/packages/cli) | Prebuilt local Studio launcher |
 
-The `.tgz` files are available in [Release 0.0.1](https://github.com/open-ribbi/velocut/releases/tag/v0.0.1). Install SDKs directly with `npm install @velocut/scene-sdk@0.0.1 @velocut/runtime@0.0.1`, or use the tarballs offline.
+The `.tgz` files are available in [Release 0.0.2](https://github.com/open-ribbi/velocut/releases/tag/v0.0.2). Install SDKs directly with `npm install @velocut/scene-sdk@0.0.2 @velocut/runtime@0.0.2`, or use the tarballs offline.
 
 [SDK integration examples and release workflow →](docs/integrations/npm-packages.md) · [Build a Provider →](docs/integrations/providers.md)
 

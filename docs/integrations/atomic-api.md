@@ -1,4 +1,4 @@
-# Atomic API foundation (unreleased)
+# Atomic API foundation (0.0.2)
 
 Shared geometry and instancing are described in [the instance section](#shared-native-geometry-and-instances).
 
@@ -163,9 +163,9 @@ models, durable jobs and cross-call scene/timeline transactions remain follow-up
 - Production build and independent tarball installation pass, including strict
   SDK type consumption, schema discovery and a dependent atomic transaction in
   the installed SDK, plus existing browser rendering, worker and MCP checks.
-- This is unreleased work. Published 0.0.1 packages and release tags are unchanged.
+- These capabilities are included in 0.0.2.
 
-## Resource import, probing and complete clip duplication (unreleased)
+## Resource import, probing and complete clip duplication (0.0.2)
 
 These primitives are now available independently:
 
@@ -284,8 +284,8 @@ the track's current end explicitly and selects the new clip after success.
 - Production editor/SDK/CLI/plugin builds and plugin manifest validation pass.
   Independently installed npm tarballs pass distribution checks, including
   resource import/probe/registration/duplication through the installed SDK.
-- This is an unreleased source change; it does not replace published 0.0.1
-  packages or provide persistent job recovery.
+- These resource primitives are included in 0.0.2; resource import/probe jobs
+  do not provide persistent job recovery.
 
 ## Shared native geometry and instances
 
@@ -498,7 +498,7 @@ source-read counts stay stable under compatible transforms. Geometry edits creat
 new file versions; undo and reload restore the correct vertices. Independently
 installed CLI/MCP/SDK packages pass geometry reads and incremental-transform
 checks, alongside the existing development/production render probes. Production
-builds and plugin validation pass. This remains an unreleased source increment.
+builds and plugin validation pass. These changes are included in 0.0.2.
 
 ## Shared materials and independent geometry resources
 

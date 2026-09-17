@@ -208,7 +208,7 @@ Unit coverage also verifies reference isolation between stores/sessions and lock
 multi-delete rejection. A delayed audio-output-clock startup found during this
 regression run now falls back to the preview wall clock until audio advances.
 
-## Timeline generation (unreleased source)
+## Timeline generation (0.0.2)
 
 Use the timeline's **Draw generation range** tool, or **Set range…** in a narrow
 panel, to create a video slot. Fill its prompt, channel and model; configure model

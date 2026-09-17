@@ -40,7 +40,7 @@ preserves hierarchy/world placement, materials, textures and the sampled
 skin/morph pose, without animation tracks or procedural editing recipes.
 See the [model export guide](../../../docs/integrations/model-export.md).
 
-## Shared geometry (unreleased)
+## Shared geometry (0.0.2)
 
 `SceneSpec.geometries` stores editable vertices/faces/UVs once. Props with
 `model:'prop/instance', geometryId` share that definition while keeping their

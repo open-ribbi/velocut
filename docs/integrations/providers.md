@@ -1,4 +1,4 @@
-# Velocut Provider packages (unreleased)
+# Velocut Provider packages
 
 For no-code model integration, use [declarative YAML/JSON models](declarative-models.md).
 Studio and Codex share a local configuration host; installing a model npm package
@@ -106,9 +106,8 @@ cancellation, a pricing endpoint or an idempotency header. Other providers can
 implement those documented service features via the public contracts. Pricing
 responses preserve their source and data; the SDK invents no estimate.
 
-All provider verification uses injected mock transports. The source builds eight
-public package tarballs, including the shared Provider SDK. The published 0.0.1
-release still contains the earlier seven packages until an explicit new release.
+All provider verification uses injected mock transports. Release 0.0.2 includes eight
+public package tarballs, including the shared Provider SDK.
 
 ## Configure models in Studio
 
