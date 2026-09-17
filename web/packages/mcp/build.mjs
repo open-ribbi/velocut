@@ -4,6 +4,15 @@ import { basename, dirname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 const root = dirname(fileURLToPath(import.meta.url));
 const packageOut = resolve(root, 'dist');
+const {version,dependencies:runtimeDependencies}=JSON.parse(await readFile(resolve(root,'package.json'),'utf8'));
+const cliVersion=JSON.parse(await readFile(resolve(root,'../cli/package.json'),'utf8')).version;
+const sourcePlugin=resolve(root,'../../../plugins/velocut');
+const sourceManifest=JSON.parse(await readFile(resolve(sourcePlugin,'.codex-plugin/plugin.json'),'utf8'));
+const sourceMcp=JSON.parse(await readFile(resolve(sourcePlugin,'.mcp.json'),'utf8'));
+if(cliVersion!==version||sourceManifest.version!==version||runtimeDependencies?.['@velocut/cli']!==version||JSON.stringify(sourceMcp.mcpServers.velocut)!==JSON.stringify({command:'npx',args:['--yes',`@velocut/mcp@${version}`,'--stdio']}))throw Error('MCP, CLI and Git plugin versions must match; use version:release');
+const guideFiles={'scene-api':'docs/design/director-authoring.md','atomic-api':'docs/integrations/atomic-api.md','declarative-models':'docs/integrations/declarative-models.md',providers:'docs/integrations/providers.md','codex-plugin':'docs/integrations/codex-plugin.md','npm-packages':'docs/integrations/npm-packages.md'};
+const guides=Object.fromEntries(await Promise.all(Object.entries(guideFiles).map(async([name,file])=>[name,await readFile(resolve(root,'../../..',file),'utf8')])));
+
 await mkdir(packageOut, { recursive: true });
 const out = process.argv.includes('--out')
   ? resolve(process.argv[process.argv.indexOf('--out') + 1])
@@ -11,7 +20,7 @@ const out = process.argv.includes('--out')
 if (basename(out) !== 'velocut') throw new Error('plugin output folder must be named velocut');
 if (!process.argv.includes('--out')) await rm(out, { recursive: true, force: true });
 await mkdir(out, { recursive: true });
-await cp(resolve(root, '../../../plugins/codex/velocut'), out, { recursive: true });
+await cp(resolve(root, '../../../plugins/velocut'), out, { recursive: true });
 await mkdir(resolve(out, 'skills/director/references'), { recursive: true });
 const sceneGuide = await readFile(
   resolve(root, '../../../docs/design/director-authoring.md'),
@@ -39,6 +48,8 @@ const bundle = await build({
   format: 'cjs',
   legalComments: 'external',
   metafile: true,
+  external:['@velocut/cli'],
+  define:{__VELOCUT_GUIDES__:JSON.stringify(guides)},
 });
 await cp(resolve(packageOut, 'server.cjs'), resolve(out, 'scripts/runtime.cjs'));
 try {
@@ -49,12 +60,13 @@ try {
 } catch (e) {
   if (e.code !== 'ENOENT') throw e;
 }
-const { version } = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'));
-function launcher(target) {
-  return `#!/usr/bin/env node\nconst args = process.argv.slice(2);\nif (args.includes('--version')) { console.log('${version}'); }\nelse if (args.includes('--help')) { console.log('velocut-mcp [--stdio]\\nConnect an MCP client to a running local Velocut Studio. Requires Node.js 22.6+.'); }\nelse if (args.some(a => a !== '--stdio')) { console.error('Unknown argument. Use --help.'); process.exitCode = 1; }\nelse require('${target}').main().catch(e => { console.error(e); process.exitCode = 1; });\n`;
+function launcher(target,portable=false) {
+  const options=portable?`{loadStudio:async()=>{const p=require('node:path').resolve(__dirname,'../../../studio/server.mjs');return require('node:fs').existsSync(p)?import(require('node:url').pathToFileURL(p).href):import('@velocut/cli');}}`:'{}';
+  return `#!/usr/bin/env node\nconst args = process.argv.slice(2);\nif (args.includes('--version')) { console.log('${version}'); }\nelse if (args.includes('--help')) { console.log('velocut-mcp [--stdio]\\nStarts the matching prebuilt Studio on first connect. Requires Node.js 22.6+.'); }\nelse if (args.some(a => a !== '--stdio')) { console.error('Unknown argument. Use --help.'); process.exitCode = 1; }\nelse require('${target}').main(${options}).catch(e => { console.error(e); process.exitCode = 1; });\n`;
 }
 await writeFile(resolve(packageOut, 'cli.cjs'), launcher('./server.cjs'), { mode: 0o755 });
-await writeFile(resolve(out, 'scripts/server.cjs'), launcher('./runtime.cjs'), { mode: 0o755 });
+await writeFile(resolve(out, 'scripts/server.cjs'), launcher('./runtime.cjs',true), { mode: 0o755 });
+await writeFile(resolve(out,'.mcp.json'),JSON.stringify({mcpServers:{velocut:{command:'node',args:['${PLUGIN_ROOT}/scripts/server.cjs','--stdio']}}},null,2)+'\n');
 await cp(resolve(root, '../../../LICENSE'), resolve(root, 'LICENSE'));
 await cp(resolve(root, '../../../LICENSE'), resolve(out, 'LICENSE'));
 await mkdir(resolve(out, 'licenses'), { recursive: true });
@@ -83,7 +95,7 @@ for (const input of Object.keys(bundle.metafile.inputs)) {
 }
 await writeFile(
   resolve(out, 'README.md'),
-  `# Velocut Codex plugin\n\nRequires Node.js 22.6+ and a running local Velocut editor. Install this plugin and start a new Codex task. Ask Codex to connect to Velocut; open its pairing link, then edit the explicitly selected project. The model runs in Codex; the editor handles deterministic authoring and rendering. No additional model API key is required.\n\nThis package is self-contained: its MCP entry is scripts/server.cjs and its bundled runtime is scripts/runtime.cjs. It binds only to an ephemeral loopback port and stops with its MCP process. Pairing is temporary; use the editor's Codex control to disconnect. No model bytes are uploaded to an external service by the plugin.\n`,
+  `# Velocut Codex plugin\n\nRequires Node.js 22.6+. Studio starts on the first connect call. Install this plugin and start a new Codex task. Ask Codex to connect to Velocut; open its pairing link, then edit the explicitly selected project. The model runs in Codex; the editor handles deterministic authoring and rendering. No additional model API key is required.\n\nThe portable release includes the matching prebuilt Studio. Its launcher can run without npm or a source checkout. its MCP entry is scripts/server.cjs and its bundled runtime is scripts/runtime.cjs. It binds only to an ephemeral loopback port and stops with its MCP process. Pairing is temporary; use the editor's Codex control to disconnect. No model bytes are uploaded to an external service by the plugin.\n`,
 );
 console.log(out);
 

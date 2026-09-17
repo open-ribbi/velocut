@@ -1,7 +1,7 @@
 {
   "name": "velocut",
-  "version": "0.0.1",
-  "description": "Direct the live Velocut 3D editor from Codex with editable scenes and visual feedback.",
+  "version": "0.0.2",
+  "description": "Edit video and direct 3D scenes in Velocut. Starts a prebuilt local Studio automatically.",
   "author": {
     "name": "Velocut contributors"
   },
@@ -11,7 +11,7 @@
   "interface": {
     "displayName": "Velocut",
     "shortDescription": "Model and direct scenes in your live editor.",
-    "longDescription": "Use the model in your Codex conversation to create editable 3D scenes, import GLB assets, arrange objects and lights, direct cameras, and inspect real rendered images. Pairs to a local Velocut editor; no separate model API key.",
+    "longDescription": "Use Codex to edit timelines, configure media models, create 3D scenes and inspect rendered results. The matching prebuilt Studio starts on first use. Requires Node.js 22.6+ and npm; no source checkout or separate reasoning-model API key.",
     "developerName": "Velocut contributors",
     "category": "Productivity",
     "capabilities": [

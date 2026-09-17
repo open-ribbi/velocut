@@ -22,17 +22,49 @@ observations are returned to the Codex conversation for reasoning and vision.
   a pairing link or disconnect. Pairing also works by opening the link directly,
   including same-document hash navigation.
 
-## Install from a release
+## Install from Git (0.0.2 runtime)
 
-A standalone release directory contains the prebuilt Studio launcher and a
-relocatable Codex marketplace. Run `node start-studio.mjs`, add the extracted
-directory as a marketplace source, install Velocut and start a new Codex task.
-No source checkout or npm install is needed; Node.js 22.6+ and a suitable browser
-are still required. The plugin alone contains MCP and skills, not the UI.
+The root `.agents/plugins/marketplace.json` points to `plugins/velocut`. Add
+`open-ribbi/velocut` as a marketplace in Codex, install Velocut and start a new task.
+Optional sparse paths are `.agents/plugins` and `plugins/velocut`. The source plugin
+contains metadata and a skill; `.mcp.json` launches `npx --yes @velocut/mcp@0.0.2 --stdio`.
+The npm package depends on exactly `@velocut/cli@0.0.2`, which contains the prebuilt UI
+and assets. Users need Node.js 22.6+ and npm, not Git commands or a source build.
 
-The generic `@velocut/mcp` npm executable can also be used with other MCP clients.
-Use a published version, or install a locally built tarball; package creation
-here does not imply npm publication. See [distribution guide](npm-packages.md).
+The pinned version must actually be published. Source changes and Git pushes do
+not publish npm packages. `version:release` updates package versions, dependencies,
+plugin version and its npx pin together; the MCP build rejects version drift.
+No separate distribution branch or repository is required.
+
+## Startup and lifetime
+
+`velocut_connect` without arguments checks the usual localhost:5173 origin. It
+reuses a compatible Studio, or loads the installed CLI dependency and starts its
+background worker. An explicit `port` chooses another origin. `editorUrl` connects
+to an existing editor without automatic startup. A recognized development server
+can be reused and is identified as `reused-development` in the tool result.
+
+A port collision or version mismatch never kills another service or silently
+moves the project to another origin. Use an explicit editor URL for an existing
+session, or close that service before starting the matching version. Browser
+projects remain scoped to hostname/port and browser profile.
+
+Automatically started Studio outlives an individual MCP chat. Open editor pages
+send a heartbeat every 30 seconds; after ten minutes without activity and without
+an active request, the managed server exits. Manual CLI servers keep their normal
+foreground lifetime. Startup logs are in `~/.velocut/studio/studio-<port>.log`;
+`VELOCUT_STUDIO_LOG_DIR` overrides this directory. Logs never use MCP stdout.
+
+The `velocut_guide` tool returns documentation embedded in the npm server build,
+so a sparse Git installation does not depend on generated reference files.
+
+## Install from a portable release
+
+Add the extracted release directory as a local marketplace, install Velocut and
+start a new Codex task. Its bundled MCP launcher locates the matching `studio/`
+next to the marketplace and starts it on first connect. Node.js 22.6+ and a suitable
+browser are required; npm and a source checkout are not. `node start-studio.mjs`
+remains available for manual startup. See [distribution guide](npm-packages.md).
 
 ## Build locally
 
@@ -43,7 +75,7 @@ npm run build:release
 npm run pack:release
 ```
 
-The plugin source is `plugins/codex/velocut`. Its standalone build is
+The plugin source is `plugins/velocut`. Its standalone build is
 `web/packages/mcp/dist/velocut`: manifest, MCP launcher, bundled runtime,
 Director skill, API references and license notices. `${PLUGIN_ROOT}` resolves
 inside Codex's installed plugin cache, so it does not depend on the checkout.
@@ -64,8 +96,8 @@ instead; they do not need to scaffold their own plugin.
 
 ## Use
 
-1. Start Studio with the release launcher or installed CLI. For development use
-   `npm run dev` in `web/`. Use the actual printed URL.
+1. Call `velocut_connect` to start or reuse the matching prebuilt Studio. For an
+   existing editor, explicitly provide its `editorUrl`.
 2. In a new Codex task with the plugin, ask: “Connect to my local Velocut editor.”
 3. `velocut_connect` returns a temporary local pairing URL. Open it in the browser,
    or paste it into the editor's Codex control. No provider key is requested.

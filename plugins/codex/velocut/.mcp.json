@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "velocut": {
-      "command": "node",
-      "args": ["${PLUGIN_ROOT}/scripts/server.cjs", "--stdio"]
-    }
-  }
-}

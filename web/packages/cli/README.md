@@ -41,3 +41,10 @@ mode 0600 on POSIX); `VELOCUT_MODEL_HOME` overrides this directory. Tokens are n
 returned to Codex. Definition revisions keep pending jobs on their original mapping.
 The model host sends configured API requests and streams recorded output URLs;
 reference uploads still use the editor media storage transport.
+
+## Automatic Studio
+
+The matching MCP package can launch `managedWorkerPath` on demand. A managed Studio
+outlives the MCP process, serves the same browser origin, and exits after ten minutes
+without page heartbeats or active requests. The ordinary `velocut studio` command
+continues to run in the foreground until stopped.

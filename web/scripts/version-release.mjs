@@ -29,20 +29,18 @@ pkg.version = version;
 for (const dep of Object.keys(pkg.dependencies))
   if (dep.startsWith('@velocut/') && pkg.dependencies[dep] !== '*') pkg.dependencies[dep] = version;
 await writeFile(app, JSON.stringify(pkg, null, 2) + '\n');
-const manifest = resolve(web, '../plugins/codex/velocut/.codex-plugin/plugin.json'),
+const manifest = resolve(web, '../plugins/velocut/.codex-plugin/plugin.json'),
   plugin = JSON.parse(await readFile(manifest, 'utf8'));
 plugin.version = version;
 await writeFile(manifest, JSON.stringify(plugin, null, 2) + '\n');
+const mcpManifest=resolve(web,'../plugins/velocut/.mcp.json');
+const mcpConfig=JSON.parse(await readFile(mcpManifest,'utf8'));
+mcpConfig.mcpServers.velocut={command:'npx',args:['--yes',`@velocut/mcp@${version}`,'--stdio']};
+await writeFile(mcpManifest,JSON.stringify(mcpConfig,null,2)+'\n');
 for (const name of ['cli', 'mcp']) {
   const source = resolve(web, 'packages', name, 'src/server.mjs');
   let text = await readFile(source, 'utf8');
-  text =
-    name === 'cli'
-      ? text.replace(/export const VERSION = '[^']+';/, `export const VERSION = '${version}';`)
-      : text.replace(
-          /name: 'velocut', version: '[^']+'/g,
-          `name: 'velocut', version: '${version}'`,
-        );
+  text=text.replace(/export const VERSION = '[^']+';/, `export const VERSION = '${version}';`).replace(/name: 'velocut', version: '[^']+'/g, `name: 'velocut', version: '${version}'`);
   await writeFile(source, text);
 }
 npm(['install', '--package-lock-only', '--ignore-scripts'], { cwd: web, stdio: 'inherit' });

@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 const web = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const out = resolve(web, '../artifacts');
-const names = ['provider-sdk', 'protocol', 'core-ts', 'render-sdk', 'scene-sdk', 'runtime', 'mcp', 'cli'];
+const names = ['provider-sdk', 'protocol', 'core-ts', 'render-sdk', 'scene-sdk', 'runtime', 'cli', 'mcp'];
 await mkdir(out, { recursive: true });
 const manifest = {
   sourceCommit: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: web, encoding: 'utf8' }).trim(),
@@ -73,7 +73,7 @@ await writeFile(
 );
 await writeFile(
   resolve(market, 'README.md'),
-  `# Velocut ${manifest.version}\n\nRequires Node.js 22.6+ and Chrome/Edge. No npm install or source checkout is needed.\n\nRun: node start-studio.mjs\n\nKeep the printed origin stable to reopen your browser-local projects.\n\nThis folder is also a relocatable Codex marketplace: add this folder using Codex's plugin marketplace UI or codex plugin marketplace add <this-folder>, then install Velocut and start a new task. Ask it to connect to the running Studio URL. The plugin bundles its MCP server and requires no additional model key.\n`,
+  `# Velocut ${manifest.version}\n\nRequires Node.js 22.6+ and Chrome/Edge. No npm install or source checkout is needed.\n\nInstall Velocut from this local marketplace and ask Codex to open it; Studio starts automatically. For manual startup: node start-studio.mjs\n\nKeep the same origin to reopen browser-local projects.\n\nThis folder is also a relocatable Codex marketplace: add this folder using Codex's plugin marketplace UI or codex plugin marketplace add <this-folder>, then install Velocut and start a new task. Ask it to open Velocut; it starts the bundled Studio and returns a pairing URL. The plugin bundles its MCP server and requires no additional model key.\n`,
 );
 await cp(resolve(web, '../LICENSE'), resolve(market, 'LICENSE'));
 await writeFile(resolve(out, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');

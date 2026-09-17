@@ -44,10 +44,20 @@ Studio opens in your browser. Keep the terminal running while you work. The port
 
 ## Connect Codex
 
-1. Start Studio using the portable launcher.
-2. Add the extracted release directory as a local marketplace source in Codex and install **Velocut**.
-3. Start a new Codex task and ask it to connect to the Studio URL printed in your terminal.
-4. Open the returned pairing link. Codex can then select your project, edit it and inspect rendered views.
+The Git marketplace entry targets the next runtime release, **0.0.2**. Publish
+that matching npm release before using this installation route; building this
+repository does not publish it.
+
+1. In Codex, choose **Add plugin marketplace**, with source `open-ribbi/velocut`.
+2. Optionally use sparse paths `.agents/plugins` and `plugins/velocut` (one per line).
+3. Install **Velocut**, start a new task, and ask Codex to open Velocut.
+4. The plugin runs the pinned npm MCP package. On first connect it starts or reuses
+   the matching prebuilt Studio, and Codex opens the returned pairing URL.
+
+Node.js 22.6+ and npm are required. No source checkout, build command or terminal
+session is needed for the Git plugin. MCP and CLI versions are pinned together.
+A portable release also supports automatic startup using its bundled Studio,
+without npm downloads. The published 0.0.1 release uses the older manual launcher.
 
 Try a request such as:
 
@@ -177,7 +187,7 @@ crates/                 Rust engine and WASM bindings
 protocol/vectors/       Shared behavioral tests
 web/apps/editor/        Studio UI and application wiring
 web/packages/           SDKs, runtime, MCP and CLI
-plugins/codex/velocut/   Codex manifest and Director skill
+plugins/velocut/   Codex manifest and Director skill
 web/scripts/            Builds, packaging, verification and documentation capture
 ```
 

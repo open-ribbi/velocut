@@ -5,6 +5,8 @@ import { tmpdir } from 'node:os';
 import { dirname, resolve, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createServer as createPortReservation } from 'node:net';
+import {createServer as createHttpServer} from 'node:http';
+import {createReadStream} from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { npm } from './npm.mjs';
 import { chromium } from '@playwright/test';
@@ -20,7 +22,9 @@ const run = (code) =>
     cwd: workspace,
     encoding: 'utf8',
   });
-let browser, browserServer, studio, preview, client, devServer, consumerEsbuild;
+let browser, browserServer, studio, preview, client, devServer, consumerEsbuild, npmRegistry, automaticClient, automaticPage, portable, npmCwd;
+const managedPids=new Set();
+const unusedPort=async()=>{const server=createPortReservation();await new Promise(r=>server.listen(0,'127.0.0.1',r));const port=server.address().port;await new Promise(r=>server.close(r));return port;};
 try {
   await writeFile(
     resolve(workspace, 'package.json'),
@@ -205,7 +209,9 @@ try {
     [resolve(workspace, 'node_modules/typescript/bin/tsc'), '-p', 'tsconfig.json'],
     { cwd: workspace, stdio: 'inherit' },
   );
-  const portable = resolve(workspace, 'portable');
+  portable=await mkdtemp(join(tmpdir(),'velocut-portable-'));
+  process.env.VELOCUT_MODEL_HOME=resolve(workspace,'model-configuration');
+  process.env.VELOCUT_STUDIO_LOG_DIR=resolve(workspace,'studio-logs');
   await cp(resolve(artifacts, `velocut-${manifest.version}`), portable, { recursive: true });
   const portableDoctor = JSON.parse(
     execFileSync(process.execPath, [resolve(portable, 'start-studio.mjs'), 'doctor', '--json'], {
@@ -231,6 +237,10 @@ try {
     const tools=(await pluginClient.listTools()).tools;
     assert.ok(tools.some((t) => t.name === 'velocut_scene_edit'));
     assert.ok(tools.some((t) => t.name === 'velocut_generation'));
+    const connected=await pluginClient.callTool({name:'velocut_connect',arguments:{port:await unusedPort()}});
+    assert.equal(connected.isError,false,JSON.stringify(connected));assert.equal(connected.structuredContent.studio.status,'started');
+    const portableHealth=await (await fetch(connected.structuredContent.studio.url+'/__velocut/health')).json();managedPids.add(portableHealth.pid);assert.equal(portableHealth.version,manifest.version);assert.equal(portableHealth.managed,true);
+
   } finally {
     await pluginClient.close();
   }
@@ -265,6 +275,42 @@ try {
   console.log('Browser graphics configuration:', JSON.stringify(browserOptions));
   browserServer = await chromium.launchServer(browserOptions);
   browser = await chromium.connect(browserServer.wsEndpoint());
+
+  // Exercise the actual Git manifest command against a fresh npm cache. Only the
+  // two built tarballs are available from this isolated loopback registry.
+  const gitRoot=resolve(workspace,'git-marketplace');await mkdir(resolve(gitRoot,'.agents/plugins'),{recursive:true});
+  await cp(resolve(web,'../.agents/plugins/marketplace.json'),resolve(gitRoot,'.agents/plugins/marketplace.json'));
+  await cp(resolve(web,'../plugins/velocut'),resolve(gitRoot,'plugins/velocut'),{recursive:true});
+  const gitMarket=JSON.parse(await readFile(resolve(gitRoot,'.agents/plugins/marketplace.json'),'utf8'));
+  assert.equal(gitMarket.plugins[0].source.path,'./plugins/velocut');
+  const gitMcp=JSON.parse(await readFile(resolve(gitRoot,'plugins/velocut/.mcp.json'),'utf8')).mcpServers.velocut;
+  assert.deepEqual(gitMcp,{command:'npx',args:['--yes','@velocut/mcp@'+manifest.version,'--stdio']});
+  const registryPackages=new Map();
+  for(const name of ['@velocut/mcp','@velocut/cli']){const packed=manifest.packages.find(p=>p.name===name);const metadata=JSON.parse(await readFile(resolve(workspace,'node_modules',name,'package.json'),'utf8'));registryPackages.set('/'+name,{packed,metadata});}
+  const downloaded=new Set();let registryUrl;
+  npmRegistry=createHttpServer((req,res)=>{
+    const path=decodeURIComponent(req.url.split('?')[0]);const entry=registryPackages.get(path);
+    if(entry){const {packed,metadata}=entry;res.setHeader('Content-Type','application/json');res.end(JSON.stringify({name:metadata.name,'dist-tags':{latest:manifest.version},versions:{[manifest.version]:{...metadata,dist:{tarball:registryUrl+'/tarballs/'+packed.file,integrity:'sha256-'+Buffer.from(packed.sha256,'hex').toString('base64')}}}}));return;}
+    const packed=[...registryPackages.values()].map(x=>x.packed).find(p=>path==='/tarballs/'+p.file);
+    if(packed){downloaded.add(packed.name);res.setHeader('Content-Type','application/octet-stream');createReadStream(resolve(artifacts,packed.file)).pipe(res);return;}
+    res.writeHead(404,{'Content-Type':'application/json'});res.end(JSON.stringify({error:'Package unavailable in isolated registry'}));
+  });
+  await new Promise(r=>npmRegistry.listen(0,'127.0.0.1',r));registryUrl='http://127.0.0.1:'+npmRegistry.address().port;
+  const emptyCwd=await mkdtemp(join(tmpdir(),'velocut-no-source-'));npmCwd=emptyCwd;const userConfig=resolve(workspace,'isolated-npmrc');await writeFile(userConfig,'');
+  const transportOptions={command:gitMcp.command,args:gitMcp.args,cwd:emptyCwd,stderr:'pipe',env:{...process.env,npm_config_registry:registryUrl,npm_config_cache:resolve(workspace,'fresh-npm-cache'),npm_config_userconfig:userConfig,npm_config_audit:'false',npm_config_fund:'false',npm_config_ignore_scripts:'true'}};
+  automaticClient=new Client({name:'git-npm-bootstrap-test',version:'1'});await automaticClient.connect(new StdioClientTransport(transportOptions));
+  const guide=await automaticClient.callTool({name:'velocut_guide',arguments:{name:'scene-api'}});assert.equal(guide.isError,false);assert.ok(guide.structuredContent.markdown.length>1000);
+  const automaticPort=await unusedPort(),automaticConnect=await automaticClient.callTool({name:'velocut_connect',arguments:{port:automaticPort}});
+  assert.equal(automaticConnect.isError,false,JSON.stringify(automaticConnect));assert.equal(automaticConnect.structuredContent.studio.status,'started');
+  const automaticUrl=automaticConnect.structuredContent.studio.url,automaticHealth=await (await fetch(automaticUrl+'/__velocut/health')).json();managedPids.add(automaticHealth.pid);assert.equal(automaticHealth.version,manifest.version);
+  automaticPage=await browser.newPage();await automaticPage.goto(automaticConnect.structuredContent.url);await automaticPage.waitForSelector('.codex-status.connected');
+  const automaticSessions=await automaticClient.callTool({name:'velocut_sessions',arguments:{}});assert.equal(automaticSessions.structuredContent.sessions.length,1);
+  await automaticClient.close();automaticClient=null;assert.equal((await fetch(automaticUrl+'/__velocut/health')).status,200);
+  automaticClient=new Client({name:'git-npm-reuse-test',version:'1'});await automaticClient.connect(new StdioClientTransport(transportOptions));
+  const reused=await automaticClient.callTool({name:'velocut_connect',arguments:{port:automaticPort}});assert.equal(reused.structuredContent.studio.status,'reused');
+  await automaticClient.close();automaticClient=null;await automaticPage.close();automaticPage=null;
+  assert.deepEqual([...downloaded].sort(),['@velocut/cli','@velocut/mcp']);
+  console.log('Git manifest + fresh npm cache: pinned MCP/CLI install, automatic Studio, browser pairing and reuse passed');
   const page = await browser.newPage();
   await page.goto(studio.url);
   await page.waitForFunction(() => window.velocut?.sceneEdit);
@@ -499,6 +545,9 @@ window.probe=(async()=>{
           'cli-doctor',
           'http-headers-ranges',
           'mcp-stdio',
+          'git-marketplace-npm-bootstrap',
+          'automatic-studio-and-reuse',
+          'portable-automatic-studio',
           'scene-vision',
         'model-export-roundtrip',
           'vite-production-consumer',
@@ -522,6 +571,9 @@ window.probe=(async()=>{
   console.log('Closing distribution browser and build services');
   const cleanupDeadline = setTimeout(() => { console.error('Distribution cleanup exceeded 20 seconds'); process.exit(1); }, 20_000);
   cleanupDeadline.unref();
+  await automaticClient?.close();
+  await automaticPage?.close();
+  for(const pid of managedPids){try{process.kill(pid,'SIGTERM');}catch{}}
   await client?.close();
   await browserServer?.kill();
   console.log('Distribution browser process stopped');
@@ -533,5 +585,8 @@ window.probe=(async()=>{
   console.log('Distribution preview server stopped');
   if (process.env.VELOCUT_KEEP_CONSUMER !== '1')
     await rm(workspace, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  if(npmCwd)await rm(npmCwd,{recursive:true,force:true,maxRetries:10,retryDelay:100});
+  if(portable)await rm(portable,{recursive:true,force:true,maxRetries:10,retryDelay:100});
+  if(npmRegistry)await new Promise(r=>{npmRegistry.close(r);npmRegistry.closeAllConnections();});
   clearTimeout(cleanupDeadline);
 }

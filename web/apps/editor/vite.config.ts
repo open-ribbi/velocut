@@ -85,7 +85,7 @@ function googleKey(): string {
 export default defineConfig(({ command }) => ({
   // Dev may serve local test media. Releases assemble an explicit asset set.
   publicDir: command === 'build' ? false : 'public',
-  plugins: [react(), videoGenProxy(), {name:'velocut-model-host',configureServer(server){const host=createModelHost();server.middlewares.use((req,res,next)=>{void host.handle(req,res).then(handled=>{if(!handled)next();}).catch(next);});}}],
+  plugins: [react(), videoGenProxy(), {name:'velocut-model-host',configureServer(server){const host=createModelHost();server.middlewares.use((req,res,next)=>{if(req.url==='/__velocut/health'){res.setHeader('Content-Type','application/json');res.end(JSON.stringify({app:'velocut',version:JSON.parse(readFileSync(new URL('./package.json',import.meta.url),'utf8')).version,bridgeProtocol:2,mode:'development',managed:false}));return;}void host.handle(req,res).then(handled=>{if(!handled)next();}).catch(next);});}}],
   resolve: {
     alias: [
       {find:/^@velocut\/provider-sdk\/presets$/,replacement:fileURLToPath(new URL('../../packages/provider-sdk/src/presets.ts',import.meta.url))},

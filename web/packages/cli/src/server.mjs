@@ -7,7 +7,8 @@ import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 import { pipeline } from 'node:stream/promises';
 
-export const VERSION = '0.0.1';
+export const VERSION = '0.0.2';
+export const managedWorkerPath=fileURLToPath(new URL('./managed-worker.mjs',import.meta.url));
 const root = resolve(dirname(fileURLToPath(import.meta.url)), 'studio');
 const mime = {
   '.html': 'text/html; charset=utf-8',
@@ -60,7 +61,8 @@ function launchBrowser(url) {
   child.on('error', () => console.error(`Open Studio in your browser: ${url}`));
   child.unref();
 }
-export async function startStudio({ port = 5173, open = true } = {}) {
+export async function startStudio({ port = 5173, open = true, managed = false, idleTimeoutMs = 10 * 60_000 } = {}) {
+  if(managed&&(!Number.isFinite(idleTimeoutMs)||idleTimeoutMs<=0))throw Error('Managed Studio needs a positive idle timeout');
   if (!Number.isInteger(port) || port < 0 || port > 65535)
     throw new Error('port must be an integer from 0 to 65535');
   const health = await doctor();
@@ -70,8 +72,11 @@ export async function startStudio({ port = 5173, open = true } = {}) {
     );
   const publicRoot = await realpath(root);
   const modelHost=createModelHost();
-  let actualPort;
+  let actualPort,lastActivity=Date.now(),activeRequests=0,idleTimer,closing;
   const server = createServer(async (req, res) => {
+    activeRequests++;lastActivity=Date.now();let finished=false;
+    const finish=()=>{if(!finished){finished=true;activeRequests--;lastActivity=Date.now();}};
+    res.once('finish',finish);res.once('close',finish);
     const end = (status, text) => {
       res.writeHead(status, { 'Content-Type': 'text/plain; charset=utf-8' });
       res.end(text);
@@ -89,7 +94,7 @@ export async function startStudio({ port = 5173, open = true } = {}) {
       const url = new URL(req.url, `http://127.0.0.1:${actualPort}`);
       if (url.pathname === '/__velocut/health') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        return res.end(JSON.stringify({ app: 'velocut', version: VERSION, bridgeProtocol: 2 }));
+        return res.end(JSON.stringify({ app: 'velocut', version: VERSION, bridgeProtocol: 2, mode:'prebuilt', managed, pid:process.pid }));
       }
       const pathname = decodeURIComponent(url.pathname);
       if (
@@ -149,13 +154,11 @@ export async function startStudio({ port = 5173, open = true } = {}) {
   actualPort = server.address().port;
   const url = `http://localhost:${actualPort}`;
   if (open) launchBrowser(url);
+  const close=()=>closing??=(async()=>{clearInterval(idleTimer);await new Promise((resolve,reject)=>{server.close(error=>error?reject(error):resolve());server.closeAllConnections();});})();
+  if(managed){idleTimer=setInterval(()=>{if(!activeRequests&&Date.now()-lastActivity>=idleTimeoutMs)void close();},Math.min(30_000,idleTimeoutMs));idleTimer.unref();}
   return {
     url,
     server,
-    close: () =>
-      new Promise((resolve, reject) => {
-        server.close((error) => (error ? reject(error) : resolve()));
-        server.closeAllConnections();
-      }),
+    close,
   };
 }

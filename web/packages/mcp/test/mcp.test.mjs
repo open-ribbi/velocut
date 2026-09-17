@@ -13,11 +13,12 @@ test('the bundled plugin initializes over stdio and advertises grounded editor t
   await client.connect(transport);
   const names = (await client.listTools()).tools.map((tool) => tool.name);
   for (const name of ['velocut_connect', 'velocut_scene_edit', 'velocut_observe', 'velocut_import_model', 'velocut_script']) assert.ok(names.includes(name));
-  const paired = await client.callTool({ name: 'velocut_connect', arguments: {} });
+  const paired = await client.callTool({ name: 'velocut_connect', arguments: {editorUrl:'http://localhost:5173'} });
   assert.equal(paired.isError, false);
   assert.match(paired.structuredContent.url, /^http:\/\/localhost:5173\/#velocut-codex=/);
   const sessions = await client.callTool({ name: 'velocut_sessions', arguments: {} });
   assert.deepEqual(sessions.structuredContent.sessions, []);
+  const guide=await client.callTool({name:'velocut_guide',arguments:{name:'declarative-models'}});assert.equal(guide.isError,false);assert.match(guide.structuredContent.markdown,/Declarative media models/);
 });
 
 test('observations become real MCP image blocks without copying base64 into text', () => {
@@ -47,7 +48,7 @@ test('the plugin also negotiates the legacy MCP version used by existing clients
   child.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n');
   const listed = await send(2, 'tools/list', {});
   assert.ok(listed.result.tools.some((tool) => tool.name === 'velocut_observe'));
-  const called = await send(3, 'tools/call', { name: 'velocut_connect', arguments: {} });
+  const called = await send(3, 'tools/call', { name: 'velocut_connect', arguments: {editorUrl:'http://localhost:5173'} });
   assert.equal(called.result.isError, false);
   assert.ok(called.result.structuredContent.url);
 });

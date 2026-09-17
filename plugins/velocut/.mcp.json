@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "velocut": {
+      "command": "npx",
+      "args": [
+        "--yes",
+        "@velocut/mcp@0.0.2",
+        "--stdio"
+      ]
+    }
+  }
+}

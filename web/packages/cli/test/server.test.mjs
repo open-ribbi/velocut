@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { request } from 'node:http';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import {once} from 'node:events';
 import { startStudio } from '../dist/server.mjs';
 
 test('Studio serves only its bundle and handles browser-required headers and ranges', async (t) => {
@@ -44,6 +45,13 @@ test('Studio serves only its bundle and handles browser-required headers and ran
   await assert.rejects(startStudio({ port: Number(new URL(app.url).port), open: false }), {
     code: 'EADDRINUSE',
   });
+});
+
+test('a managed Studio reports its lifecycle and exits only after idle requests finish',async t=>{
+ const app=await startStudio({port:0,open:false,managed:true,idleTimeoutMs:150});t.after(()=>app.close());
+ const info=await (await fetch(app.url+'/__velocut/health')).json();assert.equal(info.managed,true);assert.equal(info.mode,'prebuilt');assert.equal(info.pid,process.pid);
+ await once(app.server,'close',{signal:AbortSignal.timeout(3000)});
+ await assert.rejects(()=>fetch(app.url));
 });
 
 test('CLI validates options and doctor does not need a source checkout', () => {

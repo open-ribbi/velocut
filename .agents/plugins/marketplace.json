@@ -1,0 +1,20 @@
+{
+  "name": "velocut",
+  "interface": {
+    "displayName": "Velocut"
+  },
+  "plugins": [
+    {
+      "name": "velocut",
+      "source": {
+        "source": "local",
+        "path": "./plugins/velocut"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

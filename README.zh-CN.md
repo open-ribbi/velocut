@@ -42,10 +42,15 @@ Studio 会在浏览器中打开，使用期间保持终端运行。便携包已�
 
 ## 连接 Codex
 
-1. 使用便携包启动 Studio。
-2. 在 Codex 中将解压后的发行目录添加为本地 marketplace 来源，安装 **Velocut** 插件。
-3. 新建一个 Codex 任务，让它连接终端中显示的 Studio 地址。
-4. 打开返回的配对链接，Codex 即可选择项目、编辑场景并查看真实渲染结果。
+Git 市场入口面向下一个运行时版本 **0.0.2**，需先发布对应 npm 包；构建和推送仓库不会自动发布 npm。
+
+1. 在 Codex 中选择「添加插件市场」，来源填写 `open-ribbi/velocut`。
+2. 稀疏路径可填写 `.agents/plugins` 和 `plugins/velocut`，每行一个。
+3. 安装 **Velocut**，新建对话后让 Codex 打开 Velocut。
+4. 插件通过 npm 启动固定版本的 MCP，首次连接时自动启动或复用同版本预构建 Studio，再打开配对链接。
+
+需要 Node.js 22.6+ 和 npm，无需手动拉源码、构建或保持终端运行。便携发行包也可自动启动内置 Studio，无需 npm 下载。已发布的 0.0.1 仍使用原来的手动启动流程。
+
 
 可以这样开始：
 
@@ -144,7 +149,7 @@ crates/                 Rust 引擎与 WASM 绑定
 protocol/vectors/       共用行为测试
 web/apps/editor/        Studio UI 与应用组装
 web/packages/           SDK、运行时、MCP 和 CLI
-plugins/codex/velocut/   Codex 清单与导演台技能
+plugins/velocut/   Codex 清单与导演台技能
 web/scripts/            构建、打包、验证和文档截图
 ```
 

@@ -1,3 +1,4 @@
+import {keepStudioAlive} from './services/studio-lifecycle';
 import {initializeModels,modelConfiguration} from './services/declarative-models';
 import {narrationConfig} from './services/model-config';
 import { atomicRuntime } from '@velocut/runtime';
@@ -215,6 +216,7 @@ async function bootstrap() {
   // spec edits participate in undo/history/sync like any other document state.
   await migrateLegacyMotionSpecs(store);
   await restoreMedia(store, media, storage.mediaDir);
+  keepStudioAlive();
   await initializeModels();
   const generationRuntime=bindGeneration(store,media,container.resolve(TOKENS.Observer),project.id,storage,async()=>{await collab.flushNow();await historySaver.flush();});
   void container.resolve(TOKENS.Fonts).restore();
