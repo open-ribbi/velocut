@@ -45,8 +45,8 @@
     "@velocut/protocol": "0.0.2",
     "aws4fetch": "^1.0.20",
     "mp4-muxer": "^5.2.2",
-    "mp4box": "^0.5.2",
-    "@webgpu/types": "^0.1.71",
+    "mp4box": "^2.4.1",
+    "@webgpu/types": "^0.1.74",
     "gsap": "^3.15.0",
     "@velocut/provider-sdk": "0.0.2"
   },
@@ -69,7 +69,7 @@
     "prepack": "node ../../scripts/validate-package.mjs"
   },
   "peerDependencies": {
-    "@huggingface/transformers": "^3.8.1"
+    "@huggingface/transformers": "^4.3.0"
   },
   "peerDependenciesMeta": {
     "@huggingface/transformers": {
@@ -77,7 +77,7 @@
     }
   },
   "devDependencies": {
-    "@huggingface/transformers": "^3.8.1"
+    "@huggingface/transformers": "^4.3.0"
   },
   "engines": {
     "node": ">=22.6"
