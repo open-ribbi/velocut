@@ -111,7 +111,7 @@ function normalizeAudioCodec(codec: string, asc?: Uint8Array): string {
   return codec;
 }
 
-class Source {
+export class Source {
   /** Sample index in DECODE (file) order — bytes stay on disk. */
   private file!: File;
   private offsets: number[] = [];
@@ -129,6 +129,7 @@ class Source {
   /** Pump destination (inclusive). */
   private wantIdx = -1;
   private pumping = false;
+  private flushingPreview = false;
   /** Bumped on random access — an in-flight pump batch from an older
    *  generation is discarded instead of feeding a restarted decoder. */
   private generation = 0;
@@ -156,6 +157,7 @@ class Source {
    *  (proxy build, export). Frames queue up in emit order; the consumer pulls
    *  one at a time and applies its own backpressure. */
   private strDec: VideoDecoder | null = null;
+  private streamError: Error | null = null;
   private strFeed = 0;
   private strQueue: VideoFrame[] = [];
   /** Optional in-worker downsample for streamPull: only frames on the fps grid
@@ -183,7 +185,7 @@ class Source {
 
   private closePreview() {
     if (this.stillCheck) clearTimeout(this.stillCheck);
-    this.stillCheck = null; this.generation++; this.wantIdx = -1; this.lastSentCts = -Infinity;
+    this.stillCheck = null; this.generation++; this.wantIdx = -1; this.lastSentCts = -Infinity; this.flushingPreview = false;
     if (this.decoder && this.decoder.state !== 'closed') this.decoder.close();
     this.decoder = null; decoderBudget.release(`${this.id}:preview`);
   }
@@ -406,7 +408,7 @@ class Source {
   /** Kick the read+decode pump toward wantIdx. Reads are async (disk), so a
    *  single pump loop drains the work; concurrent kicks just raise wantIdx. */
   private kick() {
-    if (this.pumping) return;
+    if (this.pumping || this.flushingPreview) return;
     this.pumping = true;
     void this.pump();
   }
@@ -505,7 +507,7 @@ class Source {
         return;
       }
       if (
-        this.pumping ||
+        this.pumping || this.flushingPreview ||
         (this.decoder && this.decoder.state === 'configured' && this.decoder.decodeQueueSize > 0)
       ) {
         // Reads or decodes still in flight (long-GOP catch-up can take
@@ -517,14 +519,21 @@ class Source {
       this.stillRetries++;
       if (this.decoder?.state === 'configured') {
         const dec = this.decoder;
-        this.decoder = null; // next feed restarts from a keyframe
-        dec.flush().then(
-          () => {
-            dec.close();
-            this.scheduleStillCheck(); // verify the flush actually covered us
-          },
-          () => {},
-        );
+        this.flushingPreview = true;
+        decoderBudget.use(`${this.id}:preview`,()=>this.closePreview(),true);
+        void dec.flush().catch(()=>{}).then(() => {
+          // A seek/dispose may already have closed this decoder and acquired a
+          // replacement. Never release the replacement's budget lease.
+          if (this.decoder !== dec) return;
+          if ((dec.state as string) !== 'closed') dec.close();
+          this.decoder = null; this.flushingPreview = false;
+          decoderBudget.release(`${this.id}:preview`);
+          if (this.playing || this.feedIndex <= this.wantIdx) {
+            this.feedIndex=this.seekStartBefore(this.decodeIndexFor(this.targetUs));
+            this.kick();
+          }
+          this.scheduleStillCheck();
+        });
       } else {
         // Flushed (or errored) but still uncovered — decode the window again.
         const targetIdx = this.decodeIndexFor(this.targetUs);
@@ -769,6 +778,7 @@ class Source {
       output: (f) => this.strQueue.push(f),
       error: (e) => {
         console.error('[velocut] stream decode error', e);
+        this.streamError = e instanceof Error ? e : new Error(String(e));
         this.strDec = null;
       },
     });
@@ -792,16 +802,19 @@ class Source {
   private async nextRawFrame(): Promise<VideoFrame | null> {
     const BATCH = 4; // bound resident 4K frames (~33MB each) — small on purpose
     for (;;) {
+      if(this.streamError)throw this.streamError;
       if (this.strQueue.length) return this.strQueue.shift()!;
       if (!this.strDec || this.strDec.state === 'closed') return null;
       if (this.strFeed >= this.cts.length) {
-        if (this.strDec.state === 'configured') await this.strDec.flush().catch(() => {});
+        if (this.strDec.state === 'configured') await this.strDec.flush();
+        if(this.streamError)throw this.streamError;
         return this.strQueue.length ? this.strQueue.shift()! : null;
       }
       const batchEnd = Math.min(this.strFeed + BATCH, this.cts.length);
       for (let i = this.strFeed; i < batchEnd; i++) {
         const buf = await this.file.slice(this.offsets[i], this.offsets[i] + this.sizes[i]).arrayBuffer();
-        if (!this.strDec) return null; // closed mid-feed (error callback / dispose)
+        if (this.streamError) throw this.streamError;
+        if (!this.strDec) return null; // explicitly disposed mid-feed
         this.strDec.decode(
           new EncodedVideoChunk({
             type: this.sync[i] ? 'key' : 'delta',
@@ -844,6 +857,7 @@ class Source {
   }
 
   streamDispose() {
+    this.streamError = null;
     if (this.strDec && this.strDec.state !== 'closed') this.strDec.close();
     this.strDec = null;
     decoderBudget.release(`${this.id}:stream`);
