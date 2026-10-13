@@ -34,3 +34,21 @@ test('a stuck worker request fails within the deadline and terminates codec owne
  await assert.rejects(media.probeVideo({} as any),/timed out/);assert.equal(workers[0].terminated,true);
  assert.equal(media.diagnostics().pendingRequests,0);
 });
+
+test('captured images survive disposal of the live project and have independent ownership',async t=>{
+ mockWorker(t);let alive=0;
+ const frame=():any=>{alive++;let closed=false;return {displayWidth:64,displayHeight:64,clone:()=>{assert.equal(closed,false);return frame();},close:()=>{assert.equal(closed,false);closed=true;alive--;}};};
+ const live=new MediaLibrary();live.attachImage('image',frame());const snapshot=live.capture(['image']);
+ live.dispose();assert.equal(alive,1);const copy=await snapshot.open();snapshot.dispose();assert.equal(alive,1);
+ const exported=await copy.exactFrame('image',0);assert.equal(alive,2);exported!.close();copy.dispose();assert.equal(alive,0);
+});
+test('snapshot preparation failures release private renderers without disposing the live project',async t=>{
+ const workers=mockWorker(t);const live=new MediaLibrary();let disposed=0;
+ const renderers=new Map<string,()=>Promise<any>>([
+ ['a',async()=>({width:64,height:64,frameDurUs:100000,frameCount:10,render:()=>null,dispose:()=>disposed++})],
+ ['b',async()=>{throw Error('missing model');}],
+ ]);
+ const snapshot=live.capture(['a','b'],renderers);await assert.rejects(snapshot.open(),/missing model/);
+ assert.equal(disposed,1);assert.equal(workers[0].terminated,false);assert.equal(workers[1].terminated,true);
+ snapshot.dispose();live.dispose();
+});

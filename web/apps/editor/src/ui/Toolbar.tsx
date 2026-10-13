@@ -9,11 +9,10 @@ import type { Store, UiState } from '../state/store';
 import {
   type MediaLibrary,
   type Playback,
-  Exporter,
   type VideoCodecFamily,
 } from '@velocut/render-sdk';
 import { importMediaFiles } from '../services/import';
-import { exportAudioPlan } from '../services/export-audio';
+import { startFilmExport, type ExportJob } from '../services/export-film';
 import { ProjectMenu } from './ProjectMenu';
 import { PreviewRateSelect } from './PreviewRateSelect';
 import { useSyncExternalStore } from 'react';
@@ -71,6 +70,8 @@ export function Toolbar({
     label: string;
   } | null>(null);
   const exportAbort = useRef<AbortController | null>(null);
+  const completedExports = useRef<ExportJob[]>([]);
+  const [exportCacheCount,setExportCacheCount] = useState(0);
   // Export codec/quality — persisted per browser; plumbed into Exporter.export.
   const [exportCodec, setExportCodec] = useState<VideoCodecFamily>(
     () => (localStorage.getItem('velocut.exportCodec') as VideoCodecFamily) || 'avc',
@@ -88,8 +89,6 @@ export function Toolbar({
     if (durationUs <= 0 || exportPct) return;
     if (state.playing) playback.toggle();
 
-    const audioClips = exportAudioPlan(doc);
-
     // Target bitrate: 'custom' uses the explicit Mbps; presets scale with the
     // pixel rate (bpp × w × h × fps). No cap — passed straight to the encoder.
     const videoBitrate =
@@ -102,25 +101,20 @@ export function Toolbar({
     setExportError(null);
     const abort = new AbortController();
     exportAbort.current = abort;
-    setExportPct({ frac: 0, label: 'Preparing' });
+    setExportPct({ frac: 0, label: 'Queued for export' });
     try {
-      const blob = await new Exporter(media).export({
-        width: doc.width,
-        height: doc.height,
-        fpsNum: doc.fpsNum,
-        fpsDen: doc.fpsDen,
-        durationUs,
-        evaluate: (t) => store.evaluate(t),
-        audioClips,
+      const job = startFilmExport(store, media, {
         videoBitrate,
         videoCodec: exportCodec,
         signal: abort.signal,
         onProgress: (frac, label) => setExportPct({ frac, label }),
       });
+      const blob = await job.result;
+      completedExports.current.push(job);setExportCacheCount(completedExports.current.length);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${doc.name || 'velocut'}.mp4`;
+      a.download = `${job.name || 'velocut'}.mp4`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (e) {
@@ -374,6 +368,11 @@ export function Toolbar({
             Export MP4
           </button>
         )}
+        {exportCacheCount > 0 && !exportPct && <button onClick={async()=>{
+          const jobs=completedExports.current;
+          try { await Promise.all(jobs.map(job=>job.releaseOutput()));completedExports.current=[];setExportCacheCount(0); }
+          catch(error) { setExportError(String(error)); }
+        }}>Clear temporary exports after downloads finish ({exportCacheCount})</button>}
         {state.durationUs <= 0 && (
           <p className="empty-hint">Add a clip to your timeline to export.</p>
         )}

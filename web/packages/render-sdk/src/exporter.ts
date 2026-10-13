@@ -14,23 +14,32 @@ import type { MediaLibrary } from './media.ts';
 import { mixAudioWindow, type AudioClipPlan } from './audio-mix.ts';
 export type { AudioClipPlan } from './audio-mix.ts';
 
-const EXPORT_TMP = 'velocut-export-tmp.mp4';
+const completedFiles = new WeakMap<Blob, () => Promise<void>>();
+/** Call after consuming/downloading an output. Browser downloads have no completion
+ * callback, so the SDK never unlinks a file still owned by its caller. */
+export async function releaseExportOutput(output: Blob): Promise<void> {
+  const release=completedFiles.get(output);
+  if(release){await release();completedFiles.delete(output);}
+}
 
 /** Open an OPFS file to stream the muxed MP4 to disk (so a long export's output
- *  never sits on the JS heap). Sweeps the previous temp first; returns null if
+ *  never sits on the JS heap). Each attempt owns a unique file; returns null if
  *  OPFS / writable streams aren't available (→ caller falls back to memory). */
 async function openExportFile(): Promise<{
   handle: FileSystemFileHandle;
   writable: FileSystemWritableFileStream;
+  remove: () => Promise<void>;
 } | null> {
   try {
     if (!navigator.storage?.getDirectory) return null;
     const dir = await navigator.storage.getDirectory();
-    await dir.removeEntry(EXPORT_TMP).catch(() => {});
-    const handle = await dir.getFileHandle(EXPORT_TMP, { create: true });
-    if (typeof handle.createWritable !== 'function') return null;
-    const writable = await handle.createWritable();
-    return { handle, writable };
+    const name = `velocut-export-${crypto.randomUUID()}.mp4`;
+    const handle = await dir.getFileHandle(name, { create: true });
+    if (typeof handle.createWritable !== 'function') { await dir.removeEntry(name); return null; }
+    try {
+      const writable = await handle.createWritable();
+      return { handle, writable, remove:()=>dir.removeEntry(name) };
+    } catch(error) { await dir.removeEntry(name).catch(()=>{}); throw error; }
   } catch {
     return null;
   }
@@ -93,9 +102,20 @@ async function pickCodec(
 }
 
 export class Exporter {
-  constructor(private media: MediaLibrary) {}
+  constructor(private media: MediaLibrary, private prepare?: (signal: AbortSignal) => Promise<MediaLibrary>) {}
 
-  async export(opts: ExportOptions): Promise<Blob> {
+  export(opts: ExportOptions): Promise<Blob> {
+    return this.media.scheduler.run('export', async signal => {
+      const isolated=this.prepare ? await this.prepare(signal) : undefined;
+      const abort=()=>isolated?.dispose();signal.addEventListener('abort',abort,{once:true});
+      try {
+        signal.throwIfAborted();
+        return await (isolated ? new Exporter(isolated) : this).render({...opts,signal});
+      } finally { signal.removeEventListener('abort',abort);isolated?.dispose(); }
+    }, {signal:opts.signal,onDiscard:output=>releaseExportOutput(output)});
+  }
+
+  private async render(opts: ExportOptions): Promise<Blob> {
     const { width, height, fpsNum, fpsDen, durationUs, evaluate, signal } = opts;
     const frameDurUs = (1e6 * fpsDen) / fpsNum;
     const totalFrames = Math.max(1, Math.round(durationUs / frameDurUs));
@@ -171,9 +191,10 @@ export class Exporter {
         // Outgoing side uses a dedicated decoder so a same-asset transition
         // doesn't thrash the single export decoder between two source positions.
         const f = n.from
-          ? await this.media.exactFrameFrom(n.assetId, n.sourceTimeUs)
-          : await this.media.exactFrame(n.assetId, n.sourceTimeUs);
-        if (f) frames.set(n.clipId, f);
+          ? await this.media.exactFrameFrom(n.assetId, n.sourceTimeUs, {signal,priority:'export'})
+          : await this.media.exactFrame(n.assetId, n.sourceTimeUs, {signal,priority:'export'});
+        if (!f) throw Error(`No decoded frame for asset ${n.assetId} at ${n.sourceTimeUs}`);
+        frames.set(n.clipId, f);
       }
       } catch(error) { frames.forEach(frame=>frame.close()); throw error; }
       return { fg, frames };
@@ -219,7 +240,7 @@ export class Exporter {
       await stream.writable.close();
       // A File backed by the OPFS entry — downloading it streams from disk, so
       // the output bytes never re-materialize on the JS heap.
-      const file=await stream.handle.getFile();finished=true;return file;
+      const file=await stream.handle.getFile();completedFiles.set(file,stream.remove);finished=true;return file;
     }
     const { buffer } = muxer.target as ArrayBufferTarget;
     finished=true;return new Blob([buffer], { type: 'video/mp4' });
@@ -229,7 +250,7 @@ export class Exporter {
       if(videoEncoder.state!=='closed')videoEncoder.close();
       if(!rendererDisposed)renderer.dispose();
       this.media.releaseExactFromDecoders();
-      if(!finished&&stream)await stream.writable.abort().catch(()=>{});
+      if(!finished&&stream){await stream.writable.abort().catch(()=>{});await stream.remove().catch(()=>{});}
     }
   }
 

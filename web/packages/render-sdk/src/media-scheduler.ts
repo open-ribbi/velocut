@@ -4,7 +4,7 @@ const PRIORITY: Record<MediaTaskKind, number> = { preview: 3, observe: 2, export
 class Preempted extends Error {}
 interface Job<T = any> {
   kind: MediaTaskKind; lane: Lane; key?: string; signal?: AbortSignal;
-  onDiscard?: (value: T) => void;
+  onDiscard?: (value: T) => void | Promise<void>;
   operation: (signal: AbortSignal) => Promise<T>;
   resolve: (value: T) => void; reject: (error: unknown) => void;
   controller?: AbortController; removeListener?: () => void;
@@ -31,7 +31,7 @@ export class MediaTaskScheduler {
     this.drain();
   }
   run<T>(kind: MediaTaskKind, operation: (signal: AbortSignal) => Promise<T>, options: {
-    lane?: Lane; key?: string; signal?: AbortSignal; onDiscard?: (value: T) => void;
+    lane?: Lane; key?: string; signal?: AbortSignal; onDiscard?: (value: T) => void | Promise<void>;
   } = {}): Promise<T> {
     if (options.signal?.aborted) return Promise.reject(options.signal.reason);
     if (this.queue.length >= this.limits.queued) return Promise.reject(Error('Media task queue is full'));
@@ -74,7 +74,7 @@ export class MediaTaskScheduler {
     const signal = job.controller!.signal;
     try {
       const value = await job.operation(signal);
-      if (signal.aborted) job.onDiscard?.(value);
+      if (signal.aborted) await job.onDiscard?.(value);
       signal.throwIfAborted();
       this.totals.completed++; job.resolve(value);
     } catch (error) {

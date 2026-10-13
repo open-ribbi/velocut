@@ -16,6 +16,15 @@ import type { MainToWorker, ProbeResult, WorkerToMain } from './media.worker.ts'
 
 export type ProbedMedia = ProbeResult;
 interface Pending<T> { resolve: (value: T) => void; reject: (error: Error) => void }
+export interface SnapshotRenderer {
+  render(index: number): VideoFrame;
+  width: number; height: number; frameDurUs: number; frameCount: number;
+  dispose?(): void;
+}
+export interface MediaSnapshot {
+  open(signal?: AbortSignal): Promise<MediaLibrary>;
+  dispose(): void;
+}
 export interface MediaRequestOptions { signal?: AbortSignal; priority?: MediaTaskKind }
 
 
@@ -182,6 +191,7 @@ export class MediaLibrary {
   private cacheBudget: number;
   private proxyJobs = new Map<string, Promise<void>>();
   private requestTimeoutMs: number;
+  private ownedRenderers: Array<() => void> = [];
   private nextId = 1;
   private pending = new Map<
     number,
@@ -368,6 +378,64 @@ export class MediaLibrary {
         break;
       }
     }
+  }
+
+  /** Capture immutable source identities now; allocate export workers/renderers
+   * only when open() is admitted by the scheduler. Live renderer closures are
+   * deliberately never reused: callers must compile procedural assets from the
+   * captured document through an explicit factory. */
+  capture(assetIds: string[], renderers = new Map<string, () => Promise<SnapshotRenderer>>()): MediaSnapshot {
+    this.lifetime.signal.throwIfAborted();
+    const captured: Array<{id:string;video?:File;image?:VideoFrame;pcm?:PcmMeta;pcmFile?:Promise<File>;audio?:AudioBuffer;renderer?:()=>Promise<SnapshotRenderer>}> = [];
+    let disposed = false;
+    const release = () => { if(disposed)return;disposed=true;for(const item of captured)item.image?.close(); };
+    try {
+      for (const id of new Set(assetIds)) {
+        const video = this.originalFiles.get(id), image = this.imageFrames.get(id), pcm = this.pcm.get(id), audio = this.audioBuffers.get(id), renderer = renderers.get(id);
+        if (renderer) captured.push({id,renderer});
+        else if (video) captured.push({id,video});
+        else if (image) captured.push({id,image:image.clone()});
+        else if (pcm) {
+          const pcmFile=pcm.handle.getFile();void pcmFile.catch(()=>{});
+          captured.push({id,pcm:{...pcm},pcmFile});
+        } else if (audio) {
+          const copy=new AudioBuffer({length:audio.length,numberOfChannels:audio.numberOfChannels,sampleRate:audio.sampleRate});
+          for(let ch=0;ch<audio.numberOfChannels;ch++)copy.copyToChannel(audio.getChannelData(ch),ch);
+          captured.push({id,audio:copy});
+        } else throw Error(`Cannot snapshot missing or unsupported media: ${id}`);
+      }
+    } catch(error) { release();throw error; }
+    return {
+      dispose: release,
+      open: async signal => {
+        if (disposed) throw Error('Media snapshot was released');
+        signal?.throwIfAborted();
+        const copy=new MediaLibrary(this.storageScope,{scheduler:this.scheduler,priority:'export',frameCacheBytes:this.cacheBudget,requestTimeoutMs:this.requestTimeoutMs});
+        const abort=()=>copy.dispose();signal?.addEventListener('abort',abort,{once:true});
+        try {
+          for (const item of captured) {
+            signal?.throwIfAborted();
+            if (disposed) throw Error('Media snapshot was released');
+            if(item.video)copy.attachVideo(item.id,await copy.probeVideo(item.video),item.video);
+            else if(item.image)copy.attachImage(item.id,item.image.clone());
+            else if(item.pcm) {
+              const file=await item.pcmFile!;
+              copy.pcm.set(item.id,{...item.pcm,handle:{getFile:async()=>file} as FileSystemFileHandle});
+            } else if(item.audio)copy.audioBuffers.set(item.id,item.audio);
+            else if(item.renderer) {
+              const renderer=await item.renderer();
+              if(signal?.aborted){renderer.dispose?.();signal.throwIfAborted();}
+              copy.ownedRenderers.push(()=>renderer.dispose?.());
+              copy.attachMotion(item.id,renderer.render,renderer);
+            }
+          }
+          signal?.throwIfAborted();
+          if(disposed)throw Error('Media snapshot was released');
+          return copy;
+        } catch(error) { copy.dispose();throw error; }
+        finally { signal?.removeEventListener('abort',abort); }
+      },
+    };
   }
 
   /** Frame-exact decode for export (resolves the exact frame at sourceTimeUs). */
@@ -867,5 +935,6 @@ export class MediaLibrary {
     this.proxySources.clear();
     this.imageFrames.clear();
     this.motionSources.clear();
+    for (const dispose of this.ownedRenderers.splice(0)) dispose();
   }
 }

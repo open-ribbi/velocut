@@ -1,3 +1,4 @@
+import { startFilmExport, type FilmExportOptions } from './services/export-film';
 import {keepStudioAlive} from './services/studio-lifecycle';
 import {initializeModels,modelConfiguration} from './services/declarative-models';
 import {narrationConfig} from './services/model-config';
@@ -361,6 +362,7 @@ async function bootstrap() {
     store,
     seek: (timeUs: number) => playback.seek(timeUs),
     media,
+    exportFilm: (options: FilmExportOptions = {}) => startFilmExport(store, media, options),
     Exporter, // debug: new velocut.Exporter(velocut.media).export({...}) for bounded test exports
     audio: container.resolve(TOKENS.Audio),
     transcriber: container.resolve(TOKENS.Transcriber),

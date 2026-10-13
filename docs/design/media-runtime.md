@@ -42,3 +42,37 @@ Validation: full TypeScript/production build; 227 Node tests including queue
 priority, cleanup-before-restart, cancellation, decoder LRU pinning, frame cache
 bounds and worker deadlines; browser tests cover real proxy preemption/source
 time, MP4 varispeed/audio automation, captions and preview/MCP controls.
+
+## 2. Export isolation
+
+Studio's `startFilmExport` captures a document/revision and immutable source
+identities synchronously at submission. Queued jobs never reread the live store.
+The evaluator, audio automation and scene/motion specs all come from that same
+snapshot. Each admitted job opens a private MediaLibrary/worker; procedural
+sources are compiled independently, and released with the private session.
+Imported video File identities and cloned images survive disposal of the live
+library. PCM cache Files are captured before queueing. External procedural URLs
+and fonts are resolved during preparation; this is not an archival bundle of
+external services or fonts.
+
+Jobs expose queued/preparing/rendering/completed/cancelled/failed states, an ID,
+source revision, a result Promise and cancellation. The browser host exposes
+`velocut.exportFilm(options)` for integrations in the same page. Job objects and
+Blob results are local objects, not JSON MCP response payloads. Closing/reloading
+the browser still ends its jobs; durable background export requires a desktop or
+server host. Retrying starts a new explicit job/snapshot, not an automatic replay.
+
+Every export attempt uses a UUID-named OPFS file. Failed/cancelled attempts abort
+and remove their own files; successful outputs stay owned by their consumer.
+Call `job.releaseOutput()` or `releaseExportOutput(blob)` after consuming them.
+Studio provides a clear-temporary-exports action after downloads finish because
+ordinary browser downloads offer no reliable completion callback. It never
+removes another export's output or the previous output when a new job starts.
+Do not delete a successful output while a download is still reading it. Completed
+files are not automatically swept across reloads in this phase.
+
+Validation: production build and 229 Node tests; real browser exports exercise
+queued revisions with different colors, edits during 3D export, queued/running
+cancellation, injected failure cleanup, independent output deletion and a later
+successful job. Existing audio/caption and proxy scheduling regressions remain
+part of the validation set.
