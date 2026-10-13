@@ -30,18 +30,19 @@ async function openExportFile(): Promise<{
   writable: FileSystemWritableFileStream;
   remove: () => Promise<void>;
 } | null> {
+  if (!navigator.storage?.getDirectory) return null;
+  const dir = await navigator.storage.getDirectory();
+  const name = `velocut-export-${crypto.randomUUID()}.mp4`;
   try {
-    if (!navigator.storage?.getDirectory) return null;
-    const dir = await navigator.storage.getDirectory();
-    const name = `velocut-export-${crypto.randomUUID()}.mp4`;
     const handle = await dir.getFileHandle(name, { create: true });
     if (typeof handle.createWritable !== 'function') { await dir.removeEntry(name); return null; }
-    try {
-      const writable = await handle.createWritable();
-      return { handle, writable, remove:()=>dir.removeEntry(name) };
-    } catch(error) { await dir.removeEntry(name).catch(()=>{}); throw error; }
-  } catch {
-    return null;
+    const writable = await handle.createWritable();
+    return { handle, writable, remove:()=>dir.removeEntry(name) };
+  } catch(error) {
+    await dir.removeEntry(name).catch(()=>{});
+    // Storage exhaustion must fail visibly, never turn a long export into an
+    // unbounded in-memory mux. Memory fallback is only for absent stream APIs.
+    throw error;
   }
 }
 
