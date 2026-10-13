@@ -35,7 +35,7 @@ export interface ProbeResult {
 
 export type MainToWorker =
   | { type: 'open'; id: number; file: File }
-  | { type: 'target'; id: number; timeUs: number; playing: boolean }
+  | { type: 'target'; id: number; timeUs: number; playing: boolean; refresh?: boolean }
   | { type: 'audio'; id: number; reqId: number; fromUs: number; durUs: number }
   | { type: 'frameAt'; id: number; reqId: number; timeUs: number }
   | { type: 'streamReset'; id: number; everyUs?: number; pw?: number; ph?: number }
@@ -183,7 +183,7 @@ class Source {
 
   private closePreview() {
     if (this.stillCheck) clearTimeout(this.stillCheck);
-    this.stillCheck = null; this.generation++; this.wantIdx = -1;
+    this.stillCheck = null; this.generation++; this.wantIdx = -1; this.lastSentCts = -Infinity;
     if (this.decoder && this.decoder.state !== 'closed') this.decoder.close();
     this.decoder = null; decoderBudget.release(`${this.id}:preview`);
   }
@@ -462,7 +462,8 @@ class Source {
     }
   }
 
-  steer(timeUs: number, playing: boolean) {
+  steer(timeUs: number, playing: boolean, refresh = false) {
+    if(refresh || timeUs < this.targetUs)this.closePreview();
     if (this.cts.length === 0) return;
     if (Math.abs(timeUs - this.targetUs) > 2 * this.avgDurUs) this.stillRetries = 0;
     this.targetUs = timeUs;
@@ -891,7 +892,7 @@ ctx.onmessage = (e: MessageEvent<MainToWorker>) => {
       break;
     }
     case 'target':
-      sources.get(msg.id)?.steer(msg.timeUs, msg.playing);
+      sources.get(msg.id)?.steer(msg.timeUs, msg.playing, msg.refresh);
       break;
     case 'audio': {
       const src = sources.get(msg.id);

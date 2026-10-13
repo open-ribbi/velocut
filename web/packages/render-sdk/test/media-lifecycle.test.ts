@@ -52,3 +52,15 @@ test('snapshot preparation failures release private renderers without disposing 
  assert.equal(disposed,1);assert.equal(workers[0].terminated,false);assert.equal(workers[1].terminated,true);
  snapshot.dispose();live.dispose();
 });
+
+test('frame pressure retains requested frames across sources and explicitly refreshes evicted times',async t=>{
+ const workers=mockWorker(t),media=new MediaLibrary(undefined,{frameCacheBytes:1920*1080*4*2});
+ const sources=[];
+ for(let id=1;id<=2;id++){const p=media.probeVideo({}as any);workers[0].receive({type:'ready',id,probe});const source=await p;media.attachVideo(String(id),source);source.requestFrame(100000,false);sources.push(source);}
+ for(let id=1;id<=2;id++)for(let i=0;i<8;i++)workers[0].receive({type:'frame',id,timestampUs:i*100000,durationUs:100000,frame:{close(){}}});
+ assert.deepEqual(sources.map(source=>source.cachedFrames),[1,1]);
+ assert.ok(sources[0].requestFrame(100000,false));assert.ok(sources[1].requestFrame(100000,false));
+ sources[0].requestFrame(600000,false);
+ assert.equal(workers[0].posts.at(-1).refresh,true,'worker must re-decode an already delivered but evicted timestamp');
+ media.dispose();
+});

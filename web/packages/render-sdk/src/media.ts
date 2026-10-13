@@ -84,6 +84,8 @@ export class RemoteVideoSource {
   lastAccess = 0;
   private lastPostedUs = NaN;
   private lastPostedPlaying = false;
+  private evictedFromUs = Infinity;
+  private evictedUntilUs = -Infinity;
 
   readonly durationUs: number;
   readonly width: number;
@@ -133,7 +135,10 @@ export class RemoteVideoSource {
     if (targetUs !== this.lastPostedUs || playing !== this.lastPostedPlaying) {
       this.lastPostedUs = targetUs;
       this.lastPostedPlaying = playing;
-      this.post({ type: 'target', id: this.workerId, timeUs: targetUs, playing });
+      const covered=this.frames.some(item=>item.timestampUs<=targetUs && item.timestampUs+item.durationUs>targetUs);
+      const refresh=!covered && targetUs>=this.evictedFromUs && targetUs<this.evictedUntilUs;
+      if(refresh){this.evictedFromUs=Infinity;this.evictedUntilUs=-Infinity;}
+      this.post({ type: 'target', id: this.workerId, timeUs: targetUs, playing, refresh });
     }
 
     // The best frame is the newest one at or before the target. Evict only
@@ -168,8 +173,21 @@ export class RemoteVideoSource {
   }
 
   keepLastFrame() { while (this.frames.length > 1) this.frames.shift()!.frame.close(); }
+  cacheState() { return {targetUs:this.lastPostedUs,frames:this.frames.map(item=>({timeUs:item.timestampUs,durationUs:item.durationUs}))}; }
+  get cachedFrames() { return this.frames.length; }
   get cacheBytes() { return this.frames.length * this.width * this.height * 4; }
-  evictFrame() { this.frames.shift()?.frame.close(); this.lastPostedUs = NaN; }
+  evictFrame() {
+    if(!this.frames.length)return;
+    // Retain the frame nearest the current target while trimming look-ahead.
+    let best=0;
+    for(let i=0;i<this.frames.length;i++)if(this.frames[i].timestampUs<=this.lastPostedUs)best=i;
+    const index=best>0?0:this.frames.length-1;
+    const [item]=this.frames.splice(index,1);
+    this.evictedFromUs=Math.min(this.evictedFromUs,item.timestampUs);
+    this.evictedUntilUs=Math.max(this.evictedUntilUs,item.timestampUs+item.durationUs);
+    item.frame.close();
+    if(!this.frames.length)this.lastPostedUs=NaN;
+  }
   disposeFrames() {
     this.lastPostedUs = NaN;
     for (const f of this.frames) f.frame.close();
@@ -297,19 +315,21 @@ export class MediaLibrary {
     });
   }
 
-  diagnostics() {
+  diagnostics(detail = false) {
     return { frameCacheBytes: [...this.byWorkerId.values()].reduce((n,s)=>n+s.cacheBytes,0),
       frameCacheBudget: this.cacheBudget, pendingRequests: this.pending.size + this.pendingPcm.size + this.pendingFrame.size + this.pendingStream.size,
+      ...(detail ? {sourceCaches:[...this.byWorkerId].slice(0,32).map(([id,source])=>({id,...source.cacheState()}))} : {}),
       sources: this.byWorkerId.size, proxyJobs: this.proxyJobs.size, scheduling: this.scheduler.snapshot() };
   }
 
   private trimFrameCache() {
-    let bytes = [...this.byWorkerId.values()].reduce((n,s)=>n+s.cacheBytes,0);
-    for (const source of [...this.byWorkerId.values()].sort((a,b)=>a.lastAccess-b.lastAccess)) {
-      while (bytes > this.cacheBudget && source.cacheBytes && [...this.byWorkerId.values()].reduce((n,s)=>n+s.cacheBytes/(s.width*s.height*4),0) > 1) {
-        const before = source.cacheBytes; source.evictFrame(); bytes -= before - source.cacheBytes;
+    const sources=[...this.byWorkerId.values()].sort((a,b)=>a.lastAccess-b.lastAccess);
+    let bytes=sources.reduce((n,s)=>n+s.cacheBytes,0),count=sources.reduce((n,s)=>n+s.cachedFrames,0);
+    // First trim look-ahead fairly: retain one frame per source when possible.
+    for(const minimum of [1,0])for(const source of sources){
+      while(bytes>this.cacheBudget && source.cachedFrames>minimum && count>1){
+        const before=source.cacheBytes;source.evictFrame();bytes-=before-source.cacheBytes;count--;
       }
-      if (bytes <= this.cacheBudget) break;
     }
   }
 

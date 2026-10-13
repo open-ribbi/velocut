@@ -27,3 +27,15 @@ test('proxy jobs defer during playback, yield on playback restart, and preserve 
  expect(result.diagnostics.scheduling.preemptions).toBeGreaterThan(0);
  expect(result.diagnostics.pendingRequests).toBe(0);
 });
+
+test('paused preview can seek backward after earlier decoded frames have been discarded',async({page})=>{
+ await page.goto('/');await page.waitForFunction(()=>(window as any).velocut?.media);
+ const supported=await page.evaluate(async()=>{try{return(await VideoDecoder.isConfigSupported({codec:'avc1.42E01E',codedWidth:96,codedHeight:64})).supported;}catch{return false;}});
+ test.skip(!supported,'H.264 decoder unavailable');
+ const chooser=page.waitForEvent('filechooser');await page.getByRole('button',{name:'Import Media',exact:true}).click();await(await chooser).setFiles(resolve('e2e/fixtures/red-tone.mp4'));
+ await expect.poll(()=>page.evaluate(()=>(window as any).velocut.doc().assets.length)).toBe(1);
+ for(const target of [1400000,100000,1700000,200000])await expect.poll(()=>page.evaluate(target=>{
+  const v=(window as any).velocut,frame=v.media.frameFor(v.doc().assets[0].id,target);
+  return !!frame && frame.timestamp<=target && frame.timestamp+(frame.duration??100000)>target;
+ },target)).toBe(true);
+});

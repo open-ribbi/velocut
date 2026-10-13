@@ -23,6 +23,10 @@ not a claim about a machine's hardware-session limit.
 The library bounds preview caches on arrival, including paused/inactive assets.
 The default budget is 128 MiB estimated as width × height × 4 per frame; one
 oversized frame may remain so an 8K source is not made permanently black.
+The shared preview budget trims look-ahead before removing the last frame of an
+active source. Requests for already delivered but evicted timestamps explicitly
+restart decoding; backward seeks also restart from a preceding keyframe instead
+of mistaking an advanced decode cursor for available cached frames.
 Worker exact-frame rings use a 32 MiB estimate per source with the same one-frame
 minimum. These estimates exclude decoder-internal surfaces, renderer clones,
 textures and GPU-driver allocations; they are not measurements of total VRAM.
