@@ -279,7 +279,7 @@ async function bootstrap() {
     redo: () => store.redo(),
     doc: () => store.getState().doc,
     evaluate: (timeUs: number) => store.evaluate(timeUs),
-    caption: (o: { assetId?: string; fontSize?: number; color?: string } = {}) =>
+    caption: (o: { clipId?: string; assetId?: string; fontSize?: number; color?: string; language?: string } = {}) =>
       captionAsset(store, media, container.resolve(TOKENS.Transcriber), o),
     observe: (input: ObserveInput = {}) => observeForAgent(store, container.resolve(TOKENS.Observer), input),
     tts: (o: { text: string; atUs?: number; trackId?: string; language?: string }) =>

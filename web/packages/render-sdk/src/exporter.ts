@@ -5,12 +5,14 @@
 // pull the EXACT decoded source frame (media.exactFrame), composite with a
 // dedicated offscreen Renderer, snapshot the canvas into a VideoFrame, and
 // feed VideoEncoder → mp4-muxer. Audio is mixed offline from the supplied
-// clip plan (speed-1 clips, matching the preview mixer) and AAC-encoded.
+// clip plan (varispeed and volume automation included) and AAC-encoded.
 
 import { Muxer, ArrayBufferTarget, FileSystemWritableFileStreamTarget } from 'mp4-muxer';
 import type { FrameGraph, TimeUs } from '@velocut/protocol';
 import { Renderer } from './renderer.ts';
 import type { MediaLibrary } from './media.ts';
+import { mixAudioWindow, type AudioClipPlan } from './audio-mix.ts';
+export type { AudioClipPlan } from './audio-mix.ts';
 
 const EXPORT_TMP = 'velocut-export-tmp.mp4';
 
@@ -32,16 +34,6 @@ async function openExportFile(): Promise<{
   } catch {
     return null;
   }
-}
-
-export interface AudioClipPlan {
-  assetId: string;
-  /** Where on the timeline the clip starts / how long it plays. */
-  startUs: TimeUs;
-  durationUs: TimeUs;
-  /** Source offset at the clip's start (speed 1 → advances 1:1). */
-  sourceInUs: TimeUs;
-  gain: number;
 }
 
 /** Video codec FAMILY the export targets. AVC (H.264) is the safe default
@@ -248,76 +240,48 @@ export class Exporter {
       output: (chunk, meta) => muxer.addAudioChunk(chunk, meta),
       error: (e) => console.error('[velocut] audio encode error', e),
     });
-    audioEncoder.configure({
-      codec: 'mp4a.40.2',
-      sampleRate: AUDIO_RATE,
-      numberOfChannels: AUDIO_CHANNELS,
-      bitrate: opts.audioBitrate ?? 192_000,
-    });
+    try {
+      audioEncoder.configure({
+        codec: 'mp4a.40.2',
+        sampleRate: AUDIO_RATE,
+        numberOfChannels: AUDIO_CHANNELS,
+        bitrate: opts.audioBitrate ?? 192_000,
+      });
 
-    // Each clip's timeline sample span, precomputed.
-    const spans = opts.audioClips!.map((clip) => {
-      const start = Math.floor((clip.startUs / 1e6) * AUDIO_RATE);
-      return { clip, start, end: start + Math.floor((clip.durationUs / 1e6) * AUDIO_RATE) };
-    });
+      // Mix + encode in ~1 s windows that are an exact multiple of the 1024-sample
+      // AAC frame. Only one small window buffer is resident — never the whole
+      // timeline (which would be GBs of Float32 for a long export).
+      const FRAME = 1024;
+      const WIN = FRAME * 47; // ≈ 1.0027 s @ 48 kHz
 
-    // Mix + encode in ~1 s windows that are an exact multiple of the 1024-sample
-    // AAC frame. Only one small window buffer is resident — never the whole
-    // timeline (which would be GBs of Float32 for a long export).
-    const FRAME = 1024;
-    const WIN = FRAME * 47; // ≈ 1.0027 s @ 48 kHz
-    const win = [new Float32Array(WIN), new Float32Array(WIN)];
+      for (let winStart = 0; winStart < total; winStart += WIN) {
+        if (opts.signal?.aborted) throw new DOMException('aborted', 'AbortError');
+        const len = Math.min(WIN, total - winStart);
+        const win = await mixAudioWindow(this.media, opts.audioClips!, winStart, len,
+          AUDIO_RATE, AUDIO_CHANNELS, opts.signal);
 
-    for (let winStart = 0; winStart < total; winStart += WIN) {
-      if (opts.signal?.aborted) throw new DOMException('aborted', 'AbortError');
-      const len = Math.min(WIN, total - winStart);
-      win[0].fill(0, 0, len);
-      win[1].fill(0, 0, len);
-
-      // Mix every clip overlapping [winStart, winStart+len).
-      for (const { clip, start, end } of spans) {
-        const a = Math.max(winStart, start);
-        const b = Math.min(winStart + len, end);
-        if (b <= a) continue;
-        const srcUs = clip.sourceInUs + ((a - start) / AUDIO_RATE) * 1e6;
-        const durUs = ((b - a) / AUDIO_RATE) * 1e6;
-        let pcm;
-        try {
-          pcm = await this.media.requestPcm(clip.assetId, srcUs, durUs);
-        } catch {
-          continue; // unsupported / no audio
+        // Emit whole 1024-sample AAC frames from this window.
+        for (let pos = 0; pos < len; pos += FRAME) {
+          const m = Math.min(FRAME, len - pos);
+          const planar = new Float32Array(m * AUDIO_CHANNELS);
+          for (let ch = 0; ch < AUDIO_CHANNELS; ch++) planar.set(win[ch].subarray(pos, pos + m), ch * m);
+          const data = new AudioData({
+            format: 'f32-planar',
+            sampleRate: AUDIO_RATE,
+            numberOfFrames: m,
+            numberOfChannels: AUDIO_CHANNELS,
+            timestamp: Math.round(((winStart + pos) / AUDIO_RATE) * 1e6),
+            data: planar,
+          });
+          audioEncoder.encode(data);
+          data.close();
+          while (audioEncoder.encodeQueueSize > 16) await new Promise((r) => setTimeout(r, 0));
         }
-        if (!pcm.frames) continue;
-        const ratio = pcm.sampleRate / AUDIO_RATE; // nearest-sample resample
-        const outLen = Math.min(b - a, Math.floor(pcm.frames / ratio));
-        const base = a - winStart;
-        for (let ch = 0; ch < AUDIO_CHANNELS; ch++) {
-          const src = pcm.planes[Math.min(ch, pcm.channels - 1)];
-          const dst = win[ch];
-          for (let i = 0; i < outLen; i++) dst[base + i] += src[Math.floor(i * ratio)] * clip.gain;
-        }
+        opts.onProgress?.(0.85 + (winStart / total) * 0.15, 'Encoding audio');
       }
-
-      // Emit whole 1024-sample AAC frames from this window.
-      for (let pos = 0; pos < len; pos += FRAME) {
-        const m = Math.min(FRAME, len - pos);
-        const planar = new Float32Array(m * AUDIO_CHANNELS);
-        for (let ch = 0; ch < AUDIO_CHANNELS; ch++) planar.set(win[ch].subarray(pos, pos + m), ch * m);
-        const data = new AudioData({
-          format: 'f32-planar',
-          sampleRate: AUDIO_RATE,
-          numberOfFrames: m,
-          numberOfChannels: AUDIO_CHANNELS,
-          timestamp: Math.round(((winStart + pos) / AUDIO_RATE) * 1e6),
-          data: planar,
-        });
-        audioEncoder.encode(data);
-        data.close();
-        while (audioEncoder.encodeQueueSize > 16) await new Promise((r) => setTimeout(r, 0));
-      }
-      opts.onProgress?.(0.85 + (winStart / total) * 0.15, 'Encoding audio');
+      await audioEncoder.flush();
+    } finally {
+      if (audioEncoder.state !== 'closed') audioEncoder.close();
     }
-    await audioEncoder.flush();
-    audioEncoder.close();
   }
 }

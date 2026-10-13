@@ -77,6 +77,7 @@ export interface AgentHost {
    *  transcriber is wired (the tool then reports it's unavailable). The host
    *  owns ASR + caption layout so agent-sdk stays free of the render layer. */
   caption?(opts: {
+    clipId?: string;
     assetId?: string;
     fontSize?: number;
     color?: string;
@@ -262,11 +263,12 @@ const TOOLS: Anthropic.Tool[] = [
   {
     name: 'velocut_transcribe',
     description:
-      'Automatic speech-to-subtitles: transcribes the speech in an asset and generates a "Captions" text track (bottom-centered, one text clip per sentence, all normal re-editable text). When assetId is omitted, the first asset with audio is picked automatically. The first run downloads the speech model and may take tens of seconds. Returns the generated track id and the subtitle count.',
+      'Automatic speech-to-subtitles: transcribes the speech in an asset and generates a "Captions" text track (bottom-centered, one text clip per sentence, all normal re-editable text). Uses clipId or the selected audio/video clip and maps subtitles through its trim, placement and speed. If several clips match, select one or supply clipId. An unused asset can be transcribed from zero. The first run downloads the speech model and may take tens of seconds. Returns the generated track id and the subtitle count.',
     input_schema: {
       type: 'object',
       properties: {
-        assetId: { type: 'string', description: 'Asset id; omitted = the first asset with audio is picked automatically' },
+        clipId: { type: 'string', description: 'Timeline clip to caption, including its trim and speed; defaults to the selected clip' },
+        assetId: { type: 'string', description: 'Source asset; use clipId when it appears more than once on the timeline' },
         fontSize: { type: 'number', description: 'Font size (pixels); omitted = adapts to the frame height' },
         color: { type: 'string', description: 'Text color #RRGGBB, default white' },
         language: {
@@ -395,7 +397,7 @@ async function executeTool(
       case 'velocut_transcribe': {
         if (!host.caption) return text(false, 'Transcription capability not wired (no transcriber)');
         const r = await host.caption(
-          (input ?? {}) as { assetId?: string; fontSize?: number; color?: string; language?: string },
+          (input ?? {}) as { clipId?: string; assetId?: string; fontSize?: number; color?: string; language?: string },
         );
         return text(r.ok, JSON.stringify(r));
       }

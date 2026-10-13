@@ -106,7 +106,7 @@ Engine (wasm/ts runtime detection), MediaLibrary, Renderer, Playback, and Store 
 - Undo is a full snapshot (simple to implement, absolutely correct); switch to structural sharing or an op log when documents get huge.
 - Preview frame grabbing is best-effort (nearest available frame), preserving smoothness rather than frame-exact accuracy — only the export path requires exactness.
 - Text rendering goes through Canvas2D rasterization, with no glyph caching and no stroke/shadow.
-- Audio mixing v1: slices with speed≠1 are muted (speed change with pitch preservation is an export-path feature); preview mixing is AudioBufferSource scheduling, and during playback the AudioContext is the master clock.
+- Audio mixing: constant-rate varispeed changes pitch and tempo together in preview and export; pitch preservation is not implemented. Preview schedules AudioBufferSource nodes on the master AudioContext clock. Export mixes timestamp-aligned PCM windows and samples volume automation on the output sample clock.
 
 
 ## Provider packages

@@ -20,6 +20,7 @@ export {
   transcribeAsset,
   applyCaptions,
   sanitizeSegments,
+  mapCaptionsToClip,
   toMono16k,
   type Transcriber,
   type CaptionSegment,

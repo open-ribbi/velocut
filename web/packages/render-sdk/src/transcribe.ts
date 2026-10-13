@@ -12,9 +12,9 @@
 // The agent triggers the whole thing via the velocut_transcribe tool; the
 // Toolbar's Auto Captions button runs the identical pipeline.
 
-import type { Command, Envelope, VDocument } from '@velocut/protocol';
+import type { Clip, Command, Envelope, VDocument } from '@velocut/protocol';
 
-/** One timed caption line. Times are integer microseconds on the timeline. */
+/** One timed caption line. Times are integer microseconds in the caller's clock. */
 export interface CaptionSegment {
   startUs: number;
   endUs: number;
@@ -58,42 +58,62 @@ export interface PcmSource {
     assetId: string,
     fromUs: number,
     durUs: number,
-  ): Promise<{ sampleRate: number; channels: number; frames: number; planes: Float32Array[] }>;
+  ): Promise<{ startUs?: number; sampleRate: number; channels: number; frames: number; planes: Float32Array[] }>;
 }
 
-/** Pull an asset's full audio, mono-16k it, and transcribe. Audio is gathered
- *  in 30 s windows (the worker decode is windowed; long stems stay bounded). */
+/** Transcribe a source range at its original speed, returning source-clock captions.
+ * PCM reads use 30 s windows; the mono recognition buffer spans the selected range. */
 export async function transcribeAsset(
   media: PcmSource,
   transcriber: Transcriber,
   assetId: string,
   durationUs: number,
-  opts?: { language?: string; onProgress?: (frac: number, label: string) => void },
+  opts?: { fromUs?: number; language?: string; onProgress?: (frac: number, label: string) => void },
 ): Promise<CaptionSegment[]> {
   opts?.onProgress?.(0, 'Decoding audio');
   const WINDOW_US = 30_000_000;
-  // One preallocated mono-16k buffer filled window-by-window — peak memory is
-  // 1× the audio (not 2× from accumulating all windows then concatenating).
-  // Each window's temp is released right after it's copied in.
-  let audio = new Float32Array(Math.ceil((durationUs / 1e6) * WHISPER_RATE) + WHISPER_RATE);
-  let pos = 0;
+  const fromUs = opts?.fromUs ?? 0;
+  if (!Number.isFinite(fromUs) || fromUs < 0 || !Number.isFinite(durationUs) || durationUs <= 0)
+    throw new Error('Transcription requires a positive duration and nonnegative source offset');
+  const audio = new Float32Array(Math.ceil((durationUs / 1e6) * WHISPER_RATE));
   for (let off = 0; off < durationUs; off += WINDOW_US) {
     const dur = Math.min(WINDOW_US, durationUs - off);
-    const pcm = await media.requestPcm(assetId, off, dur);
+    const pcm = await media.requestPcm(assetId, fromUs + off, dur);
     if (pcm.frames > 0) {
-      const mono = toMono16k(pcm.planes, pcm.channels, pcm.sampleRate);
-      if (pos + mono.length > audio.length) {
-        const grown = new Float32Array(pos + mono.length + WHISPER_RATE);
-        grown.set(audio.subarray(0, pos));
-        audio = grown;
+      // Address each sample by source time. AAC padding must not accumulate
+      // across windows, and missing audio must not move later words earlier.
+      const start = Math.round(off * WHISPER_RATE / 1e6);
+      const end = Math.min(audio.length, Math.round((off + dur) * WHISPER_RATE / 1e6));
+      for (let i = start; i < end; i++) {
+        const pos = (fromUs + i * 1e6 / WHISPER_RATE - (pcm.startUs ?? fromUs + off)) * pcm.sampleRate / 1e6;
+        if (pos < -pcm.sampleRate / 1e6 || pos >= pcm.frames) continue;
+        const j = Math.max(0, Math.floor(pos)), frac = Math.max(0, pos) - j;
+        for (let ch = 0; ch < pcm.channels; ch++) {
+          const plane = pcm.planes[ch];
+          audio[i] += (plane[j] * (1 - frac) + plane[Math.min(j + 1, pcm.frames - 1)] * frac) / pcm.channels;
+        }
       }
-      audio.set(mono, pos);
-      pos += mono.length;
     }
     opts?.onProgress?.(Math.min(0.3, (off / durationUs) * 0.3), 'Decoding audio');
   }
   opts?.onProgress?.(0.35, 'Transcribing (first run downloads the model)');
-  return transcriber.transcribe(audio.subarray(0, pos), { language: opts?.language });
+  const segments = await transcriber.transcribe(audio, { language: opts?.language });
+  return segments.map(segment => ({ ...segment,
+    startUs: segment.startUs + fromUs, endUs: segment.endUs + fromUs,
+  }));
+}
+
+/** Intersect source captions with the used source range, then map to the timeline. */
+export function mapCaptionsToClip(
+  segments: CaptionSegment[], clip: Pick<Clip, 'startUs' | 'durationUs' | 'sourceInUs' | 'speed'>,
+): CaptionSegment[] {
+  if (!Number.isFinite(clip.speed) || clip.speed <= 0) throw new Error('Caption clip speed must be positive');
+  const end = clip.sourceInUs + clip.durationUs * clip.speed;
+  return sanitizeSegments(segments.map(segment => ({
+    text: segment.text,
+    startUs: clip.startUs + Math.round((Math.max(clip.sourceInUs, segment.startUs) - clip.sourceInUs) / clip.speed),
+    endUs: clip.startUs + Math.round((Math.min(end, segment.endUs) - clip.sourceInUs) / clip.speed),
+  })));
 }
 
 /** In-browser Whisper via transformers.js (WebGPU). The heavy library and the
@@ -141,7 +161,7 @@ export class WhisperTranscriber implements Transcriber {
  *  caption clips overlap (the engine rejects overlap on a text track). */
 export function sanitizeSegments(segments: CaptionSegment[]): CaptionSegment[] {
   const sorted = [...segments]
-    .filter((s) => s.text.trim() && s.endUs > s.startUs)
+    .filter((s) => Number.isFinite(s.startUs) && Number.isFinite(s.endUs) && s.text.trim() && s.endUs > s.startUs)
     .sort((a, b) => a.startUs - b.startUs);
   const out: CaptionSegment[] = [];
   for (let i = 0; i < sorted.length; i++) {

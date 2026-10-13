@@ -10,10 +10,10 @@ import {
   type MediaLibrary,
   type Playback,
   Exporter,
-  type AudioClipPlan,
   type VideoCodecFamily,
 } from '@velocut/render-sdk';
 import { importMediaFiles } from '../services/import';
+import { exportAudioPlan } from '../services/export-audio';
 import { ProjectMenu } from './ProjectMenu';
 import { PreviewRateSelect } from './PreviewRateSelect';
 import { useSyncExternalStore } from 'react';
@@ -88,22 +88,7 @@ export function Toolbar({
     if (durationUs <= 0 || exportPct) return;
     if (state.playing) playback.toggle();
 
-    // Audio plan: speed-1 clips on un-muted tracks whose asset has audio.
-    const audioClips: AudioClipPlan[] = [];
-    for (const track of doc.tracks) {
-      if (track.muted) continue;
-      for (const clip of track.clips) {
-        const asset = clip.assetId ? doc.assets.find((a) => a.id === clip.assetId) : null;
-        if (!asset?.hasAudio || clip.speed !== 1) continue;
-        audioClips.push({
-          assetId: asset.id,
-          startUs: clip.startUs,
-          durationUs: clip.durationUs,
-          sourceInUs: clip.sourceInUs,
-          gain: clip.volume,
-        });
-      }
-    }
+    const audioClips = exportAudioPlan(doc);
 
     // Target bitrate: 'custom' uses the explicit Mbps; presets scale with the
     // pixel rate (bpp × w × h × fps). No cap — passed straight to the encoder.
@@ -247,6 +232,7 @@ export function Toolbar({
                 <span>Clip speed</span>
                 <select
                   aria-label="Clip speed"
+                  title="Changes video and audio speed; audio pitch changes with speed."
                   value={String(selected.speed)}
                   onChange={(e) =>
                     store.dispatch({

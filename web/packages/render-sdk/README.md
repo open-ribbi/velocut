@@ -91,3 +91,22 @@ receipts before polling; never implement recovery by blindly repeating submit.
 `VideoModelCapabilities` describes optional durations/ratios/resolutions/image
 and audio constraints. Channel configuration supplies these metadata; they are
 not inferred from model names. Provider credentials belong to the host.
+
+## Audio and captions
+
+Preview and export support constant-rate clip varispeed. Speed changes pitch as
+well as tempo; pitch preservation is not implemented. Preview rate multiplies
+clip speed only during playback. Export uses the clip speed alone.
+
+`AudioClipPlan.speed` defaults to 1. An optional `gainAt(localUs)` supplies volume
+at clip-local timeline time and replaces the constant `gain`. Studio captures its
+volume keyframes using the same evaluator as timeline playback. Export addresses
+PCM by `startUs`, trims decoder padding, and keeps source reads bounded; decode
+errors fail the export instead of silently omitting a clip's sound.
+
+`transcribeAsset(..., durationUs, { fromUs })` transcribes a source range at its
+original speed and returns source-clock captions. `mapCaptionsToClip` intersects
+those captions with the used range and maps them through trim, placement and
+speed. Studio uses an explicit `clipId`, the selected clip, or an unambiguous
+matching clip. It rejects changed source placement after recognition, and asks
+for a clip when the same source has multiple possible timeline placements.

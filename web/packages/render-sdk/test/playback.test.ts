@@ -180,3 +180,27 @@ test('clock loss stops scheduled audio and rejects in-flight PCM; recovery sched
   assert.equal(sources[1].playbackRate.value, 2);
   p.pause(); audio.dispose();
 });
+
+test('clip varispeed composes with preview rate and decoder padding never overlaps chunks', async t => {
+  const { ctx, sources } = audioContext(t);
+  const requests: Array<{ from: number; duration: number; resolve: (pcm: any) => void }> = [];
+  const audio = new AudioEngine({ requestPcm: (_id: string, from: number, duration: number) => new Promise(resolve => requests.push({from,duration,resolve})) } as never);
+  audio.onPlay(10_000_000, .5);
+  const frame = (speed: number) => ({ audio:[{clipId:'clip',assetId:'a',sourceTimeUs:2_000_000,speed,gain:1}] }) as never;
+  audio.update(frame(2), 10_000_000);
+  assert.deepEqual([requests[0].from,requests[0].duration],[2_000_000,500_000]);
+  requests[0].resolve({startUs:1_980_000,frames:25920,channels:1,sampleRate:48000,planes:[new Float32Array(25920)]});
+  await Promise.resolve();
+  assert.equal(sources[0].playbackRate.value,1);
+  assert.ok(Math.abs(sources[0].started[1]-.02)<1e-9);
+  assert.ok(Math.abs(sources[0].started[2]-.5)<1e-9);
+  audio.update(frame(2),10_000_000);
+  assert.equal(requests[1].from,2_500_000);
+  audio.update(frame(.5),10_000_000); // Edit speed while old PCM is in flight.
+  assert.equal(sources[0].stopped,true);
+  requests[1].resolve({startUs:2_500_000,frames:48000,channels:1,sampleRate:48000,planes:[new Float32Array(48000)]});
+  await Promise.resolve();
+  assert.equal(sources.length,1);
+  assert.equal(requests[2].duration,125_000);
+  audio.dispose();
+});
