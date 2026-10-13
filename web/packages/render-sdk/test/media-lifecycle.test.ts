@@ -1,0 +1,36 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {MediaLibrary, RemoteVideoSource} from '../dist/media.js';
+import {MediaTaskScheduler} from '../dist/media-scheduler.js';
+function mockWorker(t:any) {
+ const workers:any[]=[];const original=globalThis.Worker;
+ globalThis.Worker=class {onmessage:any;onerror:any;posts:any[]=[];terminated=false;
+ constructor(){workers.push(this);} postMessage(msg:any){this.posts.push(msg);} terminate(){this.terminated=true;}
+ receive(data:any){this.onmessage({data});}
+ } as any;t.after(()=>globalThis.Worker=original);return workers;
+}
+const probe={width:1920,height:1080,durationUs:2000000,hasAudio:true};
+test('decoder frames are capped on arrival even when no render consumes them',()=>{
+ let closed=0;const source=new RemoteVideoSource(1,probe,()=>{});
+ for(let i=0;i<100;i++)source.receive({close:()=>closed++} as any,i*1000,1000);
+ assert.equal(closed,76);assert.equal(source.cacheBytes,24*1920*1080*4);
+ source.disposeFrames();assert.equal(closed,100);assert.equal(source.cacheBytes,0);
+});
+test('worker teardown rejects pending opens, and late frames are closed',async t=>{
+ const workers=mockWorker(t),media=new MediaLibrary(undefined,{scheduler:new MediaTaskScheduler()});
+ const opening=media.probeVideo({} as any);media.dispose();await assert.rejects(opening,{name:'AbortError'});
+ let closed=0;workers[0].receive({type:'exportFrame',reqId:10,frame:{close:()=>closed++}});
+ assert.equal(closed,1);assert.equal(media.diagnostics().pendingRequests,0);assert.equal(workers[0].terminated,true);
+});
+test('global estimated frame budget evicts idle sources and releases frames',async t=>{
+ const workers=mockWorker(t),media=new MediaLibrary(undefined,{frameCacheBytes:1920*1080*4*2});
+ const p=media.probeVideo({} as any);workers[0].receive({type:'ready',id:1,probe});const source=await p;media.attachVideo('a',source);
+ let closed=0;for(let i=0;i<10;i++)workers[0].receive({type:'frame',id:1,timestampUs:i,durationUs:1,frame:{close:()=>closed++}});
+ assert.equal(closed,8);assert.ok(media.diagnostics().frameCacheBytes<=media.diagnostics().frameCacheBudget);
+ media.dispose();assert.equal(closed,10);
+});
+test('a stuck worker request fails within the deadline and terminates codec ownership',async t=>{
+ const workers=mockWorker(t),media=new MediaLibrary(undefined,{requestTimeoutMs:10});
+ await assert.rejects(media.probeVideo({} as any),/timed out/);assert.equal(workers[0].terminated,true);
+ assert.equal(media.diagnostics().pendingRequests,0);
+});

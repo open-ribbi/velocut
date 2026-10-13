@@ -162,6 +162,9 @@ export class Observer {
     target: number,
     region?: { x: number; y: number; w: number; h: number },
   ): Promise<GrabResult | null> {
+    return this.media.scheduler.run('observe',()=>this.grabUnscheduled(spec,target,region),{lane:'heavy',onDiscard:result=>result?.bitmap.close()});
+  }
+  private async grabUnscheduled(spec: GrabSpec, target: number, region?: {x:number;y:number;w:number;h:number}): Promise<GrabResult | null> {
     let vf: VideoFrame | null = null;
     let srcW: number;
     let srcH: number;
@@ -398,6 +401,9 @@ export class Observer {
     assetId: string,
     opts: { everyUs?: number; longSide?: number; minShotUs?: number; sensitivity?: number; force?: boolean } = {},
   ): Promise<ShotAnalysis> {
+    return this.media.scheduler.run('observe',()=>this.analyzeShotsUnscheduled(assetId,opts),{lane:'heavy'});
+  }
+  private async analyzeShotsUnscheduled(assetId: string, opts: {everyUs?:number;longSide?:number;minShotUs?:number;sensitivity?:number;force?:boolean}): Promise<ShotAnalysis> {
     const cached = this.shotCache.get(assetId);
     if (cached && !opts.force) return cached;
 

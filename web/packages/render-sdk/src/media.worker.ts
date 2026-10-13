@@ -22,6 +22,8 @@
 // non-monotonic across samples, so presentation lookups go through byCts.
 
 import * as MP4Box from 'mp4box';
+import { DecoderBudget } from './decoder-budget.ts';
+const decoderBudget = new DecoderBudget(4);
 
 export interface ProbeResult {
   durationUs: number;
@@ -39,6 +41,7 @@ export type MainToWorker =
   | { type: 'streamReset'; id: number; everyUs?: number; pw?: number; ph?: number }
   | { type: 'streamPull'; id: number; reqId: number }
   | { type: 'streamDispose'; id: number }
+  | { type: 'releaseDecoders'; id: number }
   | { type: 'dispose'; id: number };
 
 export type WorkerToMain =
@@ -57,7 +60,8 @@ export type WorkerToMain =
     }
   | { type: 'pcmError'; id: number; reqId: number; message: string }
   | { type: 'exportFrame'; id: number; reqId: number; frame: VideoFrame | null }
-  | { type: 'streamFrame'; id: number; reqId: number; frame: VideoFrame | null; cts: number };
+  | { type: 'streamFrame'; id: number; reqId: number; frame: VideoFrame | null; cts: number }
+  | { type: 'frameError'; id: number; reqId: number; message: string };
 
 /** Feed past the target so B-frame reordering releases it. */
 const REORDER_AHEAD = 8;
@@ -173,7 +177,27 @@ class Source {
 
   probe!: ProbeResult;
 
+  private exactTail: Promise<void> = Promise.resolve();
+  private exportPump: Promise<void> = Promise.resolve();
   constructor(private id: number) {}
+
+  private closePreview() {
+    if (this.stillCheck) clearTimeout(this.stillCheck);
+    this.stillCheck = null; this.generation++; this.wantIdx = -1;
+    if (this.decoder && this.decoder.state !== 'closed') this.decoder.close();
+    this.decoder = null; decoderBudget.release(`${this.id}:preview`);
+  }
+  private closeExact() {
+    if (this.expDec && this.expDec.state !== 'closed') this.expDec.close();
+    this.expDec = null; this.expResolve?.(null); this.expResolve = null; this.expWant = null;
+    for (const frame of this.expRing.values()) frame.close(); this.expRing.clear();
+    decoderBudget.release(`${this.id}:exact`);
+  }
+  releaseDecoders() { this.closePreview(); this.closeExact(); this.streamDispose(); }
+  enqueueExact(timeUs: number): Promise<VideoFrame | null> {
+    const result=this.exactTail.then(()=>this.decodeFrameAt(timeUs));
+    this.exactTail=result.then(()=>{},()=>{});return result;
+  }
 
   // ------------------------------------------------------------- loading
 
@@ -294,6 +318,7 @@ class Source {
   // ------------------------------------------------------------ decoding
 
   private ensureDecoder(): VideoDecoder {
+    if (!decoderBudget.use(`${this.id}:preview`,()=>this.closePreview())) throw Error('Video decoder budget busy');
     if (this.decoder && this.decoder.state !== 'closed') return this.decoder;
     this.decoder = new VideoDecoder({
       output: (frame) => this.onFrame(frame),
@@ -448,6 +473,7 @@ class Source {
       this.cts.length - 1,
     );
 
+    if (!this.decoder || this.decoder.state === 'closed') this.feedIndex = this.seekStartBefore(targetIdx);
     const aheadOk = this.feedIndex > this.wantIdx && this.feedIndex - this.wantIdx < 60;
     const behind = this.feedIndex <= this.wantIdx && this.wantIdx - this.feedIndex < 120;
     if (behind) {
@@ -617,7 +643,8 @@ class Source {
       this.expWant = null;
       r(frame.clone()); // caller owns + closes its clone; the ring keeps the original
     }
-    while (this.expRing.size > 24) {
+    const frameBudget = Math.max(1, Math.min(24, Math.floor(32 * 1024 * 1024 / (this.probe.width * this.probe.height * 4))));
+    while (this.expRing.size > frameBudget) {
       const oldest = this.expRing.keys().next().value as number;
       this.expRing.get(oldest)?.close();
       this.expRing.delete(oldest);
@@ -625,7 +652,17 @@ class Source {
   }
 
   /** Resolve the exact decoded frame presented at timeUs (export path). */
-  async decodeFrameAt(timeUs: number): Promise<VideoFrame | null> {
+  private async decodeFrameAt(timeUs: number): Promise<VideoFrame | null> {
+    if (!decoderBudget.use(`${this.id}:exact`,()=>this.closeExact(),true)) throw Error('Video decoder budget busy');
+    let frame: VideoFrame | null = null;
+    try {
+      frame = await this.readFrameAt(timeUs);
+      await this.exportPump;
+      return frame;
+    } catch(error) { frame?.close(); throw error; }
+    finally { decoderBudget.unpin(`${this.id}:exact`); }
+  }
+  private async readFrameAt(timeUs: number): Promise<VideoFrame | null> {
     if (this.cts.length === 0) return null;
     const targetIdx = this.decodeIndexFor(timeUs);
     const targetCts = this.cts[targetIdx];
@@ -653,7 +690,7 @@ class Source {
       targetIdx < this.expFeed ||
       targetIdx - this.expFeed > FAR_FORWARD
     ) {
-      this.expDec?.close();
+      if (this.expDec && this.expDec.state !== 'closed') this.expDec.close();
       for (const f of this.expRing.values()) f.close();
       this.expRing.clear();
       this.expDec = new VideoDecoder({
@@ -661,6 +698,7 @@ class Source {
         error: (e) => {
           console.error('[velocut] export decode error', e);
           this.expDec = null;
+          this.expResolve?.(null); this.expResolve = null;
         },
       });
       this.expDec.configure(this.config);
@@ -670,7 +708,8 @@ class Source {
     return new Promise<VideoFrame | null>((resolve) => {
       this.expWant = targetCts;
       this.expResolve = resolve;
-      void this.pumpExport(targetIdx);
+      this.exportPump = this.pumpExport(targetIdx).catch(error=>{this.expResolve?.(null);this.expResolve=null;throw error;});
+      void this.exportPump.catch(()=>{});
     });
   }
 
@@ -704,8 +743,10 @@ class Source {
     }
     this.expFeed = end + 1;
     // Past the end with the frame still trapped in the reorder buffer → flush.
-    if (this.expFeed >= this.cts.length && this.expResolve && dec.state === 'configured') {
+    if (this.expResolve && dec.state === 'configured') {
       await dec.flush().catch(() => {});
+      if ((dec.state as string) !== 'closed') dec.close();
+      if (this.expDec === dec) this.expDec = null;
       if (this.expResolve) {
         this.expResolve(null); // genuinely no such frame
         this.expResolve = null;
@@ -719,7 +760,8 @@ class Source {
    *  everyUs/pw/ph are given, streamPull decimates to that fps grid and
    *  downscales each kept frame in-worker. */
   streamReset(everyUs = 0, pw = 0, ph = 0) {
-    this.strDec?.close();
+    this.streamDispose();
+    if (!decoderBudget.use(`${this.id}:stream`,()=>this.streamDispose(),true)) throw Error('Video decoder budget busy');
     for (const f of this.strQueue) f.close();
     this.strQueue = [];
     this.strDec = new VideoDecoder({
@@ -792,17 +834,18 @@ class Source {
         continue;
       }
       this.strCtx.drawImage(f, 0, 0, this.strPw, this.strPh);
-      const ts = f.timestamp;
+      const ts = f.timestamp, duration = f.duration;
       f.close();
       // Advance the grid cursor past this frame's time.
       this.strNextUs = Math.floor(ts / this.strEveryUs) * this.strEveryUs + this.strEveryUs;
-      return new VideoFrame(this.strCanvas, { timestamp: ts });
+      return new VideoFrame(this.strCanvas, { timestamp: ts, ...(duration ? {duration} : {}) });
     }
   }
 
   streamDispose() {
-    this.strDec?.close();
+    if (this.strDec && this.strDec.state !== 'closed') this.strDec.close();
     this.strDec = null;
+    decoderBudget.release(`${this.id}:stream`);
     for (const f of this.strQueue) f.close();
     this.strQueue = [];
     this.strFeed = 0;
@@ -812,15 +855,7 @@ class Source {
   }
 
   dispose() {
-    if (this.stillCheck) clearTimeout(this.stillCheck);
-    this.generation++;
-    this.decoder?.close();
-    this.decoder = null;
-    this.expDec?.close();
-    this.expDec = null;
-    this.streamDispose();
-    for (const f of this.expRing.values()) f.close();
-    this.expRing.clear();
+    this.releaseDecoders();
     this.offsets = [];
     this.sizes = [];
     this.cts = [];
@@ -892,14 +927,14 @@ ctx.onmessage = (e: MessageEvent<MainToWorker>) => {
         ctx.postMessage({ type: 'exportFrame', id: msg.id, reqId: msg.reqId, frame: null } satisfies WorkerToMain);
         break;
       }
-      src.decodeFrameAt(msg.timeUs).then(
+      src.enqueueExact(msg.timeUs).then(
         (frame) =>
           ctx.postMessage(
             { type: 'exportFrame', id: msg.id, reqId: msg.reqId, frame } satisfies WorkerToMain,
             frame ? [frame as unknown as Transferable] : [],
           ),
-        () =>
-          ctx.postMessage({ type: 'exportFrame', id: msg.id, reqId: msg.reqId, frame: null } satisfies WorkerToMain),
+        error =>
+          ctx.postMessage({ type: 'frameError', id: msg.id, reqId: msg.reqId, message:String(error) } satisfies WorkerToMain),
       );
       break;
     }
@@ -918,13 +953,16 @@ ctx.onmessage = (e: MessageEvent<MainToWorker>) => {
             { type: 'streamFrame', id: msg.id, reqId: msg.reqId, frame, cts: frame ? frame.timestamp : 0 } satisfies WorkerToMain,
             frame ? [frame as unknown as Transferable] : [],
           ),
-        () =>
-          ctx.postMessage({ type: 'streamFrame', id: msg.id, reqId: msg.reqId, frame: null, cts: 0 } satisfies WorkerToMain),
+        error =>
+          ctx.postMessage({ type: 'frameError', id: msg.id, reqId: msg.reqId, message:String(error) } satisfies WorkerToMain),
       );
       break;
     }
     case 'streamDispose':
       sources.get(msg.id)?.streamDispose();
+      break;
+    case 'releaseDecoders':
+      sources.get(msg.id)?.releaseDecoders();
       break;
     case 'dispose':
       sources.get(msg.id)?.dispose();

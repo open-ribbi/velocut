@@ -68,7 +68,7 @@ export async function importMediaFiles(store: Store, media: MediaLibrary, files:
             // Preview proxy build is opt-in until it has resource guards — a
             // background 4K transcode can run a second hardware decoder
             // alongside the live preview's and exhaust the GPU (machine hang).
-            if (localStorage.getItem('velocut.autoProxy') === '1') void media.buildProxy(ev.assetId);
+            if (localStorage.getItem('velocut.autoProxy') === '1') void media.buildProxy(ev.assetId).catch(error => console.warn('[velocut] proxy build failed',error));
             imported.push({ assetId: ev.assetId, name: file.name, kind: 'video' });
           }
         }

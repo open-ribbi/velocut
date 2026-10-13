@@ -85,12 +85,12 @@ test('editor and Director preview rates stay separate, fit compact UI and leave 
   await expect(page.getByLabel('Editor preview speed')).toHaveValue('1');
 });
 
-test('packaged MCP and CodeAct can control both preview transports without history entries', async ({ page }) => {
+test('packaged MCP and CodeAct can control both preview transports without history entries', async ({ page, baseURL }) => {
   const client = new Client({ name: 'preview-test', version: '1.0.0' });
   await client.connect(new StdioClientTransport({ command: process.execPath, args: [resolve('packages/mcp/dist/velocut/scripts/server.cjs')], stderr: 'pipe' }));
   const tool = (name: string, args: Record<string, unknown> = {}) => client.callTool({ name, arguments: args }) as Promise<any>;
   try {
-    await page.goto((await tool('velocut_connect')).structuredContent.url);
+    await page.goto((await tool('velocut_connect', {editorUrl:baseURL})).structuredContent.url);
     await expect(page.locator('.codex-status')).toHaveClass(/\bconnected\b/);
     const sessionId = (await tool('velocut_sessions')).structuredContent.sessions[0].sessionId;
     const made = (await tool('velocut_scene_create', { sessionId, spec: { version: 1, durationUs: 10_000_000, width: 320, height: 180 } })).structuredContent;

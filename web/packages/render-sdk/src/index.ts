@@ -103,3 +103,5 @@ export {
   type EffectParamSchema,
   type ResolvedGrade,
 } from './effects.ts';
+
+export { MediaTaskScheduler, mediaTasks, type MediaTaskKind } from './media-scheduler.ts';

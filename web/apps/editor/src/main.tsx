@@ -121,7 +121,7 @@ async function restoreMedia(store: Store, media: MediaLibrary, mediaDir: string)
         // preview is smooth on reload. Only the expensive BUILD is opt-in
         // (concurrent 4K decode is heavy) — gated behind velocut.autoProxy.
         if (!(await media.restoreProxy(a.id)) && localStorage.getItem('velocut.autoProxy') === '1') {
-          void media.buildProxy(a.id);
+          void media.buildProxy(a.id).catch(error => console.warn('[velocut] proxy build failed',error));
         }
       }
       else if (a.kind === 'audio') await media.attachAudio(a.id, (await media.probeAudio(file)).buffer);

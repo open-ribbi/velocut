@@ -10,10 +10,14 @@
 // toward the new target. `version` bumps on every frame arrival so the
 // playback loop knows a repaint is worthwhile while paused.
 
+import { mediaTasks, type MediaTaskScheduler, type MediaTaskKind } from './media-scheduler.ts';
 import { Muxer, FileSystemWritableFileStreamTarget } from 'mp4-muxer';
 import type { MainToWorker, ProbeResult, WorkerToMain } from './media.worker.ts';
 
 export type ProbedMedia = ProbeResult;
+interface Pending<T> { resolve: (value: T) => void; reject: (error: Error) => void }
+export interface MediaRequestOptions { signal?: AbortSignal; priority?: MediaTaskKind }
+
 
 /** One decoded PCM window (planar float32). */
 export interface PcmChunk {
@@ -68,6 +72,7 @@ interface WindowFrame {
 export class RemoteVideoSource {
   /** Presentation window, sorted by timestamp ascending. */
   private frames: WindowFrame[] = [];
+  lastAccess = 0;
   private lastPostedUs = NaN;
   private lastPostedPlaying = false;
 
@@ -110,10 +115,12 @@ export class RemoteVideoSource {
     }
     this.frames.push({ frame, timestampUs, durationUs });
     this.frames.sort((a, b) => a.timestampUs - b.timestampUs);
+    while (this.frames.length > WINDOW_CAP) this.frames.shift()!.frame.close();
   }
 
   /** Synchronous best-effort access for the render loop. */
   requestFrame(targetUs: number, playing: boolean): VideoFrame | null {
+    this.lastAccess = performance.now();
     if (targetUs !== this.lastPostedUs || playing !== this.lastPostedPlaying) {
       this.lastPostedUs = targetUs;
       this.lastPostedPlaying = playing;
@@ -151,7 +158,11 @@ export class RemoteVideoSource {
     return this.frames[this.frames.length - 1]?.frame ?? this.frames[0]?.frame ?? null;
   }
 
+  keepLastFrame() { while (this.frames.length > 1) this.frames.shift()!.frame.close(); }
+  get cacheBytes() { return this.frames.length * this.width * this.height * 4; }
+  evictFrame() { this.frames.shift()?.frame.close(); this.lastPostedUs = NaN; }
   disposeFrames() {
+    this.lastPostedUs = NaN;
     for (const f of this.frames) f.frame.close();
     this.frames = [];
   }
@@ -164,6 +175,13 @@ export class RemoteVideoSource {
  *  per-asset presentation windows here. */
 export class MediaLibrary {
   private worker: Worker;
+  private lifetime = new AbortController();
+  private requestPrefix = crypto.randomUUID();
+  readonly scheduler: MediaTaskScheduler;
+  private priority: MediaTaskKind;
+  private cacheBudget: number;
+  private proxyJobs = new Map<string, Promise<void>>();
+  private requestTimeoutMs: number;
   private nextId = 1;
   private pending = new Map<
     number,
@@ -220,8 +238,8 @@ export class MediaLibrary {
     { resolve: (c: PcmChunk) => void; reject: (e: Error) => void }
   >();
   private nextFrameReq = 1;
-  private pendingFrame = new Map<number, (f: VideoFrame | null) => void>();
-  private pendingStream = new Map<number, (f: { frame: VideoFrame; cts: number } | null) => void>();
+  private pendingFrame = new Map<number, Pending<VideoFrame | null>>();
+  private pendingStream = new Map<number, Pending<{ frame: VideoFrame; cts: number } | null>>();
 
   /** Bumped on every decoded-frame arrival; the playback loop repaints while
    *  paused only when this (or the document) changed. */
@@ -231,15 +249,65 @@ export class MediaLibrary {
     /** Project id scoping the OPFS pcm/proxy caches (asset ids are only unique
      *  per project). Omitted = the legacy unscoped directories. */
     private storageScope?: string,
-    options: { workerUrl?: string | URL } = {},
+    options: { workerUrl?: string | URL; scheduler?: MediaTaskScheduler; priority?: MediaTaskKind; frameCacheBytes?: number; requestTimeoutMs?: number } = {},
   ) {
+    this.scheduler = options.scheduler ?? mediaTasks;
+    this.priority = options.priority ?? 'observe';
+    this.cacheBudget = options.frameCacheBytes ?? 128 * 1024 * 1024;
+    this.requestTimeoutMs = options.requestTimeoutMs ?? 30_000;
+    if (!(this.cacheBudget > 0) || !(this.requestTimeoutMs > 0)) throw Error('Invalid media resource budget');
     this.worker = options.workerUrl ? new Worker(options.workerUrl, { type: 'module' }) : new Worker(new URL('./media.worker.ts', import.meta.url), { type: 'module' });
     this.worker.onmessage = (e: MessageEvent<WorkerToMain>) => this.onMessage(e.data);
+    this.worker.onerror = () => this.dispose();
+    this.worker.onmessageerror = () => this.dispose();
   }
 
-  private post = (msg: MainToWorker) => this.worker.postMessage(msg);
+  private post = (msg: MainToWorker) => {
+    this.lifetime.signal.throwIfAborted();
+    this.worker.postMessage(msg);
+  };
+
+  private signal(signal?: AbortSignal) {
+    return signal ? AbortSignal.any([signal, this.lifetime.signal]) : this.lifetime.signal;
+  }
+
+  private request<T>(map: Map<number, Pending<T>>, id: number, msg: MainToWorker, signal: AbortSignal, cancel?: () => void): Promise<T> {
+    signal.throwIfAborted();
+    return new Promise((resolve, reject) => {
+      const finish = () => { clearTimeout(timer); signal.removeEventListener('abort', abort); map.delete(id); };
+      const abort = () => { if (cancel) { cancel(); finish(); reject(signal.reason); } };
+      const timer = setTimeout(() => {
+        // Terminating the worker is the only reliable way to release a wedged codec.
+        const error = Error('Media worker request timed out');
+        finish(); reject(error); this.dispose();
+      }, this.requestTimeoutMs);
+      map.set(id,{resolve:value=>{finish();resolve(value);},reject:error=>{finish();reject(error);}});
+      signal.addEventListener('abort', abort, {once:true});
+      try { this.post(msg); } catch(error) { finish(); reject(error); }
+    });
+  }
+
+  diagnostics() {
+    return { frameCacheBytes: [...this.byWorkerId.values()].reduce((n,s)=>n+s.cacheBytes,0),
+      frameCacheBudget: this.cacheBudget, pendingRequests: this.pending.size + this.pendingPcm.size + this.pendingFrame.size + this.pendingStream.size,
+      sources: this.byWorkerId.size, proxyJobs: this.proxyJobs.size, scheduling: this.scheduler.snapshot() };
+  }
+
+  private trimFrameCache() {
+    let bytes = [...this.byWorkerId.values()].reduce((n,s)=>n+s.cacheBytes,0);
+    for (const source of [...this.byWorkerId.values()].sort((a,b)=>a.lastAccess-b.lastAccess)) {
+      while (bytes > this.cacheBudget && source.cacheBytes && [...this.byWorkerId.values()].reduce((n,s)=>n+s.cacheBytes/(s.width*s.height*4),0) > 1) {
+        const before = source.cacheBytes; source.evictFrame(); bytes -= before - source.cacheBytes;
+      }
+      if (bytes <= this.cacheBudget) break;
+    }
+  }
 
   private onMessage(msg: WorkerToMain) {
+    if (this.lifetime.signal.aborted) {
+      if ('frame' in msg) msg.frame?.close();
+      return;
+    }
     switch (msg.type) {
       case 'ready': {
         if (!this.pending.has(msg.id)) { this.post({ type: 'dispose', id: msg.id }); break; }
@@ -260,6 +328,7 @@ export class MediaLibrary {
           return;
         }
         source.receive(msg.frame, msg.timestampUs, msg.durationUs);
+        this.trimFrameCache();
         this.version++;
         break;
       }
@@ -284,20 +353,31 @@ export class MediaLibrary {
       case 'exportFrame': {
         const resolve = this.pendingFrame.get(msg.reqId);
         this.pendingFrame.delete(msg.reqId);
-        resolve?.(msg.frame);
+        if (resolve) resolve.resolve(msg.frame); else msg.frame?.close();
+        break;
+      }
+      case 'frameError': {
+        const pending = this.pendingFrame.get(msg.reqId) ?? this.pendingStream.get(msg.reqId);
+        pending?.reject(new Error(msg.message));
         break;
       }
       case 'streamFrame': {
         const resolve = this.pendingStream.get(msg.reqId);
         this.pendingStream.delete(msg.reqId);
-        resolve?.(msg.frame ? { frame: msg.frame, cts: msg.cts } : null);
+        if (resolve) resolve.resolve(msg.frame ? { frame: msg.frame, cts: msg.cts } : null); else msg.frame?.close();
         break;
       }
     }
   }
 
   /** Frame-exact decode for export (resolves the exact frame at sourceTimeUs). */
-  exactFrame(assetId: string, sourceTimeUs: number): Promise<VideoFrame | null> {
+  exactFrame(assetId: string, sourceTimeUs: number, options: MediaRequestOptions = {}): Promise<VideoFrame | null> {
+    return this.scheduler.run(options.priority ?? this.priority, signal => this.readExactFrame(assetId, sourceTimeUs, signal), {
+      lane:'codec', key:`${this.requestPrefix}:exact:${assetId}`, signal:this.signal(options.signal), onDiscard:frame=>frame?.close(),
+    });
+  }
+
+  private readExactFrame(assetId: string, sourceTimeUs: number, signal: AbortSignal): Promise<VideoFrame | null> {
     const video = this.videoSources.get(assetId);
     if (!video) {
       const motion = this.motionSources.get(assetId);
@@ -311,9 +391,8 @@ export class MediaLibrary {
       return Promise.resolve(img ? img.clone() : null);
     }
     const reqId = this.nextFrameReq++;
-    const p = new Promise<VideoFrame | null>((resolve) => this.pendingFrame.set(reqId, resolve));
-    this.post({ type: 'frameAt', id: video.workerId, reqId, timeUs: sourceTimeUs });
-    return p;
+    return this.request(this.pendingFrame, reqId, {type:'frameAt',id:video.workerId,reqId,timeUs:sourceTimeUs}, signal,
+      () => { if (!this.lifetime.signal.aborted) this.post({type:'releaseDecoders',id:video.workerId}); });
   }
 
   /** Frame-exact decode for a transition's OUTGOING ("from") side during export.
@@ -323,11 +402,16 @@ export class MediaLibrary {
    *  its OWN dedicated full-res decoder; each side then advances ~1 frame forward
    *  with no long seek. Falls back to the shared exact decoder if no original is
    *  retained. Call {@link releaseExactFromDecoders} when the export ends. */
-  async exactFrameFrom(assetId: string, sourceTimeUs: number): Promise<VideoFrame | null> {
+  exactFrameFrom(assetId: string, sourceTimeUs: number, options: MediaRequestOptions = {}): Promise<VideoFrame | null> {
+    return this.scheduler.run(options.priority ?? this.priority, signal => this.readExactFrameFrom(assetId, sourceTimeUs, signal), {
+      lane:'codec', key:`${this.requestPrefix}:exact-from:${assetId}`, signal:this.signal(options.signal), onDiscard:frame=>frame?.close(),
+    });
+  }
+  private async readExactFrameFrom(assetId: string, sourceTimeUs: number, signal: AbortSignal): Promise<VideoFrame | null> {
     let src = this.exactFromSources.get(assetId);
     if (!src) {
       const file = this.originalFiles.get(assetId);
-      if (!file) return this.exactFrame(assetId, sourceTimeUs);
+      if (!file) return this.readExactFrame(assetId, sourceTimeUs, signal);
       let opening = this.exactFromOpening.get(assetId);
       if (!opening) {
         opening = this.probeVideo(file).then(
@@ -337,13 +421,14 @@ export class MediaLibrary {
         this.exactFromOpening.set(assetId, opening);
       }
       const opened = await opening;
-      if (!opened) return this.exactFrame(assetId, sourceTimeUs);
+      if (!opened) return this.readExactFrame(assetId, sourceTimeUs, signal);
       src = opened;
     }
     const reqId = this.nextFrameReq++;
-    const p = new Promise<VideoFrame | null>((resolve) => this.pendingFrame.set(reqId, resolve));
-    this.post({ type: 'frameAt', id: src.workerId, reqId, timeUs: sourceTimeUs });
-    return p;
+    signal.throwIfAborted();
+    const id=src.workerId;
+    return this.request(this.pendingFrame, reqId, {type:'frameAt',id,reqId,timeUs:sourceTimeUs}, signal,
+      () => { if (!this.lifetime.signal.aborted) this.post({type:'releaseDecoders',id}); });
   }
 
   /** Dispose the dedicated export outgoing-side decoders (free their hardware
@@ -372,11 +457,8 @@ export class MediaLibrary {
     const video = this.videoSources.get(assetId);
     if (!video) return Promise.resolve(null);
     const reqId = this.nextFrameReq++;
-    const p = new Promise<{ frame: VideoFrame; cts: number } | null>((resolve) =>
-      this.pendingStream.set(reqId, resolve),
-    );
-    this.post({ type: 'streamPull', id: video.workerId, reqId });
-    return p;
+    return this.request(this.pendingStream, reqId, {type:'streamPull',id:video.workerId,reqId}, this.lifetime.signal);
+
   }
 
   endStream(assetId: string): void {
@@ -387,7 +469,12 @@ export class MediaLibrary {
   /** Decode one audio window for an asset (used by the AudioEngine). Imported
    *  audio files slice their decoded buffer; video assets pull AAC from the
    *  worker. */
-  requestPcm(assetId: string, fromUs: number, durUs: number): Promise<PcmChunk> {
+  requestPcm(assetId: string, fromUs: number, durUs: number, options: MediaRequestOptions = {}): Promise<PcmChunk> {
+    return this.scheduler.run(options.priority ?? (this.playing ? 'preview' : this.priority), signal => this.readPcm(assetId,fromUs,durUs,signal), {
+      lane:'codec', signal:this.signal(options.signal),
+    });
+  }
+  private readPcm(assetId: string, fromUs: number, durUs: number, signal: AbortSignal): Promise<PcmChunk> {
     const meta = this.pcm.get(assetId);
     if (meta) return this.readPcmWindow(meta, fromUs, durUs);
     const buf = this.audioBuffers.get(assetId);
@@ -395,11 +482,8 @@ export class MediaLibrary {
     const video = this.videoSources.get(assetId);
     if (!video || !video.hasAudio) return Promise.reject(new Error('no audio for asset'));
     const reqId = this.nextPcmReq++;
-    const p = new Promise<PcmChunk>((resolve, reject) =>
-      this.pendingPcm.set(reqId, { resolve, reject }),
-    );
-    this.post({ type: 'audio', id: video.workerId, reqId, fromUs, durUs });
-    return p;
+    return this.request(this.pendingPcm, reqId, {type:'audio',id:video.workerId,reqId,fromUs,durUs}, signal);
+
   }
 
   private sliceBuffer(buf: AudioBuffer, fromUs: number, durUs: number): PcmChunk {
@@ -479,11 +563,7 @@ export class MediaLibrary {
   /** Demux + probe run in the worker; resolves once metadata is known. */
   probeVideo(file: File): Promise<RemoteVideoSource> {
     const id = this.nextId++;
-    const p = new Promise<RemoteVideoSource>((resolve, reject) =>
-      this.pending.set(id, { resolve, reject }),
-    );
-    this.post({ type: 'open', id, file });
-    return p;
+    return this.request(this.pending, id, {type:'open',id,file}, this.lifetime.signal);
   }
 
   /** Release a temporary probe source. Never release media already attached to an asset. */
@@ -534,6 +614,7 @@ export class MediaLibrary {
   /** Transport state — widens the worker's decode-ahead window during play. */
   setPlaying(playing: boolean) {
     this.playing = playing;
+    this.scheduler.setPreviewActive(this, playing);
   }
 
   /** Whether live media (decoder or image frame) is attached for an asset —
@@ -638,6 +719,7 @@ export class MediaLibrary {
       const file = await (await dir.getFileHandle(`${assetId}.mp4`)).getFile();
       const proxy = await this.probeVideo(file);
       this.proxySources.set(assetId, proxy);
+      this.version++;
       return true;
     } catch {
       return false;
@@ -647,10 +729,14 @@ export class MediaLibrary {
   /** Transcode an asset's original to a low-res OPFS proxy, then attach it for
    *  preview. No-op if the asset is already small or a proxy exists. Heavy but
    *  one-time; meant to run in the background after import. */
-  async buildProxy(
-    assetId: string,
-    opts?: { fps?: number; force?: boolean; onProgress?: (frac: number) => void; signal?: AbortSignal },
-  ): Promise<void> {
+  buildProxy(assetId: string, opts?: { fps?: number; force?: boolean; onProgress?: (frac: number) => void; signal?: AbortSignal }): Promise<void> {
+    const existing=this.proxyJobs.get(assetId); if(existing)return existing;
+    const job=this.scheduler.run('proxy', signal=>this.runProxy(assetId,{...opts,signal}), {signal:this.signal(opts?.signal)});
+    this.proxyJobs.set(assetId,job);
+    void job.finally(()=>this.proxyJobs.delete(assetId)).catch(()=>{});
+    return job;
+  }
+  private async runProxy(assetId: string, opts: { fps?: number; force?: boolean; onProgress?: (frac: number) => void; signal: AbortSignal }): Promise<void> {
     const original = this.videoSources.get(assetId);
     if (!original || this.proxySources.has(assetId) || this.proxyBuilding.has(assetId)) return;
     // Small videos decode fine at native res — a proxy would only add overhead.
@@ -661,6 +747,8 @@ export class MediaLibrary {
     // the guard, open the same OPFS writable, and corrupt each other.
     this.proxyBuilding.add(assetId);
     let streaming = false;
+    let encoder: VideoEncoder | undefined, writable: FileSystemWritableFileStream | undefined;
+    let complete = false;
     try {
       if (await this.restoreProxy(assetId)) return;
       const scale = Math.min(1, PROXY_MAX_DIM / Math.max(original.width, original.height));
@@ -672,13 +760,13 @@ export class MediaLibrary {
       const dir = await proxyDir(this.storageScope);
       await dir.removeEntry(`${assetId}.done`).catch(() => {});
       const handle = await dir.getFileHandle(`${assetId}.mp4`, { create: true });
-      const writable = await handle.createWritable();
+      writable = await handle.createWritable();
       const muxer = new Muxer({
         target: new FileSystemWritableFileStreamTarget(writable),
         video: { codec: 'avc', width: pw, height: ph },
         fastStart: false,
       });
-      const encoder = new VideoEncoder({
+      encoder = new VideoEncoder({
         output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
         error: (e) => console.error('[velocut] proxy encode error', e),
       });
@@ -700,16 +788,19 @@ export class MediaLibrary {
       // this asset's preview for the duration (peekFrame), so those frames are
       // dead weight, and dropping them keeps GPU memory for the single build
       // decoder + encoder.
-      original.disposeFrames();
+      opts.signal.throwIfAborted();
+      original.keepLastFrame();
+      this.post({type:'releaseDecoders',id:original.workerId});
       this.startStream(assetId, { everyUs: Math.round(frameDurUs), pw, ph });
       streaming = true;
       let outN = 0;
       for (;;) {
-        if (opts?.signal?.aborted) break;
+        opts.signal.throwIfAborted();
         const pulled = await this.pullStreamFrame(assetId);
         if (!pulled) break;
-        const ts = Math.round(outN * frameDurUs);
-        const vf = new VideoFrame(pulled.frame, { timestamp: ts, duration: Math.round(frameDurUs) });
+        if(opts.signal.aborted){pulled.frame.close();opts.signal.throwIfAborted();}
+        const ts = pulled.cts;
+        const vf = new VideoFrame(pulled.frame, { timestamp: ts, duration: Math.max(pulled.frame.duration ?? 0, Math.round(frameDurUs)) });
         encoder.encode(vf, { keyFrame: outN % keyint === 0 });
         vf.close();
         pulled.frame.close();
@@ -720,23 +811,24 @@ export class MediaLibrary {
       this.endStream(assetId);
       streaming = false;
 
-      if (opts?.signal?.aborted) {
-        encoder.close();
-        await writable.close().catch(() => {});
-        return;
-      }
+      opts.signal.throwIfAborted();
       await encoder.flush();
       encoder.close();
       muxer.finalize();
       await writable.close();
+      opts.signal.throwIfAborted();
       await (await dir.getFileHandle(`${assetId}.done`, { create: true })).createWritable().then((w) => w.close());
 
       const proxy = await this.probeVideo(await handle.getFile());
       this.proxySources.set(assetId, proxy);
+      this.version++;
+      complete = true;
     } catch (e) {
-      console.warn('[velocut] proxy build failed:', e);
+      throw e;
     } finally {
-      if (streaming) this.endStream(assetId);
+      if (streaming && !this.lifetime.signal.aborted) this.endStream(assetId);
+      if (encoder && encoder.state !== 'closed') encoder.close();
+      if (!complete) await writable?.abort().catch(()=>{});
       this.proxyBuilding.delete(assetId);
     }
   }
@@ -752,7 +844,13 @@ export class MediaLibrary {
   }
 
   dispose() {
+    if (this.lifetime.signal.aborted) return;
+    this.lifetime.abort(new DOMException('Media library disposed','AbortError'));
+    this.scheduler.setPreviewActive(this,false);
     this.worker.terminate();
+    const error = new DOMException('Media library disposed','AbortError');
+    for (const pending of [...this.pending.values(),...this.pendingPcm.values(),...this.pendingFrame.values(),...this.pendingStream.values()]) pending.reject(error);
+    this.pending.clear(); this.pendingPcm.clear(); this.pendingFrame.clear(); this.pendingStream.clear();
     void this.decodeCtx?.close();
     this.decodeCtx = null;
     this.pcm.clear(); // OPFS files persist as the decoded cache
