@@ -28,7 +28,9 @@
     "docs:screenshots": "npm run build:release && node scripts/capture-readme.mjs",
     "build:brand": "node scripts/build-brand.mjs",
     "archive:release": "node scripts/archive-release.mjs",
-    "test:release": "node --test scripts/release-artifacts.test.mjs"
+    "test:release": "node --test scripts/release-artifacts.test.mjs",
+    "benchmark:media": "node scripts/benchmark-media.mjs",
+    "test:benchmark-media": "node --test scripts/media-benchmark-stats.test.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",

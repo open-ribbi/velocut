@@ -30,6 +30,7 @@ export type ClientToRender =
       // transferred `frames[i]` belongs to (top-level OR a transition's `from`
       // side); `sizes[assetId]` carries each asset's original dimensions.
       type: 'render';
+      requestId?: number;
       fg: FrameGraph;
       sizes: Record<string, AssetSize>;
       clips: string[];
@@ -44,7 +45,7 @@ export type ClientToRender =
 export type RenderToClient =
   | { type: 'ready' }
   | { type: 'error'; message: string }
-  | { type: 'rendered' } // a render message was consumed (its frames are owned here now)
+  | { type: 'rendered'; requestId?: number; ok?: boolean } // a render message was consumed (its frames are owned here now)
   | { type: 'version'; value: number }; // a paused-time invalidation (font/shader compiled)
 
 const ctx = self as unknown as Worker;
@@ -85,12 +86,14 @@ ctx.onmessage = (e: MessageEvent<ClientToRender>) => {
       sizes = msg.sizes;
       const map = new Map<string, VideoFrame>();
       msg.clips.forEach((clipId, i) => map.set(clipId, msg.frames[i]));
+      let ok=true;
       try {
         renderer.render(msg.fg, stubMedia, (clipId) => map.get(clipId) ?? null);
       } catch (err) {
+        ok=false;
         ctx.postMessage({ type: 'error', message: String((err as Error)?.message ?? err) } satisfies RenderToClient);
       }
-      ctx.postMessage({ type: 'rendered' } satisfies RenderToClient);
+      ctx.postMessage({ type: 'rendered', requestId:msg.requestId, ok } satisfies RenderToClient);
       break;
     }
     case 'override':

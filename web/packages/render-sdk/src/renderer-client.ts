@@ -23,7 +23,13 @@ import type { AssetSize, ClientToRender, RenderToClient } from './render.worker.
  *  reuses the class directly). Consumers (Playback, PreviewPanel, FontLibrary)
  *  depend on this, not the concrete class, so the compositor can live on either
  *  thread. */
+export interface RenderDiagnostics {
+  submitted: number; acknowledged: number; dropped: number; failed: number;
+  inflight: number; peakInflight: number; latencySamplesMs: number[];
+  latest: {timeUs:number;missingSources:number;sourceTimeErrorUs:number;ok:boolean} | null;
+}
 export interface PreviewRenderer {
+  diagnostics?(): RenderDiagnostics;
   readonly version: number;
   readonly ready: boolean;
   init(canvas: HTMLCanvasElement): Promise<void>;
@@ -56,6 +62,15 @@ export class RendererClient implements PreviewRenderer {
   private measureCtx: CanvasRenderingContext2D | null = null;
   /** Outstanding render messages (incremented on post, decremented on ack). */
   private inflight = 0;
+  private nextRequest = 1;
+  private needsRender = false;
+  private pending = new Map<number,{sentAt:number;timeUs:number;missingSources:number;sourceTimeErrorUs:number}>();
+  private stats = {submitted:0,acknowledged:0,dropped:0,failed:0,peakInflight:0};
+  private latencySamplesMs: number[] = [];
+  private latest: RenderDiagnostics['latest'] = null;
+  diagnostics(): RenderDiagnostics {
+    return {...this.stats,inflight:this.inflight,latencySamplesMs:[...this.latencySamplesMs],latest:this.latest?{...this.latest}:null};
+  }
 
   version = 0;
   ready = false;
@@ -91,21 +106,34 @@ export class RendererClient implements PreviewRenderer {
             resolve();
             break;
           case 'error':
+            this.stats.failed++;
             // Pre-ready errors fail init (→ the preview shows them); later ones
             // (a GPU hiccup mid-session) are logged, matching the main-thread
             // renderer's uncapturederror handler.
             if (!this.ready) reject(new Error(m.message));
             else console.error('[velocut][render-worker]', m.message);
             break;
-          case 'rendered':
+          case 'rendered': {
             this.inflight = Math.max(0, this.inflight - 1);
+            this.stats.acknowledged++;
+            if(this.needsRender && this.inflight<MAX_INFLIGHT){this.needsRender=false;this.version++;}
+            const requestId=m.requestId ?? this.pending.keys().next().value;
+            const pending=requestId === undefined ? undefined : this.pending.get(requestId);
+            if(pending && requestId!==undefined){
+              this.pending.delete(requestId);
+              this.latencySamplesMs.push(performance.now()-pending.sentAt);
+              if(this.latencySamplesMs.length>512)this.latencySamplesMs.shift();
+              this.latest={timeUs:pending.timeUs,missingSources:pending.missingSources,sourceTimeErrorUs:pending.sourceTimeErrorUs,ok:m.ok!==false};
+            }
             break;
+          }
           case 'version':
-            this.version = m.value;
+            this.version++;
             break;
         }
       };
       worker.onerror = (e) => {
+        this.stats.failed++;
         if (!this.ready) reject(new Error(e.message || 'render worker failed to start'));
       };
       const offscreen = canvas.transferControlToOffscreen();
@@ -117,38 +145,49 @@ export class RendererClient implements PreviewRenderer {
   render(fg: FrameGraph, media: MediaLibrary): void {
     const worker = this.worker;
     if (!worker || !this.ready) return;
+    if (this.inflight >= MAX_INFLIGHT) { this.stats.dropped++; this.needsRender=true; return; }
 
     const clips: string[] = [];
     const frames: VideoFrame[] = [];
     const sizes: Record<string, AssetSize> = {};
-    const take = (clipId: string, assetId: string, frame: VideoFrame | null) => {
-      if (!frame) return;
+    let missingSources=0,sourceTimeErrorUs=0;
+    const take = (clipId: string, assetId: string, frame: VideoFrame | null, sourceTimeUs: number) => {
+      if (!frame) { missingSources++; return; }
+      if(frame.duration)sourceTimeErrorUs=Math.max(sourceTimeErrorUs,frame.timestamp-sourceTimeUs,sourceTimeUs-frame.timestamp-frame.duration);
       const size = media.assetSize(assetId);
       if (size) sizes[assetId] = size;
       clips.push(clipId);
       frames.push(frame.clone()); // refcount bump — the MediaLibrary keeps its frame
     };
 
-    for (const layer of fg.layers) {
-      // Text layers rasterize in the worker (from the payload) — no frame to ship.
-      if (layer.assetId && !layer.text) {
-        take(layer.clipId, layer.assetId, media.frameFor(layer.assetId, layer.sourceTimeUs));
+    try {
+      for (const layer of fg.layers) {
+        // Text layers rasterize in the worker (from the payload) — no frame to ship.
+        if (layer.assetId && !layer.text) {
+          take(layer.clipId, layer.assetId, media.frameFor(layer.assetId, layer.sourceTimeUs), layer.sourceTimeUs);
+        }
+        const from = layer.transition?.from;
+        if (from?.assetId) {
+          const conflicting = from.assetId === layer.assetId;
+          take(from.clipId, from.assetId, media.frameForFrom(from.assetId, from.sourceTimeUs, conflicting), from.sourceTimeUs);
+        }
       }
-      const from = layer.transition?.from;
-      if (from?.assetId) {
-        const conflicting = from.assetId === layer.assetId;
-        take(from.clipId, from.assetId, media.frameForFrom(from.assetId, from.sourceTimeUs, conflicting));
-      }
+    } catch(error) {
+      for(const frame of frames)frame.close();
+      throw error;
     }
 
-    // Worker is behind → drop this frame (release the clones we just took).
-    if (this.inflight > MAX_INFLIGHT) {
-      for (const f of frames) f.close();
-      return;
-    }
     this.inflight++;
-    const msg: ClientToRender = { type: 'render', fg, sizes, clips, frames };
-    worker.postMessage(msg, frames as unknown as Transferable[]);
+    this.stats.submitted++;this.stats.peakInflight=Math.max(this.stats.peakInflight,this.inflight);
+    const requestId=this.nextRequest++;
+    this.pending.set(requestId,{sentAt:performance.now(),timeUs:fg.timeUs,missingSources,sourceTimeErrorUs});
+    const msg: ClientToRender = { type: 'render', requestId, fg, sizes, clips, frames };
+    try { worker.postMessage(msg, frames as unknown as Transferable[]); }
+    catch(error) {
+      this.inflight--;this.pending.delete(requestId);this.stats.failed++;
+      for(const frame of frames)frame.close();
+      throw error;
+    }
   }
 
   /** Layout the editor uses for caret/selection — synchronous, on the main
@@ -206,5 +245,6 @@ export class RendererClient implements PreviewRenderer {
     this.worker?.terminate();
     this.worker = null;
     this.ready = false;
+    this.pending.clear();this.inflight=0;
   }
 }

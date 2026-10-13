@@ -1,0 +1,1041 @@
+{
+  "schemaVersion": 1,
+  "status": "complete",
+  "createdAt": "2026-10-13T10:03:35.952Z",
+  "revision": "cd713265e7c10bde9b0e278412028117b14a15f9",
+  "trackedChanges": true,
+  "buildIndexSha256": "4769dfd07c9473a5c0a439685a753c3499143bc7c9d8ccd6104ac6a83b96706e",
+  "profile": "standard",
+  "samples": 5,
+  "scenarios": [
+    {
+      "id": "video4k",
+      "config": {
+        "tracks": 8,
+        "clipsPerTrack": 200,
+        "audioSeconds": 600,
+        "props": 4096
+      },
+      "setupMs": 19.110000133514404,
+      "metrics": {
+        "seekExactMs": {
+          "samples": [
+            35.420000076293945,
+            53.19500017166138,
+            42.234999656677246,
+            54.86999988555908,
+            35.15500020980835
+          ],
+          "count": 5,
+          "min": 35.15500020980835,
+          "p50": 42.234999656677246,
+          "p95": 54.86999988555908,
+          "max": 54.86999988555908
+        },
+        "proxyBuildMs": {
+          "samples": [
+            180.1549997329712,
+            181.7849998474121,
+            180.57499980926514,
+            181.30499982833862,
+            182.4550004005432
+          ],
+          "count": 5,
+          "min": 180.1549997329712,
+          "p50": 181.30499982833862,
+          "p95": 182.4550004005432,
+          "max": 182.4550004005432
+        }
+      },
+      "preview": {
+        "submitted": 7,
+        "acknowledged": 7,
+        "dropped": 0,
+        "peakInflight": 1,
+        "workerAckLatenciesMs": [
+          0.5550003051757812,
+          0.6100001335144043,
+          0.47499990463256836,
+          0.5550003051757812,
+          0.5399999618530273,
+          0.5749998092651367,
+          0.21000003814697266
+        ]
+      },
+      "responsiveness": {
+        "timerIntervalMs": 10,
+        "maxTimerGapMs": 13.440000057220459,
+        "longTaskCount": 0,
+        "longTaskDurationsMs": []
+      },
+      "diagnostics": {
+        "frameCacheBytes": 0,
+        "frameCacheBudget": 134217728,
+        "pendingRequests": 0,
+        "sources": 13,
+        "proxyJobs": 0,
+        "scheduling": {
+          "completed": 12,
+          "failed": 0,
+          "cancelled": 0,
+          "preemptions": 0,
+          "peakRunning": 1,
+          "queued": 0,
+          "running": 0,
+          "previewOwners": 0,
+          "tasks": []
+        }
+      },
+      "webgpu": {
+        "vendor": "apple",
+        "architecture": "metal-3",
+        "description": ""
+      },
+      "mainIsolateHeap": {
+        "before": {
+          "usedSize": 6358148,
+          "totalSize": 7553024,
+          "embedderHeapUsedSize": 1493232,
+          "backingStorageSize": 1580938
+        },
+        "after": {
+          "usedSize": 7008172,
+          "totalSize": 8077312,
+          "embedderHeapUsedSize": 1271968,
+          "backingStorageSize": 1581185
+        }
+      }
+    },
+    {
+      "id": "multitrack",
+      "config": {
+        "tracks": 8,
+        "clipsPerTrack": 200,
+        "audioSeconds": 600,
+        "props": 4096
+      },
+      "setupMs": 32.75500011444092,
+      "metrics": {
+        "seekToWorkerAckMs": {
+          "samples": [
+            54.450000286102295,
+            36.575000286102295,
+            46.28000020980835,
+            18.46500015258789,
+            28.424999713897705
+          ],
+          "count": 5,
+          "min": 18.46500015258789,
+          "p50": 36.575000286102295,
+          "p95": 54.450000286102295,
+          "max": 54.450000286102295
+        },
+        "evaluate100FramesMs": {
+          "samples": [
+            0.2999997138977051,
+            0.3000001907348633,
+            0.309999942779541,
+            0.375,
+            0.33500003814697266
+          ],
+          "count": 5,
+          "min": 0.2999997138977051,
+          "p50": 0.309999942779541,
+          "p95": 0.375,
+          "max": 0.375
+        },
+        "export2SecondsMs": {
+          "samples": [
+            1875.3550000190735,
+            1847.6050000190735,
+            1877.085000038147,
+            1861.630000114441,
+            1900.329999923706
+          ],
+          "count": 5,
+          "min": 1847.6050000190735,
+          "p50": 1875.3550000190735,
+          "p95": 1900.329999923706,
+          "max": 1900.329999923706
+        }
+      },
+      "preview": {
+        "submitted": 171,
+        "acknowledged": 171,
+        "dropped": 0,
+        "peakInflight": 1,
+        "workerAckLatenciesMs": [
+          0.5800004005432129,
+          1.0149998664855957,
+          0.24499988555908203,
+          1.7200002670288086,
+          0.36999988555908203,
+          0.21000003814697266,
+          0.20000028610229492,
+          0.26999998092651367,
+          0.20999956130981445,
+          0.3299999237060547,
+          0.22499990463256836,
+          1.4449996948242188,
+          0.315000057220459,
+          0.28999996185302734,
+          0.35500001907348633,
+          0.2350001335144043,
+          0.21000003814697266,
+          0.3449997901916504,
+          0.28999996185302734,
+          0.2799997329711914,
+          0.28999996185302734,
+          0.22500038146972656,
+          0.30500030517578125,
+          1.2899999618530273,
+          0.5999999046325684,
+          0.6500000953674316,
+          1.130000114440918,
+          1.109999656677246,
+          1.1349997520446777,
+          0.809999942779541,
+          0.815000057220459,
+          0.9700002670288086,
+          0.9249997138977051,
+          0.9600000381469727,
+          0.9000000953674316,
+          0.7950000762939453,
+          0.7150001525878906,
+          1.0799999237060547,
+          1.1550002098083496,
+          1.0450000762939453,
+          1.125,
+          0.6899995803833008,
+          1.2150001525878906,
+          1.0049996376037598,
+          0.75,
+          0.9099998474121094,
+          0.875,
+          1.125,
+          0.6399998664855957,
+          1.1000003814697266,
+          1.2099995613098145,
+          0.9800000190734863,
+          0.7149996757507324,
+          1.1399998664855957,
+          0.7699999809265137,
+          0.9549999237060547,
+          0.8849997520446777,
+          0.940000057220459,
+          1.3000001907348633,
+          0.8500003814697266,
+          1.140000343322754,
+          1.075000286102295,
+          0.9449996948242188,
+          1.0600004196166992,
+          1.0199999809265137,
+          1.0250000953674316,
+          0.815000057220459,
+          1.140000343322754,
+          1.1000003814697266,
+          1.119999885559082,
+          0.8250002861022949,
+          1.065000057220459,
+          0.7950000762939453,
+          0.625,
+          0.880000114440918,
+          0.9650001525878906,
+          0.934999942779541,
+          0.684999942779541,
+          1.005000114440918,
+          1.059999942779541,
+          1.2899999618530273,
+          1.0949997901916504,
+          1.1050000190734863,
+          1.0749998092651367,
+          0.7600002288818359,
+          1.0099997520446777,
+          0.9149999618530273,
+          0.9650001525878906,
+          1.3149995803833008,
+          0.8199996948242188,
+          1.1349997520446777,
+          1.2149996757507324,
+          1.125,
+          1.1649999618530273,
+          0.9600000381469727,
+          1.2649998664855957,
+          0.809999942779541,
+          1.3849997520446777,
+          1.2699999809265137,
+          1.130000114440918,
+          0.820000171661377,
+          1.005000114440918,
+          0.6449999809265137,
+          1.075000286102295,
+          0.9650001525878906,
+          1.0949997901916504,
+          1.125,
+          0.7800002098083496,
+          1.125,
+          1.1999998092651367,
+          1.195000171661377,
+          0.7250003814697266,
+          1.0399999618530273,
+          1.255000114440918,
+          0.6449999809265137,
+          0.9050002098083496,
+          0.804999828338623,
+          1.0799999237060547,
+          0.7950000762939453,
+          0.934999942779541,
+          0.8449997901916504,
+          0.6499996185302734,
+          1.080000400543213,
+          0.9950003623962402,
+          0.804999828338623,
+          0.6899995803833008,
+          1.080000400543213,
+          1.065000057220459,
+          0.994999885559082,
+          1.1599998474121094,
+          1.2149996757507324,
+          0.9249997138977051,
+          0.8249998092651367,
+          0.9699997901916504,
+          1.0450000762939453,
+          1.0850000381469727,
+          0.9049997329711914,
+          0.9099998474121094,
+          1.1599998474121094,
+          0.9900002479553223,
+          1.0799999237060547,
+          0.8350000381469727,
+          0.940000057220459,
+          0.9549999237060547,
+          0.5799999237060547,
+          0.9850001335144043,
+          1.0250000953674316,
+          1.0699996948242188,
+          0.7100000381469727,
+          0.9149999618530273,
+          0.5999999046325684,
+          0.7899999618530273,
+          0.7350001335144043,
+          0.684999942779541,
+          1.1150002479553223,
+          0.755000114440918,
+          1.0900001525878906,
+          1.0399999618530273,
+          1.195000171661377,
+          0.869999885559082,
+          0.9250001907348633,
+          0.7950000762939453,
+          0.7250003814697266,
+          1.1050000190734863,
+          1.1000003814697266,
+          0.8299999237060547,
+          0.7100000381469727,
+          1.054999828338623,
+          1.205000400543213,
+          0.35500001907348633,
+          0.2999997138977051
+        ]
+      },
+      "responsiveness": {
+        "timerIntervalMs": 10,
+        "maxTimerGapMs": 184.1749997138977,
+        "longTaskCount": 1,
+        "longTaskDurationsMs": [
+          177
+        ]
+      },
+      "diagnostics": {
+        "frameCacheBytes": 132710400,
+        "frameCacheBudget": 134217728,
+        "pendingRequests": 0,
+        "sources": 4,
+        "proxyJobs": 0,
+        "scheduling": {
+          "completed": 1158,
+          "failed": 0,
+          "cancelled": 0,
+          "preemptions": 0,
+          "peakRunning": 2,
+          "queued": 0,
+          "running": 0,
+          "previewOwners": 0,
+          "tasks": []
+        }
+      },
+      "webgpu": {
+        "vendor": "apple",
+        "architecture": "metal-3",
+        "description": ""
+      },
+      "mainIsolateHeap": {
+        "before": {
+          "usedSize": 6348200,
+          "totalSize": 7553024,
+          "embedderHeapUsedSize": 1407888,
+          "backingStorageSize": 1580938
+        },
+        "after": {
+          "usedSize": 8289308,
+          "totalSize": 9388032,
+          "embedderHeapUsedSize": 1801720,
+          "backingStorageSize": 1588602
+        }
+      }
+    },
+    {
+      "id": "audio",
+      "config": {
+        "tracks": 8,
+        "clipsPerTrack": 200,
+        "audioSeconds": 600,
+        "props": 4096
+      },
+      "setupMs": 269.3200001716614,
+      "metrics": {
+        "importAudioMs": {
+          "samples": [
+            214.0149998664856
+          ],
+          "count": 1,
+          "min": 214.0149998664856,
+          "p50": 214.0149998664856,
+          "p95": 214.0149998664856,
+          "max": 214.0149998664856
+        },
+        "randomPcmWindowMs": {
+          "samples": [
+            0.4499998092651367,
+            0.375,
+            0.38000011444091797,
+            0.39499998092651367,
+            0.39499998092651367
+          ],
+          "count": 5,
+          "min": 0.375,
+          "p50": 0.39499998092651367,
+          "p95": 0.4499998092651367,
+          "max": 0.4499998092651367
+        }
+      },
+      "preview": {
+        "submitted": 0,
+        "acknowledged": 0,
+        "dropped": 0,
+        "peakInflight": 1,
+        "workerAckLatenciesMs": []
+      },
+      "responsiveness": {
+        "timerIntervalMs": 10,
+        "maxTimerGapMs": 10.795000076293945,
+        "longTaskCount": 0,
+        "longTaskDurationsMs": []
+      },
+      "diagnostics": {
+        "frameCacheBytes": 0,
+        "frameCacheBudget": 134217728,
+        "pendingRequests": 0,
+        "sources": 0,
+        "proxyJobs": 0,
+        "scheduling": {
+          "completed": 6,
+          "failed": 0,
+          "cancelled": 0,
+          "preemptions": 0,
+          "peakRunning": 1,
+          "queued": 0,
+          "running": 0,
+          "previewOwners": 0,
+          "tasks": []
+        }
+      },
+      "webgpu": {
+        "vendor": "apple",
+        "architecture": "metal-3",
+        "description": ""
+      },
+      "mainIsolateHeap": {
+        "before": {
+          "usedSize": 6348200,
+          "totalSize": 7815168,
+          "embedderHeapUsedSize": 1408592,
+          "backingStorageSize": 1580938
+        },
+        "after": {
+          "usedSize": 6777332,
+          "totalSize": 7815168,
+          "embedderHeapUsedSize": 1274976,
+          "backingStorageSize": 1581183
+        }
+      }
+    },
+    {
+      "id": "scene",
+      "config": {
+        "tracks": 8,
+        "clipsPerTrack": 200,
+        "audioSeconds": 600,
+        "props": 4096
+      },
+      "setupMs": 134.86999988555908,
+      "metrics": {
+        "sceneBuildMs": {
+          "samples": [
+            133.46000003814697
+          ],
+          "count": 1,
+          "min": 133.46000003814697,
+          "p50": 133.46000003814697,
+          "p95": 133.46000003814697,
+          "max": 133.46000003814697
+        },
+        "poseAndSubmitFrameMs": {
+          "samples": [
+            5.260000228881836,
+            4.630000114440918,
+            4.789999961853027,
+            7.320000171661377,
+            4.019999980926514
+          ],
+          "count": 5,
+          "min": 4.019999980926514,
+          "p50": 4.789999961853027,
+          "p95": 7.320000171661377,
+          "max": 7.320000171661377
+        },
+        "export2SecondsMs": {
+          "samples": [
+            204.5,
+            202.0349998474121,
+            207.07999992370605,
+            200.9700002670288,
+            205.80999994277954
+          ],
+          "count": 5,
+          "min": 200.9700002670288,
+          "p50": 204.5,
+          "p95": 207.07999992370605,
+          "max": 207.07999992370605
+        }
+      },
+      "preview": {
+        "submitted": 2,
+        "acknowledged": 2,
+        "dropped": 0,
+        "peakInflight": 1,
+        "workerAckLatenciesMs": [
+          11.664999961853027,
+          0.35500001907348633
+        ]
+      },
+      "responsiveness": {
+        "timerIntervalMs": 10,
+        "maxTimerGapMs": 53.20500040054321,
+        "longTaskCount": 1,
+        "longTaskDurationsMs": [
+          105
+        ]
+      },
+      "diagnostics": {
+        "frameCacheBytes": 0,
+        "frameCacheBudget": 134217728,
+        "pendingRequests": 0,
+        "sources": 0,
+        "proxyJobs": 0,
+        "scheduling": {
+          "completed": 156,
+          "failed": 0,
+          "cancelled": 0,
+          "preemptions": 0,
+          "peakRunning": 2,
+          "queued": 0,
+          "running": 0,
+          "previewOwners": 0,
+          "tasks": []
+        }
+      },
+      "webgpu": {
+        "vendor": "apple",
+        "architecture": "metal-3",
+        "description": ""
+      },
+      "mainIsolateHeap": {
+        "before": {
+          "usedSize": 6349320,
+          "totalSize": 7290880,
+          "embedderHeapUsedSize": 1234568,
+          "backingStorageSize": 1580938
+        },
+        "after": {
+          "usedSize": 20715276,
+          "totalSize": 22675456,
+          "embedderHeapUsedSize": 1455672,
+          "backingStorageSize": 3502940
+        }
+      }
+    }
+  ],
+  "warnings": [],
+  "limitations": [
+    "Main-thread JS heap excludes worker heaps, native codec surfaces and total GPU memory.",
+    "Timer gaps measure event-loop responsiveness. Seek-to-worker-ack includes scheduling/decoding/render submission, not OS presentation latency; dropped counts mean renderer admission drops, not missing display frames.",
+    "Scene frame timing covers pose and render submission/VideoFrame creation, not isolated GPU execution.",
+    "Single setup/import/build timings are diagnostics, not statistically stable percentiles.",
+    "This establishes a baseline for this build; it does not claim an improvement over an unmeasured older build."
+  ],
+  "comparability": {
+    "environment": {
+      "platform": "darwin",
+      "release": "25.1.0",
+      "cpu": "Apple M3 Max",
+      "logicalCpus": 16,
+      "totalMemoryBytes": 68719476736,
+      "browser": "149.0.7827.55",
+      "browserChannel": "chromium",
+      "gpuMode": "native",
+      "glRenderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple M3 Max, Version 26.1 (Build 25B5062e))",
+      "gpuDevices": [
+        {
+          "vendorId": 4203,
+          "deviceId": 0,
+          "deviceString": "ANGLE (Apple, ANGLE Metal Renderer: Apple M3 Max, Version 26.1 (Build 25B5062e))",
+          "driverVersion": "26.1"
+        }
+      ],
+      "webgpu": {
+        "vendor": "apple",
+        "architecture": "metal-3",
+        "description": ""
+      }
+    },
+    "profile": "standard",
+    "samples": 5,
+    "recipeSha256": "99868fb58fc484c62f15e3db7feac8803f8618dd5c8958474eabe7aca3058730",
+    "fixtureHashes": {
+      "video4k": "6ecdc9f2f99d344b8852c0969506c92e6c20a0d79a65777264630cd9d077e351",
+      "video1080": "3117637cc912d14a86c11d4ec033d8bc9e8be37913d6625899a6b1ede8714245",
+      "audio": "38d53037c3b2522775eecbe8689e3d7c43d38b634601c26cb617c20d709716ce"
+    }
+  },
+  "validation": {
+    "productionBuild": "passed",
+    "sdkTests": 234,
+    "benchmarkStatsTests": 4,
+    "browserTests": 10,
+    "skippedBrowserTests": 0
+  },
+  "repeatabilityCheck": {
+    "profile": "quick",
+    "samples": 5,
+    "sameBuild": true,
+    "buildIndexSha256": "abd914c017725cff9b054ef48c0dd3b0d1a730b15692618255822266f31c2853",
+    "comparison": {
+      "ratioThreshold": 1.3,
+      "absoluteFloorMs": 5,
+      "regressions": [
+        {
+          "metric": "video4k.proxyBuildMs",
+          "beforeP95": 183.71999979019165,
+          "afterP95": 377.8600001335144,
+          "ratio": 2.0567167459450837,
+          "compared": true,
+          "regressed": true
+        },
+        {
+          "metric": "multitrack.export2SecondsMs",
+          "beforeP95": 1068.5299997329712,
+          "afterP95": 1562.215000152588,
+          "ratio": 1.4620225922931411,
+          "compared": true,
+          "regressed": true
+        }
+      ],
+      "changes": [
+        {
+          "metric": "video4k.seekExactMs",
+          "beforeP95": 59.760000228881836,
+          "afterP95": 62.11999988555908,
+          "ratio": 1.0394912926311648,
+          "compared": true,
+          "regressed": false
+        },
+        {
+          "metric": "video4k.proxyBuildMs",
+          "beforeP95": 183.71999979019165,
+          "afterP95": 377.8600001335144,
+          "ratio": 2.0567167459450837,
+          "compared": true,
+          "regressed": true
+        },
+        {
+          "metric": "multitrack.seekToWorkerAckMs",
+          "beforeP95": 53.59000015258789,
+          "afterP95": 54.019999980926514,
+          "ratio": 1.0080238818270997,
+          "compared": true,
+          "regressed": false
+        },
+        {
+          "metric": "multitrack.evaluate100FramesMs",
+          "beforeP95": 0.23000001907348633,
+          "afterP95": 0.25,
+          "ratio": 1.0869564315997886,
+          "compared": true,
+          "regressed": false
+        },
+        {
+          "metric": "multitrack.export2SecondsMs",
+          "beforeP95": 1068.5299997329712,
+          "afterP95": 1562.215000152588,
+          "ratio": 1.4620225922931411,
+          "compared": true,
+          "regressed": true
+        },
+        {
+          "metric": "audio.importAudioMs",
+          "beforeP95": 74.69500017166138,
+          "afterP95": 65.375,
+          "ratio": 0.875225916724781,
+          "compared": false,
+          "regressed": false
+        },
+        {
+          "metric": "audio.randomPcmWindowMs",
+          "beforeP95": 0.47499990463256836,
+          "afterP95": 0.42999982833862305,
+          "ratio": 0.9052629782552174,
+          "compared": true,
+          "regressed": false
+        },
+        {
+          "metric": "scene.sceneBuildMs",
+          "beforeP95": 56.389999866485596,
+          "afterP95": 48.105000019073486,
+          "ratio": 0.8530767890223715,
+          "compared": false,
+          "regressed": false
+        },
+        {
+          "metric": "scene.poseAndSubmitFrameMs",
+          "beforeP95": 1.684999942779541,
+          "afterP95": 1.4150004386901855,
+          "ratio": 0.839762900143504,
+          "compared": true,
+          "regressed": false
+        },
+        {
+          "metric": "scene.export2SecondsMs",
+          "beforeP95": 125.98000001907349,
+          "afterP95": 138.14999961853027,
+          "ratio": 1.0966026321448978,
+          "compared": true,
+          "regressed": false
+        }
+      ]
+    },
+    "note": "Same-build repeats triggered two tail-latency alerts. No threshold was relaxed; this is variability evidence, not proof of a source-code regression.",
+    "runs": [
+      {
+        "createdAt": "2026-10-13T09:36:57.290Z",
+        "buildIndexSha256": "abd914c017725cff9b054ef48c0dd3b0d1a730b15692618255822266f31c2853",
+        "metrics": {
+          "video4k": {
+            "seekExactMs": {
+              "samples": [
+                40.200000286102295,
+                57.46500015258789,
+                48.329999923706055,
+                59.760000228881836,
+                41.58500003814697
+              ],
+              "count": 5,
+              "min": 40.200000286102295,
+              "p50": 48.329999923706055,
+              "p95": 59.760000228881836,
+              "max": 59.760000228881836
+            },
+            "proxyBuildMs": {
+              "samples": [
+                183.71999979019165,
+                182.31500005722046,
+                183.4099998474121,
+                176.66000032424927,
+                179.95499992370605
+              ],
+              "count": 5,
+              "min": 176.66000032424927,
+              "p50": 182.31500005722046,
+              "p95": 183.71999979019165,
+              "max": 183.71999979019165
+            }
+          },
+          "multitrack": {
+            "seekToWorkerAckMs": {
+              "samples": [
+                53.59000015258789,
+                26.954999923706055,
+                23.535000324249268,
+                18.44499969482422,
+                36.05499982833862
+              ],
+              "count": 5,
+              "min": 18.44499969482422,
+              "p50": 26.954999923706055,
+              "p95": 53.59000015258789,
+              "max": 53.59000015258789
+            },
+            "evaluate100FramesMs": {
+              "samples": [
+                0.23000001907348633,
+                0.13000011444091797,
+                0.125,
+                0.11999988555908203,
+                0.10500001907348633
+              ],
+              "count": 5,
+              "min": 0.10500001907348633,
+              "p50": 0.125,
+              "p95": 0.23000001907348633,
+              "max": 0.23000001907348633
+            },
+            "export2SecondsMs": {
+              "samples": [
+                1068.5299997329712,
+                1049.9649996757507,
+                1025.8150000572205,
+                955.704999923706,
+                991.9349999427795
+              ],
+              "count": 5,
+              "min": 955.704999923706,
+              "p50": 1025.8150000572205,
+              "p95": 1068.5299997329712,
+              "max": 1068.5299997329712
+            }
+          },
+          "audio": {
+            "importAudioMs": {
+              "samples": [
+                74.69500017166138
+              ],
+              "count": 1,
+              "min": 74.69500017166138,
+              "p50": 74.69500017166138,
+              "p95": 74.69500017166138,
+              "max": 74.69500017166138
+            },
+            "randomPcmWindowMs": {
+              "samples": [
+                0.4399995803833008,
+                0.40000009536743164,
+                0.41499996185302734,
+                0.47499990463256836,
+                0.4049997329711914
+              ],
+              "count": 5,
+              "min": 0.40000009536743164,
+              "p50": 0.41499996185302734,
+              "p95": 0.47499990463256836,
+              "max": 0.47499990463256836
+            }
+          },
+          "scene": {
+            "sceneBuildMs": {
+              "samples": [
+                56.389999866485596
+              ],
+              "count": 1,
+              "min": 56.389999866485596,
+              "p50": 56.389999866485596,
+              "p95": 56.389999866485596,
+              "max": 56.389999866485596
+            },
+            "poseAndSubmitFrameMs": {
+              "samples": [
+                1.684999942779541,
+                1.2049999237060547,
+                1.0550003051757812,
+                0.6500000953674316,
+                0.5949997901916504
+              ],
+              "count": 5,
+              "min": 0.5949997901916504,
+              "p50": 1.0550003051757812,
+              "p95": 1.684999942779541,
+              "max": 1.684999942779541
+            },
+            "export2SecondsMs": {
+              "samples": [
+                121.91499996185303,
+                125.98000001907349,
+                119.85999965667725,
+                122.67999982833862,
+                116.57499980926514
+              ],
+              "count": 5,
+              "min": 116.57499980926514,
+              "p50": 121.91499996185303,
+              "p95": 125.98000001907349,
+              "max": 125.98000001907349
+            }
+          }
+        }
+      },
+      {
+        "createdAt": "2026-10-13T09:37:11.268Z",
+        "buildIndexSha256": "abd914c017725cff9b054ef48c0dd3b0d1a730b15692618255822266f31c2853",
+        "metrics": {
+          "video4k": {
+            "seekExactMs": {
+              "samples": [
+                39.765000343322754,
+                58.46500015258789,
+                46.985000133514404,
+                62.11999988555908,
+                39.22500038146973
+              ],
+              "count": 5,
+              "min": 39.22500038146973,
+              "p50": 46.985000133514404,
+              "p95": 62.11999988555908,
+              "max": 62.11999988555908
+            },
+            "proxyBuildMs": {
+              "samples": [
+                183.32999992370605,
+                185.32000017166138,
+                184.18499994277954,
+                181.36500024795532,
+                377.8600001335144
+              ],
+              "count": 5,
+              "min": 181.36500024795532,
+              "p50": 184.18499994277954,
+              "p95": 377.8600001335144,
+              "max": 377.8600001335144
+            }
+          },
+          "multitrack": {
+            "seekToWorkerAckMs": {
+              "samples": [
+                54.019999980926514,
+                35.41999959945679,
+                35.56500005722046,
+                14.289999961853027,
+                36.74499988555908
+              ],
+              "count": 5,
+              "min": 14.289999961853027,
+              "p50": 35.56500005722046,
+              "p95": 54.019999980926514,
+              "max": 54.019999980926514
+            },
+            "evaluate100FramesMs": {
+              "samples": [
+                0.25,
+                0.10500001907348633,
+                0.1100001335144043,
+                0.1099996566772461,
+                0.0950002670288086
+              ],
+              "count": 5,
+              "min": 0.0950002670288086,
+              "p50": 0.1099996566772461,
+              "p95": 0.25,
+              "max": 0.25
+            },
+            "export2SecondsMs": {
+              "samples": [
+                1562.215000152588,
+                1086.1950001716614,
+                1068.255000114441,
+                1048.5150003433228,
+                1046.7399997711182
+              ],
+              "count": 5,
+              "min": 1046.7399997711182,
+              "p50": 1068.255000114441,
+              "p95": 1562.215000152588,
+              "max": 1562.215000152588
+            }
+          },
+          "audio": {
+            "importAudioMs": {
+              "samples": [
+                65.375
+              ],
+              "count": 1,
+              "min": 65.375,
+              "p50": 65.375,
+              "p95": 65.375,
+              "max": 65.375
+            },
+            "randomPcmWindowMs": {
+              "samples": [
+                0.42999982833862305,
+                0.38000011444091797,
+                0.35500001907348633,
+                0.28999996185302734,
+                0.2950000762939453
+              ],
+              "count": 5,
+              "min": 0.28999996185302734,
+              "p50": 0.35500001907348633,
+              "p95": 0.42999982833862305,
+              "max": 0.42999982833862305
+            }
+          },
+          "scene": {
+            "sceneBuildMs": {
+              "samples": [
+                48.105000019073486
+              ],
+              "count": 1,
+              "min": 48.105000019073486,
+              "p50": 48.105000019073486,
+              "p95": 48.105000019073486,
+              "max": 48.105000019073486
+            },
+            "poseAndSubmitFrameMs": {
+              "samples": [
+                1.4150004386901855,
+                1.075000286102295,
+                0.7249999046325684,
+                0.6750001907348633,
+                0.5999999046325684
+              ],
+              "count": 5,
+              "min": 0.5999999046325684,
+              "p50": 0.7249999046325684,
+              "p95": 1.4150004386901855,
+              "max": 1.4150004386901855
+            },
+            "export2SecondsMs": {
+              "samples": [
+                128.97500038146973,
+                123.81500005722046,
+                138.14999961853027,
+                127.95499992370605,
+                121.26500034332275
+              ],
+              "count": 5,
+              "min": 121.26500034332275,
+              "p50": 127.95499992370605,
+              "p95": 138.14999961853027,
+              "max": 138.14999961853027
+            }
+          }
+        }
+      }
+    ]
+  },
+  "stageCommits": {
+    "foundation": "f38d41d",
+    "scheduling": "304c93b",
+    "exportIsolation": "c5899d7",
+    "previewCacheRecovery": "bd0c97c",
+    "storageFailure": "cd71326",
+    "codecLifecycle": "fd447e0"
+  }
+}

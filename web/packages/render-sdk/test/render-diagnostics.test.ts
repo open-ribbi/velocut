@@ -1,0 +1,32 @@
+import {test}from'node:test';import assert from'node:assert/strict';
+import {RendererClient}from'../dist/renderer-client.js';
+test('preview diagnostics enforce two in-flight frames and measure acknowledged source readiness',async t=>{
+ const original=globalThis.Worker;let worker:any;
+ globalThis.Worker=class{onmessage:any;posts:any[]=[];constructor(){worker=this;}postMessage(msg:any){this.posts.push(msg);if(msg.type==='init')this.onmessage({data:{type:'ready'}});}terminate(){}}as any;
+ t.after(()=>globalThis.Worker=original);
+ const client=new RendererClient();await client.init({width:64,height:64,transferControlToOffscreen:()=>({})}as any);
+ const frame={timestamp:0,duration:100000,clone:()=>({close(){}})};
+ const media={assetSize:()=>({width:64,height:64}),frameFor:()=>frame};
+ const graph={timeUs:50000,layers:[{clipId:'c',assetId:'a',sourceTimeUs:50000}]}as any;
+ client.render(graph,media as any);client.render(graph,media as any);client.render(graph,media as any);
+ assert.equal(client.diagnostics().inflight,2);assert.equal(client.diagnostics().dropped,1);assert.equal(client.diagnostics().peakInflight,2);
+ const requests=worker.posts.filter((m:any)=>m.type==='render');assert.equal(requests.length,2);
+ const version=client.version;
+ worker.onmessage({data:{type:'rendered',requestId:requests[0].requestId,ok:true}});
+ assert.ok(client.version>version,'dropped paused frames must invalidate after a slot frees');
+ assert.equal(client.diagnostics().latest?.sourceTimeErrorUs,0);assert.equal(client.diagnostics().latest?.missingSources,0);
+ assert.equal(client.diagnostics().latencySamplesMs.length,1);
+ client.render({...graph,timeUs:200000,layers:[{clipId:'c',assetId:'a',sourceTimeUs:200000}]},media as any);
+ worker.onmessage({data:{type:'rendered',requestId:worker.posts.at(-1).requestId,ok:true}});
+ assert.equal(client.diagnostics().latest?.sourceTimeErrorUs,100000);
+ client.dispose();assert.equal(client.diagnostics().inflight,0);
+});
+test('failed render transfers release cloned frames and do not consume a queue slot',async t=>{
+ const original=globalThis.Worker;let worker:any,closed=0;
+ globalThis.Worker=class{onmessage:any;constructor(){worker=this;}postMessage(msg:any){if(msg.type==='init')this.onmessage({data:{type:'ready'}});else throw Error('transfer failed');}terminate(){}}as any;
+ t.after(()=>globalThis.Worker=original);
+ const client=new RendererClient();await client.init({width:64,height:64,transferControlToOffscreen:()=>({})}as any);
+ const media={assetSize:()=>({width:64,height:64}),frameFor:()=>({timestamp:0,duration:100000,clone:()=>({close:()=>closed++})})};
+ assert.throws(()=>client.render({timeUs:0,layers:[{clipId:'c',assetId:'a',sourceTimeUs:0}]}as any,media as any),/transfer failed/);
+ assert.equal(closed,1);assert.equal(client.diagnostics().inflight,0);assert.equal(client.diagnostics().failed,1);client.dispose();
+});

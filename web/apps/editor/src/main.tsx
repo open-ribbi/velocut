@@ -362,6 +362,7 @@ async function bootstrap() {
     store,
     seek: (timeUs: number) => playback.seek(timeUs),
     media,
+    diagnostics: () => ({media:media.diagnostics(),preview:container.resolve(TOKENS.Renderer).diagnostics?.() ?? null}),
     exportFilm: (options: FilmExportOptions = {}) => startFilmExport(store, media, options),
     Exporter, // debug: new velocut.Exporter(velocut.media).export({...}) for bounded test exports
     audio: container.resolve(TOKENS.Audio),
